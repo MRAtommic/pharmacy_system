@@ -144,6 +144,47 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_subscribers_target ON line_subscribers(target_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_in_created ON stock_in_logs(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_in_drug ON stock_in_logs(drug_id)")
+
+        # Auto-seed initial drugs if database is newly initialized
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM drugs")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            seed_file = Path(__file__).parent / "seed_drugs.json"
+            if seed_file.exists():
+                try:
+                    with open(seed_file, "r", encoding="utf-8") as sf:
+                        seed_data = json.load(sf)
+                        now_str = get_now_str()
+                        for item in seed_data:
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO drugs (
+                                    code, name, generic_name, category, dosage_form, strength,
+                                    stock_qty, unit, min_threshold, price, cost, expiry_date,
+                                    lot_number, location, image_url, qr_payload, instructions, created_at, updated_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?)
+                            """, (
+                                item.get("code"),
+                                item.get("name"),
+                                item.get("generic_name", ""),
+                                item.get("category", "ทั่วไป"),
+                                item.get("dosage_form", "เม็ด (Tablet)"),
+                                item.get("strength", ""),
+                                int(item.get("stock_qty") or 0),
+                                item.get("unit", "เม็ด"),
+                                int(item.get("min_threshold") or 10),
+                                float(item.get("price") or 0.0),
+                                float(item.get("cost") or 0.0),
+                                item.get("expiry_date", ""),
+                                item.get("lot_number", ""),
+                                item.get("location", "ตู้เก็บยาหลัก"),
+                                item.get("qr_payload") or f"PHARM:{item.get('code')}",
+                                item.get("instructions", ""),
+                                now_str,
+                                now_str
+                            ))
+                except Exception as e:
+                    print(f"Error seeding drugs: {e}")
     conn.close()
 
 # ─────────────────────────────────────────────────────────────
