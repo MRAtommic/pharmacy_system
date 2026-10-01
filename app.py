@@ -516,8 +516,14 @@ def scan_image():
     analysis = parse_drug_from_image(image_bytes)
     return jsonify({"ok": True, "analysis": analysis})
 
-UPLOAD_DRUG_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads", "drugs")
-os.makedirs(UPLOAD_DRUG_FOLDER, exist_ok=True)
+UPLOAD_DRUG_FOLDER = os.environ.get(
+    "UPLOAD_DRUG_FOLDER",
+    "/tmp/uploads/drugs" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "static", "uploads", "drugs")
+)
+try:
+    os.makedirs(UPLOAD_DRUG_FOLDER, exist_ok=True)
+except Exception:
+    pass
 ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp", "gif"}
 
 def allowed_image_file(filename):
