@@ -55,5 +55,8 @@ class Config:
     # Timezone
     TIMEZONE = "Asia/Bangkok"
 
-# Ensure upload directory exists
-os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+# Ensure upload directory exists safely
+try:
+    os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+except Exception:
+    pass

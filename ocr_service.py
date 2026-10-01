@@ -6,8 +6,12 @@ Extracts drug codes from QR codes or scans prescriptions/labels using OCR + rege
 import re
 import io
 import os
-import cv2
-import numpy as np
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
 from PIL import Image
 import database
 

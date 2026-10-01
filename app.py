@@ -20,8 +20,12 @@ from google_sync import google_sync
 from line_service import line_bot
 from ocr_service import parse_drug_from_image
 
-# Force UTF-8 on Windows
-sys.stdout.reconfigure(encoding='utf-8')
+# Safe UTF-8 on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 app = Flask(
     __name__,
