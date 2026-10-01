@@ -24,10 +24,10 @@ class Config:
     BASE_URL = os.environ.get("BASE_URL", "https://pharmacy.openchat.sbs").rstrip("/")
     
     # SQLite Database
-    DB_PATH = str(BASE_DIR / "pharmacy.db")
+    DB_PATH = os.environ.get("DB_PATH", str(Path("/tmp/pharmacy.db") if os.environ.get("VERCEL") else BASE_DIR / "pharmacy.db"))
     
     # Uploads folder for receipts/prescriptions
-    UPLOAD_FOLDER = str(BASE_DIR / "uploads")
+    UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", str(Path("/tmp/uploads") if os.environ.get("VERCEL") else BASE_DIR / "uploads"))
     
     # LINE Bot credentials (shared from existing setup)
     LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
