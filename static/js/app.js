@@ -3,6 +3,21 @@
  * Dynamic reactive UI with Light/Dark Mode, QR Scanner, CRUD, and Dispensing Flow.
  */
 
+// Auto-detect base path if mounted under /pharmacy or custom prefix
+const PHARMACY_BASE = (typeof window !== 'undefined' && window.PHARMACY_BASE !== undefined) 
+    ? window.PHARMACY_BASE 
+    : (typeof window !== 'undefined' && window.location.pathname.startsWith('/pharmacy') ? '/pharmacy' : '');
+
+if (PHARMACY_BASE && typeof window !== 'undefined' && window.fetch) {
+    const _originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+        if (typeof url === 'string' && url.startsWith('/api/')) {
+            url = PHARMACY_BASE + url;
+        }
+        return _originalFetch.call(this, url, options);
+    };
+}
+
 let allDrugs = [];
 let currentTab = 'inventory';
 let html5QrScanner = null;

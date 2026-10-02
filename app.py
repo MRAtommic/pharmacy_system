@@ -397,6 +397,11 @@ def auto_create_google_sheet():
 
     return jsonify({"ok": True, "config": google_sync.get_connection_info(), "message": "สร้าง Google Sheet สำหรับคลังยาสำเร็จแล้ว"})
 
+@app.route("/api/google/disconnect", methods=["POST"])
+def disconnect_google_endpoint():
+    google_sync.disconnect_google()
+    return jsonify({"ok": True, "message": "ตัดการเชื่อมต่อ Google สำเร็จแล้ว"})
+
 # ─────────────────────────────────────────────────────────────
 # Google OAuth2 Automatic Authorization (Drive & Sheets Auto-Create)
 # ─────────────────────────────────────────────────────────────

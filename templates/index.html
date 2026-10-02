@@ -14,11 +14,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="/static/css/medical_theme.css?v=16.0">
+    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=16.0">
 
     <!-- PWA & Mobile App Support (APK Style) -->
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/static/uploads/drugs/app_icon_192.png">
+    <link rel="manifest" href="{{ base_prefix | default('') }}/manifest.json">
+    <link rel="apple-touch-icon" href="{{ base_prefix | default('') }}/static/uploads/drugs/app_icon_192.png">
     <meta name="theme-color" content="#0a0f1d">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1338,6 +1338,9 @@
     <div id="qr-reader-file-temp" style="display: none;"></div>
 
     <!-- App Script with Cache Busting -->
-    <script src="/static/js/app.js?v=23.0"></script>
+    <script>
+        window.PHARMACY_BASE = "{{ base_prefix | default('') }}";
+    </script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=23.0"></script>
 </body>
 </html>
