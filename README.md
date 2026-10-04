@@ -1,16 +1,23 @@
 <div align="center">
 
 # 🏥 PharmaCore RX-OS
-### Intelligent Pharmacy Stock Management & Dispensing System
+### Intelligent Pharmacy Stock Management & Clinical Dispensing Platform
 **ระบบบริหารจัดการคลังยาและการตัดสต็อกอัจฉริยะสำหรับคลินิกและร้านขายยา**
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Flask 3.0](https://img.shields.io/badge/Flask-3.0.3-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![SQLite](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![SQLite WAL](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![LINE Messaging API](https://img.shields.io/badge/LINE-Messaging%20API-00B900?style=for-the-badge&logo=line&logoColor=white)](https://developers.line.biz/)
-[![Google Workspace](https://img.shields.io/badge/Google-Drive%20%26%20Sheets-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://workspace.google.com/)
+[![Google Workspace](https://img.shields.io/badge/Google-Sheets%20%26%20Drive-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://workspace.google.com/)
+[![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-[**ภาษาไทย**](#-ภาษาไทย-thai-version) • [**English**](#-english-version)
+<br/>
+
+<img src="docs/assets/dashboard_overview.png" alt="PharmaCore Dashboard Preview" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);"/>
+
+<br/><br/>
+
+[**🇹🇭 ภาษาไทย (Thai)**](#-ภาษาไทย-thai-version) • [**🇬🇧 English Version**](#-english-version)
 
 ---
 
@@ -18,89 +25,102 @@
 
 ## 🇹🇭 ภาษาไทย (Thai Version)
 
-### 📌 เกี่ยวกับโปรเจกต์ (About Project)
-**PharmaCore RX-OS** เป็นระบบบริหารจัดการคลังยา จ่ายยา และตัดสต็อกแบบอัตโนมัติ ออกแบบมาเพื่อยกระดับการทำงานของคลินิก สถานพยาบาล และร้านขายยาให้มีความแม่นยำ รวดเร็ว และลดความผิดพลาดในการจ่ายยา (Human Error) ด้วยการผสานเทคโนโลยี **สแกน QR Code/Barcode, ระบบแจ้งเตือนผ่าน LINE อัตโนมัติ, ระบบซิงค์ข้อมูลกับ Google Sheets/Drive และระบบพิมพ์สติ๊กเกอร์ยาแบบปรับแต่งขนาดได้**
+### 📌 ภาพรวมโปรเจกต์ (Project Overview)
+**PharmaCore RX-OS** เป็นระบบจัดการคลังยา จ่ายยา และตัดสต็อกอัตโนมัติ ออกแบบมาเพื่อยกระดับความแม่นยำและความเร็วของงานเภสัชกรรมในคลินิก สถานพยาบาล และร้านขายยา ลดข้อผิดพลาดในการจ่ายยา (Zero Human Error) ผสานการทำงานร่วมกับ **QR/Barcode Scanning, แจ้งเตือน LINE อัตโนมัติ, ซิงค์ข้อมูลสองทางกับ Google Sheets/Drive, เครื่องพิมพ์สติ๊กเกอร์ยาแบบกำหนดขนาดได้เอง และ PWA สำหรับใช้งานบนมือถือ**
 
 ---
 
-### ✨ ฟีเจอร์เด่น (Key Features)
+### 📸 ภาพหน้าจอการทำงานจริง (Screenshots & System Walkthrough)
 
-1. **📦 การจัดการคลังยาและการควบคุมล็อต (Master Inventory & Lot Management)**
-   - บันทึกรายละเอียดตัวยา, ชื่อการค้า, ชื่อสามัญทางยา, รหัสยา, รูปภาพ, ตำแหน่งจัดเก็บ, จุดเตือนสั่งซื้อขั้นต่ำ และล็อตนัมเบอร์
-   - ระบบรับยาเข้าคลัง (Stock In) พร้อมบันทึกต้นทุน วันหมดอายุ และซัพพลายเออร์
+<table align="center" width="100%">
+  <tr>
+    <td width="50%" align="center">
+      <b>🖨️ หน้าต่างตั้งค่าการพิมพ์สติ๊กเกอร์ยา (Custom Label Engine)</b><br/><br/>
+      <img src="docs/assets/sticker_modal.png" alt="Sticker Configuration" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>รองรับการพิมพ์ทั้งแบบเดี่ยวและแบบชุด (Batch Print), เลือกขนาดกระดาษ A4 / สติ๊กเกอร์ม้วนความร้อน (Thermal), ปรับจำนวนคอลัมน์ได้สูงสุด 12 คอลัมน์</i></p>
+    </td>
+    <td width="50%" align="center">
+      <b>📄 ตัวอย่างการพิมพ์สติ๊กเกอร์จริง (Print Preview)</b><br/><br/>
+      <img src="docs/assets/sticker_print_preview.png" alt="Sticker Print Preview" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>ระบบ Dynamic Grid 100% จัดวางเต็มหน้ากระดาษ ไร้ขอบว่างด้านขวา พร้อม QR Code ความละเอียดสูงและชื่อยา/ล็อต/วันหมดอายุ</i></p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <b>📱 ระบบสแกนเนอร์จ่ายยาผ่านกล้องมือถือ/แท็บเล็ต (Mobile Barcode & QR Scanner)</b><br/><br/>
+      <img src="docs/assets/scanner_view.png" alt="Mobile Scanner" width="70%" style="border-radius: 8px;"/>
+      <p align="center"><i>สแกนบาร์โค้ดหรือคิวอาร์โค้ดยาเพื่อดูรายละเอียดและตัดสต็อกได้ทันทีผ่านกล้องอุปกรณ์ทุกรุ่น</i></p>
+    </td>
+  </tr>
+</table>
 
-2. **⚡ การตัดสต็อกและจ่ายยาแบบ Atomic (Atomic Stock Dispensing)**
-   - ตัดสต็อกแม่นยำระดับเสี้ยววินาทีด้วย SQLite WAL Transactions
-   - รองรับการสแกนจ่ายผ่านกล้องมือถือ/แท็บเล็ต/เครื่องสแกนบาร์โค้ด หรือพิมพ์ค้นหาด้วยระบบ Fuzzy Search ภาษาไทย (เช่น "พารา 2", "อะม็อกซี่ 1")
+---
 
-3. **🖨️ เครื่องพิมพ์สติ๊กเกอร์ QR Code & Barcode หลากขนาด (Custom Sticker Printer Engine)**
-   - พิมพ์สติ๊กเกอร์เดี่ยว หรือพิมพ์แบบเป็นชุด (Batch Print) คราวละหลายรายการ
-   - มีพรีเซ็ตยอดนิยม: **A4 Micro (20x15mm), Mini (25x20mm), Compact, Thermal Sticker (25x15mm, 30x20mm, 40x30mm, 50x30mm)** และกำหนดขนาดอิสระ (Custom mm)
-   - ปรับเลย์เอาต์คอลัมน์ได้สูงสุด 12 คอลัมน์ พร้อมระบบ Dynamic Grid 100% พิมพ์เต็มหน้ากระดาษไม่มีขอบว่าง
+### ✨ ฟีเจอร์เด่นของระบบ (Core Features)
+
+1. **📦 การจัดการคลังยาและคุมล็อต (Master Inventory & Lot Management)**
+   - บันทึกชื่อการค้า, ชื่อสามัญทางยา (Generic Name), รหัสยา/บาร์โค้ด, หมวดหมู่, รูปแบบยา, รูปภาพ, ตำแหน่งเก็บในตู้ยา, และจุดเตือนขั้นต่ำ
+   - ระบบ **รับยาเข้าคลัง (Stock In)** แยกตามล็อตนัมเบอร์ วันหมดอายุ และบันทึกต้นทุนอัตโนมัติ
+
+2. **⚡ ระบบตัดสต็อกและจ่ายยาแบบ Atomic (Atomic Stock Dispensing)**
+   - ทำงานบน SQLite Write-Ahead Logging (WAL) ป้องกันปัญหาสต็อกติดลบหรือข้อมูลชนกัน (Race Conditions)
+   - รองรับการค้นหายาด้วยชื่อย่อภาษาไทยแบบ Fuzzy Matching (เช่น พิมพ์ "พารา 2", "อะม็อกซี่ 1" ระบบค้นพบและตัดสต็อกทันที)
+
+3. **🖨️ เครื่องพิมพ์สติ๊กเกอร์ QR Code / Barcode (Custom Sticker Printer Engine)**
+   - พรีเซ็ตมาตรฐาน: **A4 Micro (20x15mm), Mini (25x20mm), Compact, Thermal Sticker (25x15mm, 30x20mm, 40x30mm, 50x30mm)**
+   - กำหนดขนาดเองอิสระ (Custom mm) พร้อมระบบคำนวณ Shrink-to-fit ปรับสัดส่วนอัตโนมัติ
 
 4. **⏰ ระบบแจ้งเตือนยาวันหมดอายุอัตโนมัติ (Expiry Alert Daemon)**
-   - มอนิเตอร์ยาใกล้หมดอายุแบบเรียลไทม์ (30 วันวิกฤต / 60 วันแจ้งเตือน)
-   - แจ้งเตือนเข้ากลุ่มหรือแชท LINE เภสัชกร/เจ้าหน้าที่อัตโนมัติ
+   - มอนิเตอร์ยาใกล้หมดอายุแบบเรียลไทม์ (แจ้งเตือนล่วงหน้า 60 วัน และเตือนวิกฤต 30 วัน)
+   - ส่งข้อความแจ้งเตือนผ่าน **LINE Messaging API** ตรงถึงมือถือเภสัชกร/เจ้าหน้าที่
 
 5. **☁️ การเชื่อมต่อ Google Workspace & Export Excel**
-   - ซิงค์ประวัติการจ่ายยาและข้อมูลคลังยาขึ้น **Google Sheets** อัตโนมัติ
-   - แนบหลักฐานรูปภาพใบสั่งยา/ใบเสร็จขึ้น **Google Drive**
-   - ส่งออกรายงานสต็อกเป็นไฟล์ Excel (.xlsx) สวยงามพร้อมใช้งาน
+   - ซิงค์ประวัติการจ่ายยาและข้อมูลคลังยาขึ้น **Google Sheets** แยกชีตอย่างเป็นระเบียบ
+   - อัปโหลดหลักฐานรูปภาพใบสั่งยา/ใบรับเข้าสู่ **Google Drive** อัตโนมัติ
+   - ปุ่มกดส่งออกรายงานสต็อกเป็นไฟล์ **Excel (.xlsx)** สวยงามพร้อมส่งต่อฝ่ายบัญชี
 
 6. **📱 รองรับ PWA & Mobile Web App**
-   - ติดตั้งลงหน้าจอมือถือ (Android / iOS) เสมือน Native App
-   - ใช้งานกล้องสแกน Barcode/QR Code ได้ทันทีบนสมาร์ตโฟน
+   - ออกแบบ Responsive รองรับทั้งจอคอมพิวเตอร์ แท็บเล็ต และสมาร์ตโฟน
+   - ติดตั้งเป็นไอคอนบนหน้าจอหลัก (Home Screen) ใช้งานได้รวดเร็วเสมือน App มือถือ
 
 ---
 
-### 🛠️ เทคโนโลยีที่ใช้ในการพัฒนา (Tech Stack)
+### 🛠️ โครงสร้างเทคโนโลยี (Tech Stack)
 
-| ส่วนของระบบ | เทคโนโลยีที่ใช้ |
-| :--- | :--- |
-| **Backend** | Python 3.10+, Flask 3.0.3, Gunicorn |
-| **Database** | SQLite 3 (เปิดใช้งาน PRAGMA WAL Mode + Foreign Keys) |
-| **Frontend** | Vanilla JavaScript (ES6+), HTML5, CSS3 Custom Medical Theme (รองรับ Light/Dark Mode) |
-| **Integrations** | LINE Messaging API SDK, Google APIs (Sheets API v4, Drive API v3, OAuth2) |
-| **Computer Vision / OCR** | OpenCV (cv2), Pillow (PIL), NumPy |
-| **Printing & QR** | QRCode.js, CSS Paged Media `@media print` |
-| **Deployment** | Cloudflare Tunnel (Zero Trust), Docker |
+| เลเยอร์ของระบบ | เทคโนโลยีที่เลือกใช้ | ประโยชน์ / ความสามารถ |
+| :--- | :--- | :--- |
+| **Backend** | Python 3.10+, Flask 3.0.3, Gunicorn | ประสิทธิภาพสูง โครงสร้างกระชับ รองรับ RESTful APIs |
+| **Database** | SQLite 3 (PRAGMA WAL + Foreign Keys) | รวดเร็ว ปลอดภัยระดับ Atomic Transaction ไม่เปลืองทรัพยากร |
+| **Frontend** | Vanilla JavaScript (ES6+), HTML5, CSS3 Custom Theme | โหลดไว ไร้ Framework หนักๆ รองรับ Dark/Light Mode สวยงาม |
+| **Cloud & Messaging** | LINE Messaging API SDK, Google Workspace APIs | เชื่อมต่อแจ้งเตือน LINE Bot และซิงค์ Google Sheets / Drive |
+| **Computer Vision** | OpenCV (`opencv-python-headless`), Pillow, NumPy | ประมวลผลภาพ สแกนบาร์โค้ด และอ่านคิวอาร์โค้ด |
+| **Print Engine** | QRCode.js, CSS `@media print` engine | รองรับการพิมพ์สติ๊กเกอร์ความละเอียดสูงทุกขนาดกระดาษ |
+| **Networking** | Cloudflare Tunnel (Zero Trust) | เผยแพร่เว็บออกสู่อินเทอร์เน็ตได้อย่างปลอดภัย ไม่ต้องเปิด Port Forward |
 
 ---
 
-### 🚀 วิธีการติดตั้งและเริ่มใช้งาน (Quick Start)
+### 🚀 การติดตั้งและเริ่มใช้งาน (Quick Start)
 
-1. **Clone Repository**
-   ```bash
-   git clone https://github.com/MRAtommic/pharmacy_system.git
-   cd pharmacy_system
-   ```
+```bash
+# 1. Clone repository
+git clone https://github.com/MRAtommic/pharmacy_system.git
+cd pharmacy_system
 
-2. **สร้าง Virtual Environment และติดตั้ง Dependencies**
-   ```bash
-   python -m venv venv
-   # Windows:
-   .\venv\Scripts\activate
-   # macOS/Linux:
-   source venv/bin/activate
+# 2. สร้างและเปิดใช้งาน Virtual Environment
+python -m venv venv
+.\venv\Scripts\activate   # Windows
+source venv/bin/activate  # macOS/Linux
 
-   pip install -r requirements.txt
-   ```
+# 3. ติดตั้ง Library ทั้งหมด
+pip install -r requirements.txt
 
-3. **ตั้งค่า Environment Variables (`.env`)**
-   สร้างไฟล์ `.env` ในโฟลเดอร์หลัก:
-   ```env
-   PHARMACY_PORT=5005
-   BASE_URL=http://localhost:5005
-   LINE_CHANNEL_ACCESS_TOKEN=your_line_token_here
-   LINE_CHANNEL_SECRET=your_line_secret_here
-   EXPIRY_ALERT_DAYS=60
-   ```
+# 4. ตั้งค่าตัวแปรสภาพแวดล้อม (.env)
+cp .env.example .env      # หรือสร้างไฟล์ .env และใส่ค่า LINE/Google Tokens
 
-4. **รันเซิร์ฟเวอร์**
-   ```bash
-   python app.py
-   ```
-   เปิดเบราว์เซอร์ไปที่: `http://localhost:5005`
+# 5. เริ่มรันระบบ
+python app.py
+```
+เปิดใช้งานผ่านเบราว์เซอร์ที่: **`http://localhost:5005`** หรือผ่านโดเมนสาธารณะของคุณ
 
 ---
 ---
@@ -108,52 +128,49 @@
 ## 🇬🇧 English Version
 
 ### 📌 Project Overview
-**PharmaCore RX-OS** is an intelligent, automated pharmacy stock management and clinical dispensing platform. Engineered specifically for clinics, dispensaries, and pharmacies to eliminate human errors, accelerate patient fulfillment, and streamline inventory control with **QR/Barcode scanning, automated LINE Messaging alerts, Google Workspace two-way synchronization, and customizable medical label printing.**
+**PharmaCore RX-OS** is an enterprise-grade clinical pharmacy management and dispensing platform designed to streamline pharmacy operations, eliminate medication errors, and ensure end-to-end inventory traceability. Features include **instant QR/Barcode scanning, real-time atomic inventory deductions, automated LINE notifications, Google Workspace bidirectional sync, and a versatile precision label printing engine.**
 
 ---
 
-### ✨ Key Features
+### 📸 System Screenshots
 
-1. **📦 Master Drug Inventory & Lot Control**
-   - Comprehensive drug profiles: generic name, trade name, strength, dosage form, batch/lot number, storage location, unit, and minimum thresholds.
-   - Complete Stock-In receiving ledger with unit cost, total valuation, and supplier logs.
-
-2. **⚡ Atomic Stock Dispensing & Fuzzy Search**
-   - High-concurrency safe stock deductions with SQLite Write-Ahead Logging (WAL).
-   - Instant drug lookup via hardware scanners, smartphone cameras, or Thai/English fuzzy text queries (e.g., "Para 2", "Amox 1").
-
-3. **🖨️ Precision QR & Barcode Label Printer Engine**
-   - Batch and single sticker printing with zero wasted margins.
-   - Built-in presets: **A4 Micro (20x15mm), Mini (25x20mm), Compact, Thermal Rolls (25x15mm to 50x30mm)**, plus fully custom millimeter dimensions and up to 12 dynamic grid columns.
-
-4. **⏰ 24/7 Expiry Alert Background Daemon**
-   - Proactive tracking for expiring drugs (<30 days critical, <60 days warning).
-   - Automated push notifications to designated LINE channels/pharmacists.
-
-5. **☁️ Google Workspace Isolation & Excel Export**
-   - Automatic background synchronization to **Google Sheets**.
-   - Prescription & receipt photo archival to **Google Drive**.
-   - Formatted `.xlsx` inventory export with one click.
-
-6. **📱 Mobile Progressive Web App (PWA)**
-   - Installable on Android & iOS home screens for native-app speed.
-   - Integrated camera barcode scanner.
+<table align="center" width="100%">
+  <tr>
+    <td width="50%" align="center">
+      <b>🖨️ Precision Label Sticker Designer</b><br/><br/>
+      <img src="docs/assets/sticker_modal.png" alt="Sticker Configuration" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>Single or batch sticker generation for A4 micro-grids and thermal roll presets (20mm–50mm).</i></p>
+    </td>
+    <td width="50%" align="center">
+      <b>📄 Full-Width Print Output</b><br/><br/>
+      <img src="docs/assets/sticker_print_preview.png" alt="Sticker Print Preview" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>100% dynamic CSS grid rendering with zero wasted margin and high-resolution QR encoding.</i></p>
+    </td>
+  </tr>
+</table>
 
 ---
 
-### 🛠️ Technology Stack
+### ✨ Key Capabilities
 
-| Architecture Layer | Technologies |
-| :--- | :--- |
-| **Backend** | Python 3.10+, Flask 3.0.3, Gunicorn |
-| **Database** | SQLite 3 (PRAGMA WAL Mode, Transaction-Safe) |
-| **Frontend** | Vanilla JavaScript (ES6+), HTML5, Pure CSS3 Medical Design System (Dark/Light Mode) |
-| **APIs & Integrations** | LINE Messaging API, Google Sheets API v4, Google Drive API v3, OAuth2 |
-| **Vision & Image Processing** | OpenCV (`opencv-python-headless`), Pillow (PIL), NumPy |
-| **Print Engine** | QRCode.js, CSS Print Media Query Engine |
-| **Networking & Deployment** | Cloudflare Tunnel, Docker |
+- **Atomic Stock Deductions:** Safe multi-client concurrent transactions using SQLite Write-Ahead Logging (WAL).
+- **Custom Sticker Engine:** Supports A4 sheets (Micro 20x15mm, Mini 25x20mm) and Direct Thermal roll labels (up to 12 dynamic columns).
+- **Proactive Expiry Radar:** Automated background scheduler detecting shelf-life risks and alerting pharmacy teams via LINE Messaging.
+- **Google Workspace Sync:** Automated export and synchronization with Google Sheets and prescription photo storage on Google Drive.
+- **Cross-Platform Responsive PWA:** Camera-based barcode scanner optimized for mobile and desktop clinical workflows.
+
+---
+
+### 🛠️ Architecture & Tech Stack
+
+- **Backend:** Python 3.10+, Flask 3.0.3, Gunicorn
+- **Data Persistence:** SQLite 3 with Write-Ahead Logging (WAL)
+- **User Interface:** Vanilla JavaScript (ES6+), HTML5, Pure CSS3 Clinical Design System (Dark/Light themes)
+- **Integrations:** LINE Messaging API, Google Sheets API v4, Google Drive API v3
+- **Vision:** OpenCV Headless, Pillow (PIL), NumPy
+- **Deployment:** Cloudflare Tunnel, Docker Containerization
 
 ---
 
 ### 📄 License
-This project is open-source and available under the [MIT License](LICENSE).
+This project is open-source under the [MIT License](LICENSE).
