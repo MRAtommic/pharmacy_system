@@ -13,11 +13,11 @@
 
 <br/>
 
-<img src="docs/assets/dashboard_overview.png" alt="PharmaCore Dashboard Preview" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);"/>
+<img src="docs/assets/dashboard_overview.png" alt="PharmaCore Dashboard Overview" width="100%" style="border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,0.5);"/>
 
 <br/><br/>
 
-[**🇹🇭 ภาษาไทย (Thai)**](#-ภาษาไทย-thai-version) • [**🇬🇧 English Version**](#-english-version)
+[**🇹🇭 ภาษาไทย (Thai Version)**](#-ภาษาไทย-thai-version) • [**🇬🇧 English Version**](#-english-version)
 
 ---
 
@@ -26,7 +26,7 @@
 ## 🇹🇭 ภาษาไทย (Thai Version)
 
 ### 📌 ภาพรวมโปรเจกต์ (Project Overview)
-**PharmaCore RX-OS** เป็นระบบจัดการคลังยา จ่ายยา และตัดสต็อกอัตโนมัติ ออกแบบมาเพื่อยกระดับความแม่นยำและความเร็วของงานเภสัชกรรมในคลินิก สถานพยาบาล และร้านขายยา ลดข้อผิดพลาดในการจ่ายยา (Zero Human Error) ผสานการทำงานร่วมกับ **QR/Barcode Scanning, แจ้งเตือน LINE อัตโนมัติ, ซิงค์ข้อมูลสองทางกับ Google Sheets/Drive, เครื่องพิมพ์สติ๊กเกอร์ยาแบบกำหนดขนาดได้เอง และ PWA สำหรับใช้งานบนมือถือ**
+**PharmaCore RX-OS** เป็นระบบบริหารจัดการคลังยา จ่ายยา และตัดสต็อกแบบอัตโนมัติ ออกแบบมาเพื่อยกระดับความแม่นยำและเพิ่มความรวดเร็วของงานเภสัชกรรมในคลินิก สถานพยาบาล และร้านขายยา ลดข้อผิดพลาดในการจ่ายยา (Zero Human Error) ผสานการทำงานร่วมกับ **QR/Barcode Scanning, ระบบแจ้งเตือน LINE อัตโนมัติ, ซิงค์ข้อมูลสองทางกับ Google Sheets/Drive, เครื่องพิมพ์สติ๊กเกอร์ยาแบบปรับแต่งขนาดได้อิสระ และ PWA ใช้งานบนมือถือ**
 
 ---
 
@@ -35,21 +35,21 @@
 <table align="center" width="100%">
   <tr>
     <td width="50%" align="center">
-      <b>🖨️ หน้าต่างตั้งค่าการพิมพ์สติ๊กเกอร์ยา (Custom Label Engine)</b><br/><br/>
-      <img src="docs/assets/sticker_modal.png" alt="Sticker Configuration" width="100%" style="border-radius: 8px;"/>
-      <p align="left"><i>รองรับการพิมพ์ทั้งแบบเดี่ยวและแบบชุด (Batch Print), เลือกขนาดกระดาษ A4 / สติ๊กเกอร์ม้วนความร้อน (Thermal), ปรับจำนวนคอลัมน์ได้สูงสุด 12 คอลัมน์</i></p>
+      <b>🖨️ เครื่องพิมพ์สติ๊กเกอร์ QR Code / Barcode ติดยา</b><br/><br/>
+      <img src="docs/assets/sticker_modal.png" alt="Sticker Generator Modal" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>รองรับการพิมพ์เดี่ยวและแบบชุด (Batch Print), เลือกพรีเซ็ต A4 หรือ Thermal Sticker (20mm-50mm) พร้อม Custom mm และจัดเต็มหน้ากระดาษไม่มีขอบว่าง</i></p>
     </td>
     <td width="50%" align="center">
-      <b>📄 ตัวอย่างการพิมพ์สติ๊กเกอร์จริง (Print Preview)</b><br/><br/>
-      <img src="docs/assets/sticker_print_preview.png" alt="Sticker Print Preview" width="100%" style="border-radius: 8px;"/>
-      <p align="left"><i>ระบบ Dynamic Grid 100% จัดวางเต็มหน้ากระดาษ ไร้ขอบว่างด้านขวา พร้อม QR Code ความละเอียดสูงและชื่อยา/ล็อต/วันหมดอายุ</i></p>
+      <b>📊 กราฟวิเคราะห์คลังยา มูลค่า และแนวโน้ม 7 วันย้อนหลัง</b><br/><br/>
+      <img src="docs/assets/analytics_chart.png" alt="Analytics Dashboard" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>แสดงมูลค่าสต็อกราคาขาย/ต้นทุน, กำไรขั้นต้น (Margin), ยอดจ่ายยา 6 อันดับสูงสุด, สัดส่วนกลุ่มยา และเรดาร์ตรวจจับยาวันหมดอายุ</i></p>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center">
-      <b>📱 ระบบสแกนเนอร์จ่ายยาผ่านกล้องมือถือ/แท็บเล็ต (Mobile Barcode & QR Scanner)</b><br/><br/>
-      <img src="docs/assets/scanner_view.png" alt="Mobile Scanner" width="70%" style="border-radius: 8px;"/>
-      <p align="center"><i>สแกนบาร์โค้ดหรือคิวอาร์โค้ดยาเพื่อดูรายละเอียดและตัดสต็อกได้ทันทีผ่านกล้องอุปกรณ์ทุกรุ่น</i></p>
+      <b>📱 ระบบสแกนเนอร์บาร์โค้ด & คิวอาร์โค้ด (Mobile Scanner & Fast Lookup)</b><br/><br/>
+      <img src="docs/assets/scanner_view.png" alt="Barcode & QR Scanner" width="80%" style="border-radius: 8px;"/>
+      <p align="center"><i>สแกนจ่ายผ่านกล้องอุปกรณ์มือถือ/แท็บเล็ต หรือพิมพ์ค้นหาด้วย Fuzzy Search ภาษาไทยเพื่อตัดสต็อกทันที</i></p>
     </td>
   </tr>
 </table>
@@ -60,11 +60,11 @@
 
 1. **📦 การจัดการคลังยาและคุมล็อต (Master Inventory & Lot Management)**
    - บันทึกชื่อการค้า, ชื่อสามัญทางยา (Generic Name), รหัสยา/บาร์โค้ด, หมวดหมู่, รูปแบบยา, รูปภาพ, ตำแหน่งเก็บในตู้ยา, และจุดเตือนขั้นต่ำ
-   - ระบบ **รับยาเข้าคลัง (Stock In)** แยกตามล็อตนัมเบอร์ วันหมดอายุ และบันทึกต้นทุนอัตโนมัติ
+   - ระบบ **รับยาเข้าคลัง (Stock In)** แยกตามล็อตนัมเบอร์ วันหมดอายุ บันทึกต้นทุนและซัพพลายเออร์อัตโนมัติ
 
 2. **⚡ ระบบตัดสต็อกและจ่ายยาแบบ Atomic (Atomic Stock Dispensing)**
    - ทำงานบน SQLite Write-Ahead Logging (WAL) ป้องกันปัญหาสต็อกติดลบหรือข้อมูลชนกัน (Race Conditions)
-   - รองรับการค้นหายาด้วยชื่อย่อภาษาไทยแบบ Fuzzy Matching (เช่น พิมพ์ "พารา 2", "อะม็อกซี่ 1" ระบบค้นพบและตัดสต็อกทันที)
+   - รองรับการค้นหายาด้วยชื่อย่อภาษาไทยแบบ Fuzzy Matching (เช่น "พารา 2", "อะม็อกซี่ 1")
 
 3. **🖨️ เครื่องพิมพ์สติ๊กเกอร์ QR Code / Barcode (Custom Sticker Printer Engine)**
    - พรีเซ็ตมาตรฐาน: **A4 Micro (20x15mm), Mini (25x20mm), Compact, Thermal Sticker (25x15mm, 30x20mm, 40x30mm, 50x30mm)**
@@ -77,7 +77,7 @@
 5. **☁️ การเชื่อมต่อ Google Workspace & Export Excel**
    - ซิงค์ประวัติการจ่ายยาและข้อมูลคลังยาขึ้น **Google Sheets** แยกชีตอย่างเป็นระเบียบ
    - อัปโหลดหลักฐานรูปภาพใบสั่งยา/ใบรับเข้าสู่ **Google Drive** อัตโนมัติ
-   - ปุ่มกดส่งออกรายงานสต็อกเป็นไฟล์ **Excel (.xlsx)** สวยงามพร้อมส่งต่อฝ่ายบัญชี
+   - ปุ่มกดส่งออกรายงานสต็อกเป็นไฟล์ **Excel (.xlsx)** สวยงามพร้อมใช้งาน
 
 6. **📱 รองรับ PWA & Mobile Web App**
    - ออกแบบ Responsive รองรับทั้งจอคอมพิวเตอร์ แท็บเล็ต และสมาร์ตโฟน
@@ -132,7 +132,7 @@ python app.py
 
 ---
 
-### 📸 System Screenshots
+### 📸 Live System Screenshots
 
 <table align="center" width="100%">
   <tr>
@@ -142,9 +142,9 @@ python app.py
       <p align="left"><i>Single or batch sticker generation for A4 micro-grids and thermal roll presets (20mm–50mm).</i></p>
     </td>
     <td width="50%" align="center">
-      <b>📄 Full-Width Print Output</b><br/><br/>
-      <img src="docs/assets/sticker_print_preview.png" alt="Sticker Print Preview" width="100%" style="border-radius: 8px;"/>
-      <p align="left"><i>100% dynamic CSS grid rendering with zero wasted margin and high-resolution QR encoding.</i></p>
+      <b>📊 Comprehensive Analytics Dashboard</b><br/><br/>
+      <img src="docs/assets/analytics_chart.png" alt="Analytics View" width="100%" style="border-radius: 8px;"/>
+      <p align="left"><i>Real-time retail/cost valuation, profit margin, top 6 dispensed drugs, and expiry radar.</i></p>
     </td>
   </tr>
 </table>
