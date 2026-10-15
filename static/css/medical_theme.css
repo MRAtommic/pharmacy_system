@@ -1431,38 +1431,37 @@ body {
    Professional, Balanced, Responsive Enterprise Healthcare Layout
    ========================================================================== */
 
+/* ==========================================================================
+   📋 DISPENSING AUDIT LOGS TOOLBAR & TABLE DESIGN SYSTEM
+   Professional, Balanced, Responsive Enterprise Healthcare Layout
+   ========================================================================== */
+
 .dispense-toolbar-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  padding: 0.85rem 1.15rem;
-  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  transition: all 0.2s ease;
-}
-
-.dispense-toolbar-top {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 @media (min-width: 992px) {
-  .dispense-toolbar-top {
+  .dispense-toolbar-card {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    padding: 0.75rem 1.15rem;
   }
 }
 
 .dispense-filter-cluster {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
   flex: 1;
 }
@@ -1470,11 +1469,7 @@ body {
 .dispense-date-range {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 3px 6px 3px 10px;
+  gap: 0.45rem;
 }
 
 .dispense-label {
@@ -1488,41 +1483,46 @@ body {
 }
 
 .dispense-label i {
-  color: var(--brand-500);
+  color: var(--brand-600);
 }
 
 .dispense-input-date {
-  height: 32px;
-  padding: 0 0.45rem;
+  height: 36px;
+  padding: 0 0.65rem;
   font-size: 0.8125rem;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
   color: var(--text-primary);
   outline: none;
   font-family: inherit;
   transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .dispense-input-date:focus {
-  background: var(--bg-surface);
   border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
 }
 
 .dispense-sep {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
   font-weight: 500;
 }
 
 .btn-reset-date {
-  height: 28px !important;
-  padding: 0 0.55rem !important;
-  font-size: 0.75rem !important;
-  border-radius: 6px !important;
-  color: var(--text-muted) !important;
+  height: 36px !important;
+  padding: 0 0.75rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  border-radius: 8px !important;
+  color: var(--text-secondary) !important;
   border-color: var(--border-default) !important;
-  background: transparent !important;
+  background: var(--bg-surface) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
 }
 
 .btn-reset-date:hover {
@@ -1534,29 +1534,27 @@ body {
 .dispense-channel-box {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 3px 6px 3px 10px;
+  gap: 0.45rem;
 }
 
 .dispense-select {
-  height: 32px;
-  padding: 0 0.65rem;
+  height: 36px;
+  padding: 0 0.85rem;
   font-size: 0.8125rem;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
   color: var(--text-primary);
   outline: none;
   font-family: inherit;
   cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .dispense-select:focus {
-  background: var(--bg-surface);
   border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
 }
 
 .dispense-actions-cluster {
@@ -1566,49 +1564,51 @@ body {
   flex-wrap: wrap;
 }
 
-.dispense-toolbar-bottom {
-  display: flex;
+.dispense-actions-cluster .btn {
+  height: 36px;
+  padding: 0 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 8px;
+  display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  padding-top: 0.45rem;
-  border-top: 1px dashed var(--border-subtle);
 }
 
-.dispense-toolbar-bottom i {
-  color: #059669;
-}
+/* ==========================================================================
+   Table: Dispensing Audit Logs (Balanced, 100% Fit, Zero Overflow)
+   ========================================================================== */
 
 #view-logs .clinical-table {
-  min-width: 960px;
   width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
 }
 
 #view-logs .clinical-table th,
 #view-logs .clinical-table td {
-  padding: 0.75rem 0.55rem;
+  padding: 0.75rem 0.65rem;
   vertical-align: middle;
 }
 
 #view-logs .clinical-table th.col-thumb,
 #view-logs .clinical-table td.col-thumb,
 #view-logs #logsTableBody td:first-child {
-  width: 50px !important;
-  min-width: 50px !important;
-  max-width: 50px !important;
+  width: 52px !important;
+  min-width: 52px !important;
+  max-width: 52px !important;
   padding: 4px 2px !important;
   text-align: center !important;
 }
 
 #view-logs .clinical-table th.col-datetime,
 #view-logs .clinical-table td.col-datetime {
-  width: 165px !important;
-  min-width: 165px !important;
-  max-width: 175px !important;
+  width: 160px !important;
+  min-width: 155px !important;
+  max-width: 165px !important;
   padding-left: 0.5rem !important;
   padding-right: 0.5rem !important;
-  font-size: 0.78rem !important;
+  font-size: 0.8rem !important;
   font-family: var(--font-mono);
   color: var(--text-secondary);
   white-space: nowrap !important;
@@ -1617,54 +1617,59 @@ body {
 
 #view-logs .clinical-table th.col-drug,
 #view-logs .clinical-table td.col-drug {
-  min-width: 190px !important;
-  padding-left: 0.65rem !important;
+  width: auto;
+  min-width: 190px;
+  padding-left: 0.75rem;
+  white-space: normal !important;
+  word-break: break-word;
 }
 
 #view-logs .clinical-table th.col-qty,
 #view-logs .clinical-table td.col-qty {
   width: 95px !important;
   min-width: 90px !important;
-  max-width: 105px !important;
-  text-align: center !important;
-  padding: 0.75rem 0.35rem !important;
+  max-width: 100px !important;
+  text-align: center;
+  padding: 0.75rem 0.35rem;
 }
 
 #view-logs .clinical-table th.col-balance,
 #view-logs .clinical-table td.col-balance {
-  width: 115px !important;
-  min-width: 110px !important;
+  width: 120px !important;
+  min-width: 115px !important;
   max-width: 125px !important;
-  text-align: center !important;
-  white-space: nowrap !important;
-  padding: 0.75rem 0.35rem !important;
+  text-align: center;
+  white-space: nowrap;
+  padding: 0.75rem 0.35rem;
 }
 
 #view-logs .clinical-table th.col-channel,
 #view-logs .clinical-table td.col-channel {
-  width: 105px !important;
-  min-width: 100px !important;
+  width: 110px !important;
+  min-width: 105px !important;
   max-width: 115px !important;
-  text-align: center !important;
-  padding: 0.75rem 0.35rem !important;
+  text-align: center;
+  padding: 0.75rem 0.35rem;
 }
 
 #view-logs .clinical-table th.col-dispenser,
 #view-logs .clinical-table td.col-dispenser {
-  width: 180px !important;
-  min-width: 175px !important;
-  max-width: 220px !important;
-  padding: 0.75rem 0.65rem !important;
+  width: 250px !important;
+  min-width: 230px !important;
+  padding: 0.75rem 0.65rem;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 #view-logs .clinical-table th.col-action,
 #view-logs .clinical-table td.col-action {
-  width: 135px !important;
-  min-width: 130px !important;
-  max-width: 145px !important;
-  text-align: center !important;
-  padding: 0.75rem 0.35rem !important;
-  white-space: nowrap !important;
+  width: 150px !important;
+  min-width: 145px !important;
+  max-width: 155px !important;
+  text-align: center;
+  padding: 0.75rem 0.35rem;
+  white-space: nowrap;
 }
 
 #view-stockin .clinical-table {
@@ -3508,8 +3513,6 @@ body {
 .clinical-table td.col-thumb,
 #drugsTableBody th:first-child,
 #drugsTableBody td:first-child,
-#logsTableBody th:first-child,
-#logsTableBody td:first-child,
 #stockInTableBody th:first-child,
 #stockInTableBody td:first-child {
   width: 70px !important;

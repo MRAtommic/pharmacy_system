@@ -1328,10 +1328,15 @@ function renderLogsTable(logs) {
                         ${l.drive_file_link ? `<div style="margin-top: 4px;"><a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 22px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> สลิป</a></div>` : ''}
                     </td>
                     <td class="col-dispenser">
-                        <span style="font-size: 0.84rem; color: var(--text-primary); font-weight: 600;">${escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by)}</span>
+                        <div style="font-size: 0.84rem; color: var(--text-primary); font-weight: 600;">
+                            ${escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by)}
+                        </div>
                         ${l.patient_name ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-user" style="font-size: 0.65rem; color: var(--brand-500);"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
                         ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
-                        ${l.is_voided && l.void_reason ? `<div style="font-size: 0.72rem; color: #DC2626; margin-top: 2px; line-height: 1.35;"><i class="fas fa-circle-exclamation"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})</div>` : ''}
+                        ${l.is_voided && l.void_reason ? `
+                            <div style="font-size: 0.72rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 3px 6px; margin-top: 3px; line-height: 1.35; white-space: normal !important; word-break: break-all; overflow-wrap: anywhere;">
+                                <i class="fas fa-circle-exclamation" style="font-size: 0.65rem;"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
+                            </div>` : ''}
                     </td>
                     <td class="col-action" style="text-align: center;">
                         <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: nowrap;">

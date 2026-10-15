@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=31.0">
+    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=34.0">
 
     <!-- PWA & Mobile App Support (APK Style) -->
     <link rel="manifest" href="{{ base_prefix | default('') }}/manifest.json">
@@ -334,48 +334,40 @@
         <div id="view-logs" style="display: none;">
             <!-- Modern Dispense Toolbar Card -->
             <div class="dispense-toolbar-card">
-                <div class="dispense-toolbar-top">
-                    <div class="dispense-filter-cluster">
-                        <!-- Date Range Cluster -->
-                        <div class="dispense-date-range">
-                            <span class="dispense-label"><i class="far fa-calendar-alt"></i> วันที่:</span>
-                            <input type="date" id="logStartDateFilter" class="dispense-input-date" title="ตั้งแต่วันที่">
-                            <span class="dispense-sep">ถึง</span>
-                            <input type="date" id="logEndDateFilter" class="dispense-input-date" title="ถึงวันที่">
-                            <button type="button" class="btn btn-outline btn-reset-date" onclick="clearDispensingDateFilter()" title="ล้างช่วงวันที่">
-                                <i class="fas fa-rotate-left"></i> ล้าง
-                            </button>
-                            <input type="hidden" id="logDateFilter">
-                        </div>
-
-                        <!-- Channel Select Box -->
-                        <div class="dispense-channel-box">
-                            <span class="dispense-label"><i class="fas fa-filter"></i> ช่องทาง:</span>
-                            <select id="logChannelFilter" class="dispense-select">
-                                <option value="all">ทุกช่องทาง</option>
-                                <option value="WEB_RX_CART">🛒 ใบสั่งยาผู้ป่วย (Rx Cart)</option>
-                                <option value="LINE">LINE Bot (ข้อความ & รูปถ่าย)</option>
-                                <option value="WEB_MANUAL">เว็บแอพ (ตัดรายตัว)</option>
-                                <option value="QR_SCAN">เครื่องสแกนบาร์โค้ด</option>
-                            </select>
-                        </div>
+                <div class="dispense-filter-cluster">
+                    <!-- Date Range Cluster -->
+                    <div class="dispense-date-range">
+                        <span class="dispense-label"><i class="far fa-calendar-alt"></i> วันที่:</span>
+                        <input type="date" id="logStartDateFilter" class="dispense-input-date" title="ตั้งแต่วันที่">
+                        <span class="dispense-sep">ถึง</span>
+                        <input type="date" id="logEndDateFilter" class="dispense-input-date" title="ถึงวันที่">
+                        <button type="button" class="btn btn-outline btn-reset-date" onclick="clearDispensingDateFilter()" title="ล้างช่วงวันที่">
+                            <i class="fas fa-rotate-left"></i> ล้าง
+                        </button>
+                        <input type="hidden" id="logDateFilter">
                     </div>
 
-                    <!-- Action Buttons Cluster -->
-                    <div class="dispense-actions-cluster">
-                        <button type="button" class="btn btn-outline btn-batch-requisition" onclick="openBatchRequisitionModal()" title="ออกใบเบิกจ่ายยาย้อนหลังทางการ (A4 ตัวหนังสือสีดำ พร้อมลายเซ็น)">
-                            <i class="fas fa-file-invoice"></i> ออกใบเบิกจ่ายย้อนหลัง (A4)
-                        </button>
-                        <button type="button" class="btn btn-soft-excel" onclick="exportLogsExcel()" title="ดาวน์โหลดประวัติตัดสต็อกเป็นไฟล์ Excel">
-                            <i class="fas fa-file-excel"></i> Export Excel
-                        </button>
+                    <!-- Channel Select Box -->
+                    <div class="dispense-channel-box">
+                        <span class="dispense-label"><i class="fas fa-filter"></i> ช่องทาง:</span>
+                        <select id="logChannelFilter" class="dispense-select">
+                            <option value="all">ทุกช่องทาง</option>
+                            <option value="WEB_RX_CART">🛒 ใบสั่งยาผู้ป่วย (Rx Cart)</option>
+                            <option value="LINE">LINE Bot (ข้อความ & รูปถ่าย)</option>
+                            <option value="WEB_MANUAL">เว็บแอพ (ตัดรายตัว)</option>
+                            <option value="QR_SCAN">เครื่องสแกนบาร์โค้ด</option>
+                        </select>
                     </div>
                 </div>
 
-                <!-- Bottom Status Ribbon -->
-                <div class="dispense-toolbar-bottom">
-                    <i class="fab fa-google-drive"></i>
-                    <span>ทุกประวัติการตัดจ่ายจะถูกบันทึกและซิงค์ลง Google Sheet อัตโนมัติ</span>
+                <!-- Action Buttons Cluster -->
+                <div class="dispense-actions-cluster">
+                    <button type="button" class="btn btn-outline btn-batch-requisition" onclick="openBatchRequisitionModal()" title="ออกใบเบิกจ่ายยาย้อนหลังทางการ (A4 ตัวหนังสือสีดำ พร้อมลายเซ็น)">
+                        <i class="fas fa-file-invoice"></i> ออกใบเบิกย้อนหลัง (A4)
+                    </button>
+                    <button type="button" class="btn btn-soft-excel" onclick="exportLogsExcel()" title="ดาวน์โหลดประวัติตัดสต็อกเป็นไฟล์ Excel">
+                        <i class="fas fa-file-excel"></i> Export Excel
+                    </button>
                 </div>
             </div>
 
@@ -384,14 +376,14 @@
                 <table class="clinical-table">
                     <thead>
                         <tr>
-                            <th class="col-thumb" style="width: 50px; min-width: 50px; max-width: 50px; text-align: center;">รูป</th>
-                            <th class="col-datetime" style="width: 165px; min-width: 165px; max-width: 175px;">วัน-เวลาที่ตัดจ่าย</th>
-                            <th class="col-drug" style="min-width: 190px;">รายการยา</th>
-                            <th class="col-qty" style="width: 95px; min-width: 90px; max-width: 105px; text-align: center;">จำนวนจ่าย</th>
-                            <th class="col-balance" style="width: 115px; min-width: 110px; max-width: 125px; text-align: center;">คงเหลือก่อน ➔ หลัง</th>
-                            <th class="col-channel" style="width: 105px; min-width: 100px; max-width: 115px; text-align: center;">ช่องทาง</th>
-                            <th class="col-dispenser" style="width: 180px; min-width: 175px;">ผู้จ่ายยา</th>
-                            <th class="col-action" style="width: 135px; min-width: 130px; max-width: 145px; text-align: center;">ใบเบิกจ่าย</th>
+                            <th class="col-thumb" style="width: 52px; text-align: center;">รูป</th>
+                            <th class="col-datetime" style="width: 160px;">วัน-เวลาที่ตัดจ่าย</th>
+                            <th class="col-drug">รายการยา</th>
+                            <th class="col-qty" style="width: 95px; text-align: center;">จำนวนจ่าย</th>
+                            <th class="col-balance" style="width: 120px; text-align: center;">คงเหลือก่อน ➔ หลัง</th>
+                            <th class="col-channel" style="width: 110px; text-align: center;">ช่องทาง</th>
+                            <th class="col-dispenser" style="width: 250px;">ผู้จ่ายยา</th>
+                            <th class="col-action" style="width: 150px; text-align: center;">ใบเบิกจ่าย</th>
                         </tr>
                     </thead>
                     <tbody id="logsTableBody">
@@ -2120,6 +2112,6 @@
         window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
         window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=40.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=43.0"></script>
 </body>
 </html>
