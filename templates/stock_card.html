@@ -310,7 +310,24 @@
         .col-sign {
             width: 11.5%;
             text-align: center;
-            /* Explicitly left empty for handwritten signing */
+            font-size: 12.5px;
+            outline: none;
+            cursor: text;
+        }
+
+        .col-sign[contenteditable="true"]:hover {
+            background-color: #F8FAFC;
+        }
+
+        .col-sign[contenteditable="true"]:focus {
+            background-color: #FEF3C7;
+        }
+
+        @media print {
+            .col-sign[contenteditable="true"]:hover,
+            .col-sign[contenteditable="true"]:focus {
+                background-color: transparent !important;
+            }
         }
 
         .row-opening-balance td {
@@ -476,7 +493,7 @@
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
                     <td class="col-price" id="cellOpeningPrice">{{ selected_drug.cost or selected_drug.price or '480' }}</td>
                     <td class="col-lot-exp">-</td>
-                    <td class="col-sign"></td> <!-- Blank for signature -->
+                    <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('วราภรณ์') }}</td>
                 </tr>
 
                 <!-- Transaction Rows & Template Fillers -->
@@ -489,7 +506,7 @@
                     <td class="col-balance">{{ tx.balance }}</td>
                     <td class="col-price">{{ tx.total_price_formatted or tx.price_formatted or '-' }}</td>
                     <td class="col-lot-exp">{{ tx.lot_exp_html | safe }}</td>
-                    <td class="col-sign"></td> <!-- Blank for signature -->
+                    <td class="col-sign" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อ หรือเว้นว่างเพื่อเซ็นสด"></td>
                 </tr>
                 {% endfor %}
 
@@ -505,7 +522,7 @@
                     <td class="col-balance">&nbsp;</td>
                     <td class="col-price">&nbsp;</td>
                     <td class="col-lot-exp">&nbsp;</td>
-                    <td class="col-sign">&nbsp;</td>
+                    <td class="col-sign" contenteditable="true">&nbsp;</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -643,6 +660,13 @@
             const fyEl = document.getElementById('textFiscalYear');
             const currentFiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : '2568';
             
+            // Preserve signature name if edited (defaults to วราภรณ์)
+            const signEl = document.getElementById('signOpeningBalance');
+            let currentSign = 'วราภรณ์';
+            if (signEl !== null) {
+                currentSign = signEl.innerText.trim();
+            }
+
             const tbody = document.getElementById('ledgerTableBody');
             if (!tbody) return;
 
@@ -663,7 +687,7 @@
                     <td class="col-balance">${openingBalFormatted}</td>
                     <td class="col-price">${openingPriceFormatted}</td>
                     <td class="col-lot-exp">-</td>
-                    <td class="col-sign"></td>
+                    <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">${escapeHtml(currentSign)}</td>
                 </tr>
             `;
 
@@ -704,7 +728,7 @@
                         <td class="col-balance">${balDisplay}</td>
                         <td class="col-price">${priceDisplay}</td>
                         <td class="col-lot-exp">${lotExp}</td>
-                        <td class="col-sign"></td>
+                        <td class="col-sign" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อ หรือเว้นว่างเพื่อเซ็นสด"></td>
                     </tr>
                 `;
             });
@@ -725,7 +749,7 @@
                         <td class="col-balance">&nbsp;</td>
                         <td class="col-price">&nbsp;</td>
                         <td class="col-lot-exp">&nbsp;</td>
-                        <td class="col-sign">&nbsp;</td>
+                        <td class="col-sign" contenteditable="true">&nbsp;</td>
                     </tr>
                 `;
             }
@@ -748,7 +772,9 @@
             const startDate = document.getElementById('inputStartDate').value;
             const endDate = document.getElementById('inputEndDate').value;
             const code = new URLSearchParams(window.location.search).get('code') || '';
-            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+            const signEl = document.getElementById('signOpeningBalance');
+            const openingSign = (signEl && signEl.innerText.trim()) ? signEl.innerText.trim() : 'วราภรณ์';
+            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&opening_sign=${encodeURIComponent(openingSign)}`;
             if (code) {
                 exportUrl += `&code=${encodeURIComponent(code)}`;
             }

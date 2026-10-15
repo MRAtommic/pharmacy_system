@@ -187,6 +187,7 @@ def stock_card_view():
         transactions=transactions,
         empty_rows_count=empty_rows_count,
         packaging=format_packaging_size(selected_drug),
+        opening_sign="วราภรณ์",
         hospital_name="โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
         current_user=u,
         base_url=Config.BASE_URL
@@ -224,6 +225,7 @@ def export_stock_card_excel():
 
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
+    opening_sign = request.args.get("opening_sign") or "วราภรณ์"
     data = database.get_stock_card_data(drug_id, start_date, end_date)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
@@ -279,7 +281,7 @@ def export_stock_card_excel():
     ws.cell(row=r_idx, column=5, value=data["opening_balance"]).alignment = align_center
     ws.cell(row=r_idx, column=6, value=round(drug.get("cost") or drug.get("price") or 0)).alignment = align_right
     ws.cell(row=r_idx, column=7, value="-").alignment = align_center
-    ws.cell(row=r_idx, column=8, value="").alignment = align_center
+    ws.cell(row=r_idx, column=8, value=opening_sign).alignment = align_center
     for c in range(1, 9):
         ws.cell(row=r_idx, column=c).border = border_thin
         ws.cell(row=r_idx, column=c).font = font_regular
