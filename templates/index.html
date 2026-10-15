@@ -645,18 +645,18 @@
                 <table class="clinical-table">
                     <thead>
                         <tr>
-                            <th class="col-thumb" style="width: 70px; min-width: 70px; text-align: center;">รูป</th>
-                            <th class="col-datetime" style="width: 185px; min-width: 180px;">วัน-เวลาที่รับ</th>
-                            <th style="min-width: 220px;">รายการยา</th>
-                            <th style="width: 130px; min-width: 120px;">เลขล็อต (Lot)</th>
-                            <th style="width: 115px; min-width: 110px;">จำนวนรับเข้า</th>
-                            <th style="width: 145px; min-width: 140px;">คงเหลือก่อน / หลัง</th>
-                            <th style="width: 105px; min-width: 100px;">ทุน/หน่วย</th>
-                            <th style="width: 125px; min-width: 120px;">รวมมูลค่าทุน</th>
-                            <th style="width: 165px; min-width: 150px;">ผู้จำหน่าย (Supplier)</th>
-                            <th style="width: 115px; min-width: 110px;">วันหมดอายุ</th>
-                            <th style="width: 145px; min-width: 130px;">ผู้ตรวจรับ</th>
-                            <th style="width: 100px; min-width: 95px; text-align: center;">จัดการ</th>
+                            <th class="col-thumb" style="width: 52px; min-width: 52px; text-align: center;">รูป</th>
+                            <th class="col-datetime" style="width: 135px; min-width: 130px;">วัน-เวลาที่รับ</th>
+                            <th style="min-width: 170px;">รายการยา</th>
+                            <th style="width: 105px; min-width: 95px;">เลขล็อต (LOT)</th>
+                            <th style="width: 85px; min-width: 80px; text-align: center;">จำนวนรับเข้า</th>
+                            <th style="width: 110px; min-width: 100px; text-align: center;">คงเหลือก่อน / หลัง</th>
+                            <th style="width: 80px; min-width: 75px;">ทุน/หน่วย</th>
+                            <th style="width: 95px; min-width: 90px;">รวมมูลค่าทุน</th>
+                            <th style="width: 130px; min-width: 120px;">ผู้จำหน่าย (SUPPLIER)</th>
+                            <th style="width: 95px; min-width: 90px;">วันหมดอายุ</th>
+                            <th style="width: 120px; min-width: 110px;">ผู้ตรวจรับ</th>
+                            <th style="width: 85px; min-width: 80px; text-align: center;">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody id="stockInTableBody">
@@ -2114,6 +2114,6 @@
         window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
         window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=37.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=38.0"></script>
 </body>
 </html>

@@ -3690,6 +3690,10 @@ function renderStockInTable(logs) {
                             <span>${supplierBadge} ${escapeHtml(l.supplier || '-')}</span>
                             <span><i class="far fa-clock"></i> ${escapeHtml(l.created_at)}</span>
                         </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            <span><i class="fas fa-user-check" style="color: var(--brand-500); font-size: 0.7rem;"></i> ผู้ตรวจรับ: <strong>${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</strong></span>
+                            ${l.notes ? `<span style="font-size: 0.7rem; color: var(--text-muted);"><i class="fas fa-note-sticky"></i> ${escapeHtml(l.notes)}</span>` : ''}
+                        </div>
                         <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px dashed var(--border-subtle);">
                             <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" style="font-size: 0.75rem; color: #0284C7; border-color: #BAE6FD;">
                                 <i class="fas fa-pen-to-square"></i> แก้ไขย้อนหลัง
