@@ -1794,19 +1794,45 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
     # Sort chronologically ASC
     items.sort(key=lambda x: x["created_at"])
 
-    # Calculate running balance row by row
+    # Calculate running balance and remaining stock value row by row
     running_balance = opening_balance
+    unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
+    
+    def format_balance_val(val):
+        if val is None or val == "":
+            return "-"
+        try:
+            fval = float(val)
+            if fval.is_integer():
+                return f"{int(fval):,}"
+            s = f"{fval:,.2f}"
+            if s.endswith(".00"):
+                return s[:-3]
+            if s.endswith("0"):
+                return s[:-1]
+            return s
+        except (ValueError, TypeError):
+            return str(val)
+
     for item in items:
         if item["type"] == "RECEIVE":
             running_balance += item["qty_in"]
         elif item["type"] == "DISPENSE":
             running_balance -= item["qty_out"]
         item["balance"] = running_balance
+        item["balance_value"] = running_balance * unit_cost
+        item["balance_value_formatted"] = format_balance_val(item["balance_value"])
+
+    opening_value = opening_balance * unit_cost
+    opening_value_formatted = format_balance_val(opening_value)
 
     conn.close()
     return {
         "drug": drug,
         "opening_balance": opening_balance,
+        "opening_value": opening_value,
+        "opening_value_formatted": opening_value_formatted,
+        "unit_cost": unit_cost,
         "closing_balance": running_balance,
         "total_in": total_in_period,
         "total_out": total_out_period,

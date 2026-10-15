@@ -175,6 +175,7 @@ def stock_card_view():
     opening_date_short = ""
     used_rows = 1 + len(transactions)
     empty_rows_count = max(0, 24 - used_rows)
+    opening_value_formatted = card_data.get("opening_value_formatted", "0") if card_data else "0"
 
     return render_template(
         "stock_card.html",
@@ -184,6 +185,7 @@ def stock_card_view():
         end_date=default_end,
         opening_date_short=opening_date_short,
         opening_balance=opening_balance,
+        opening_value_formatted=opening_value_formatted,
         transactions=transactions,
         empty_rows_count=empty_rows_count,
         packaging=format_packaging_size(selected_drug),
@@ -277,8 +279,17 @@ def export_stock_card_excel():
     ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=4)
     ws.cell(row=r_idx, column=1, value="ยอดยกมา จากปีงบประมาณ 2568").alignment = align_center
     ws.cell(row=r_idx, column=1).font = font_bold
+    unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
+    opening_val = data.get("opening_value")
+    if opening_val is None:
+        opening_val = data["opening_balance"] * unit_cost
+    if isinstance(opening_val, float) and opening_val.is_integer():
+        opening_val = int(opening_val)
+    elif isinstance(opening_val, float):
+        opening_val = round(opening_val, 2)
+
     ws.cell(row=r_idx, column=5, value=data["opening_balance"]).alignment = align_center
-    ws.cell(row=r_idx, column=6, value=round(drug.get("cost") or drug.get("price") or 0)).alignment = align_right
+    ws.cell(row=r_idx, column=6, value=opening_val).alignment = align_right
     ws.cell(row=r_idx, column=7, value="-").alignment = align_center
     ws.cell(row=r_idx, column=8, value=opening_sign).alignment = align_center
     for c in range(1, 9):
@@ -300,12 +311,20 @@ def export_stock_card_excel():
             qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
             part = f"รับจาก...-.....GPO/...-.....บริษัท/จ่าย...{qty_out}....."
 
+        bal_val = tx.get("balance_value")
+        if bal_val is None:
+            bal_val = (tx.get("balance") or 0) * unit_cost
+        if isinstance(bal_val, float) and bal_val.is_integer():
+            bal_val = int(bal_val)
+        elif isinstance(bal_val, float):
+            bal_val = round(bal_val, 2)
+
         ws.cell(row=r_idx, column=1, value=d_short).alignment = align_center
         ws.cell(row=r_idx, column=2, value=part).alignment = align_left
         ws.cell(row=r_idx, column=3, value=tx["qty_in"] if tx["type"] == "RECEIVE" else "-").alignment = align_center
         ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["type"] == "DISPENSE" else "-").alignment = align_center
         ws.cell(row=r_idx, column=5, value=tx["balance"]).alignment = align_center
-        ws.cell(row=r_idx, column=6, value=round(tx.get("total_price") or tx.get("price") or 0)).alignment = align_right
+        ws.cell(row=r_idx, column=6, value=bal_val).alignment = align_right
         lot_exp = (tx.get('expiry_date') or '').strip()
         ws.cell(row=r_idx, column=7, value=lot_exp or "-").alignment = align_center
         ws.cell(row=r_idx, column=8, value="").alignment = align_center

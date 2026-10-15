@@ -698,7 +698,7 @@
                         ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">2568</span>
                     </td>
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
-                    <td class="col-price" id="cellOpeningPrice">{{ selected_drug.cost or selected_drug.price or '480' }}</td>
+                    <td class="col-price" id="cellOpeningPrice">{{ opening_value_formatted }}</td>
                     <td class="col-lot-exp">-</td>
                     <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('วราภรณ์') }}</td>
                 </tr>
@@ -711,7 +711,7 @@
                     <td class="col-qty-in">{% if tx.type == 'RECEIVE' %}{{ tx.qty_in }}{% else %}-{% endif %}</td>
                     <td class="col-qty-out">{% if tx.type == 'DISPENSE' %}{{ tx.qty_out }}{% else %}-{% endif %}</td>
                     <td class="col-balance">{{ tx.balance }}</td>
-                    <td class="col-price">{{ tx.total_price_formatted or tx.price_formatted or '-' }}</td>
+                    <td class="col-price">{{ tx.balance_value_formatted or '-' }}</td>
                     <td class="col-lot-exp">{{ tx.lot_exp_html | safe }}</td>
                     <td class="col-sign" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อ หรือเว้นว่างเพื่อเซ็นสด"></td>
                 </tr>
@@ -878,9 +878,12 @@
             const tbody = document.getElementById('ledgerTableBody');
             if (!tbody) return;
 
-            const openingPriceFormatted = (drug.cost != null && drug.cost > 0) 
-                ? Math.round(drug.cost).toLocaleString('en-US') 
-                : ((drug.price != null && drug.price > 0) ? Math.round(drug.price).toLocaleString('en-US') : '480');
+            const unitCost = (drug.cost != null && drug.cost > 0) 
+                ? Number(drug.cost) 
+                : ((drug.price != null && drug.price > 0) ? Number(drug.price) : 0);
+            const openingBal = (d.opening_balance != null) ? Number(d.opening_balance) : 0;
+            const openingVal = (d.opening_value != null) ? Number(d.opening_value) : (openingBal * unitCost);
+            const openingPriceFormatted = formatBalanceValue(openingVal);
             const openingBalFormatted = (d.opening_balance != null) ? d.opening_balance.toLocaleString('en-US') : '0';
 
             // 3. Build Opening Balance Row
@@ -917,9 +920,9 @@
                     lotExp = '-';
                 }
 
-                const priceDisplay = (tx.total_price != null && tx.total_price > 0) 
-                    ? Math.round(tx.total_price).toLocaleString('en-US') 
-                    : ((tx.price != null && tx.price > 0) ? Math.round(tx.price).toLocaleString('en-US') : '-');
+                const balNum = (tx.balance != null) ? Number(tx.balance) : 0;
+                const balVal = (tx.balance_value != null) ? Number(tx.balance_value) : (balNum * unitCost);
+                const priceDisplay = formatBalanceValue(balVal);
                 const balDisplay = (tx.balance != null) ? tx.balance.toLocaleString('en-US') : '-';
                 const qtyInDisplay = (tx.type === 'RECEIVE' && tx.qty_in != null) ? tx.qty_in.toLocaleString('en-US') : '-';
                 const qtyOutDisplay = (tx.type === 'DISPENSE' && tx.qty_out != null) ? tx.qty_out.toLocaleString('en-US') : '-';
@@ -970,6 +973,16 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
+        }
+
+        function formatBalanceValue(val) {
+            if (val == null || val === '' || isNaN(val)) return '-';
+            const num = Number(val);
+            if (Number.isInteger(num)) {
+                return num.toLocaleString('en-US');
+            }
+            let s = num.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+            return s;
         }
 
         function exportStockCardExcel() {
