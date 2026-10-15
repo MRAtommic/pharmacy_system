@@ -843,7 +843,7 @@
                             <td class="col-qty-req cell-editable" contenteditable="true">{{ it.qty_requested }}</td>
                             <td class="col-qty-disp cell-editable" contenteditable="true">{{ it.qty_dispensed }}</td>
                             <td class="col-stock-rem cell-editable" contenteditable="true">{{ it.remaining_stock }}</td>
-                            <td class="col-remark cell-editable" contenteditable="true">{{ it.notes or '' }}</td>
+                            <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
                         </tr>
                         {% endfor %}
 
@@ -1028,7 +1028,7 @@
                         <td class="col-qty-req cell-editable" contenteditable="true">${it.qty_requested != null ? it.qty_requested : ''}</td>
                         <td class="col-qty-disp cell-editable" contenteditable="true">${it.qty_dispensed != null ? it.qty_dispensed : ''}</td>
                         <td class="col-stock-rem cell-editable" contenteditable="true">${it.remaining_stock != null ? it.remaining_stock : ''}</td>
-                        <td class="col-remark cell-editable" contenteditable="true">${escapeHtml(it.notes || '')}</td>
+                        <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
                     </tr>
                 `;
             });

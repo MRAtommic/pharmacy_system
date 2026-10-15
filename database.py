@@ -1906,11 +1906,11 @@ def get_daily_requisition_data(date_str: str = None):
     # Special handling for Sample / Example Date from official paper photo (6 ก.ค. 2568 / 2025-07-06)
     if date_str in ("2025-07-06", "2568-07-06"):
         sample_items = [
-            {"drug_id": None, "name": "Medroxyprogesterone 50 mg/ml inj.", "unit": "vial", "qty_requested": 10, "qty_dispensed": 10, "remaining_stock": 25, "notes": "เบิกเติมคลังย่อย"},
+            {"drug_id": None, "name": "Medroxyprogesterone 50 mg/ml inj.", "unit": "vial", "qty_requested": 10, "qty_dispensed": 10, "remaining_stock": 25, "notes": ""},
             {"drug_id": None, "name": "Ambroxol syrup (Ammocab) 30 mg/5ml", "unit": "ขวด", "qty_requested": 20, "qty_dispensed": 20, "remaining_stock": 48, "notes": ""},
             {"drug_id": None, "name": "Bromhexine syrup 4 mg/5ml 60ml", "unit": "ขวด", "qty_requested": 15, "qty_dispensed": 15, "remaining_stock": 30, "notes": ""},
             {"drug_id": None, "name": "Paracetamol syrup (120mg/5ml) 60ml", "unit": "ขวด", "qty_requested": 30, "qty_dispensed": 30, "remaining_stock": 85, "notes": ""},
-            {"drug_id": None, "name": "Face mask (หน้ากากอนามัยทางการแพทย์)", "unit": "กล่อง", "qty_requested": 5, "qty_dispensed": 5, "remaining_stock": 18, "notes": "เวชภัณฑ์มิใช่ยา"},
+            {"drug_id": None, "name": "Face mask (หน้ากากอนามัยทางการแพทย์)", "unit": "กล่อง", "qty_requested": 5, "qty_dispensed": 5, "remaining_stock": 18, "notes": ""},
             {"drug_id": None, "name": "Dicyclomine 10 mg tab", "unit": "เม็ด", "qty_requested": 200, "qty_dispensed": 200, "remaining_stock": 500, "notes": ""},
         ]
         return {
@@ -2012,13 +2012,11 @@ def get_daily_requisition_data(date_str: str = None):
                 "qty_requested": qty,
                 "qty_dispensed": qty,
                 "remaining_stock": log["current_stock"],
-                "notes": log["notes"] or ""
+                "notes": ""
             }
         else:
             items_map[key]["qty_requested"] += qty
             items_map[key]["qty_dispensed"] += qty
-            if log["notes"] and not items_map[key]["notes"]:
-                items_map[key]["notes"] = log["notes"]
 
     items = list(items_map.values())
     conn.close()

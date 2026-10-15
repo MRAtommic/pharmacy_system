@@ -467,7 +467,7 @@ def export_daily_requisition_excel():
         ws.cell(row=r_idx, column=4, value=it.get("qty_requested", 0)).alignment = align_center
         ws.cell(row=r_idx, column=5, value=it.get("qty_dispensed", 0)).alignment = align_center
         ws.cell(row=r_idx, column=6, value=it.get("remaining_stock", 0)).alignment = align_center
-        ws.cell(row=r_idx, column=7, value=it.get("notes", "")).alignment = align_left
+        ws.cell(row=r_idx, column=7, value="").alignment = align_left
         for c in range(1, 8):
             ws.cell(row=r_idx, column=c).border = border_thin
             ws.cell(row=r_idx, column=c).font = font_regular
