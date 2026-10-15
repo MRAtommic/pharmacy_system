@@ -274,17 +274,17 @@ def export_stock_card_excel():
         cell.fill = fill_header
 
     r_idx = 6
-    ws.cell(row=r_idx, column=1, value="").alignment = align_center
-    ws.cell(row=r_idx, column=2, value="ยอดยกมา จากปีงบประมาณ 2568").alignment = align_left
-    ws.cell(row=r_idx, column=3, value="-").alignment = align_center
-    ws.cell(row=r_idx, column=4, value="-").alignment = align_center
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=4)
+    ws.cell(row=r_idx, column=1, value="ยอดยกมา จากปีงบประมาณ 2568").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_bold
     ws.cell(row=r_idx, column=5, value=data["opening_balance"]).alignment = align_center
     ws.cell(row=r_idx, column=6, value=round(drug.get("cost") or drug.get("price") or 0)).alignment = align_right
     ws.cell(row=r_idx, column=7, value="-").alignment = align_center
     ws.cell(row=r_idx, column=8, value=opening_sign).alignment = align_center
     for c in range(1, 9):
         ws.cell(row=r_idx, column=c).border = border_thin
-        ws.cell(row=r_idx, column=c).font = font_regular
+        if c > 4:
+            ws.cell(row=r_idx, column=c).font = font_regular
 
     for tx in transactions:
         r_idx += 1

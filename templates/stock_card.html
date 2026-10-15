@@ -334,6 +334,13 @@
             font-weight: 400;
         }
 
+        .row-opening-balance .col-opening-merged {
+            text-align: center;
+            font-weight: 700;
+            font-size: 13px;
+            letter-spacing: 0.3px;
+        }
+
         .row-empty {
             height: 25px;
         }
@@ -484,12 +491,9 @@
             <tbody id="ledgerTableBody">
                 <!-- Row 1: Opening Balance (ยอดยกมา) -->
                 <tr class="row-opening-balance">
-                    <td class="col-date" id="cellOpeningDate">&nbsp;</td>
-                    <td class="col-particulars">
+                    <td colspan="4" class="col-opening-merged">
                         ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">2568</span>
                     </td>
-                    <td class="col-qty-in">-</td>
-                    <td class="col-qty-out">-</td>
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
                     <td class="col-price" id="cellOpeningPrice">{{ selected_drug.cost or selected_drug.price or '480' }}</td>
                     <td class="col-lot-exp">-</td>
@@ -678,12 +682,9 @@
             // 3. Build Opening Balance Row
             let html = `
                 <tr class="row-opening-balance">
-                    <td class="col-date">&nbsp;</td>
-                    <td class="col-particulars">
+                    <td colspan="4" class="col-opening-merged">
                         ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">${currentFiscalYear}</span>
                     </td>
-                    <td class="col-qty-in">-</td>
-                    <td class="col-qty-out">-</td>
                     <td class="col-balance">${openingBalFormatted}</td>
                     <td class="col-price">${openingPriceFormatted}</td>
                     <td class="col-lot-exp">-</td>
