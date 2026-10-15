@@ -3410,12 +3410,21 @@ body {
 
 /* 📱 Mobile Specific Polish (< 768px) */
 @media (max-width: 768px) {
+  #view-stockin,
+  .stockin-toolbar-card,
+  .stockin-filter-row,
+  .stockin-filter-cluster {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
   .stockin-toolbar-card {
     padding: 0.85rem !important;
     gap: 0.75rem !important;
     border-radius: 16px !important;
     margin-bottom: 1rem !important;
     background: var(--bg-surface) !important;
+    overflow-x: hidden !important;
   }
 
   .stockin-filter-row {
@@ -3428,37 +3437,78 @@ body {
   .stockin-search-box {
     width: 100% !important;
     min-width: 0 !important;
+    box-sizing: border-box !important;
   }
 
   .stockin-search-box input {
+    width: 100% !important;
     height: 42px !important;
     font-size: 0.875rem !important;
+    box-sizing: border-box !important;
   }
 
   .stockin-filter-cluster {
     display: flex !important;
-    align-items: center !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
     gap: 0.5rem !important;
     width: 100% !important;
   }
 
-  .stockin-date-wrap {
-    flex: 1 !important;
+  .stockin-date-range-wrap {
+    display: grid !important;
+    grid-template-columns: 1fr auto 1fr !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 6px 8px !important;
+  }
+
+  .stockin-date-subwrap {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
     min-width: 0 !important;
+    width: 100% !important;
+    gap: 2px !important;
+  }
+
+  .stockin-date-label {
+    font-size: 0.725rem !important;
+    line-height: 1 !important;
+    color: var(--text-muted) !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+  }
+
+  .stockin-date-sep {
+    font-size: 0.75rem !important;
+    color: var(--text-muted) !important;
+    padding: 0 1px !important;
   }
 
   .stockin-date-input {
     width: 100% !important;
     min-width: 0 !important;
+    max-width: 100% !important;
     height: 38px !important;
-    font-size: 0.825rem !important;
+    padding: 0 0.45rem !important;
+    font-size: 0.8rem !important;
+    border-radius: 8px !important;
+    box-sizing: border-box !important;
   }
 
   .btn-stockin-reset {
-    flex-shrink: 0 !important;
-    height: 38px !important;
+    width: 100% !important;
+    height: 36px !important;
     padding: 0 0.75rem !important;
     font-size: 0.8rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    box-sizing: border-box !important;
   }
 
   .stockin-action-row {
@@ -3468,6 +3518,7 @@ body {
     width: 100% !important;
     padding-top: 0.4rem !important;
     border-top: 1px dashed var(--border-subtle) !important;
+    box-sizing: border-box !important;
   }
 
   .stockin-action-row .btn {
