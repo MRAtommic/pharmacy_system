@@ -138,15 +138,28 @@ def stock_card_view():
 
     for tx in transactions:
         tx["date_short"] = format_thai_date_short(tx["created_at"])
-        if tx.get("supplier"):
-            tx["supplier_short"] = "GPO" if "GPO" in tx["supplier"] else tx["supplier"]
+        if tx["type"] == "RECEIVE":
+            is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
+            if is_gpo:
+                tx["particulars_html"] = 'รับจาก...<span class="fill-text">GPO</span>/..-..บริษัท/จ่าย..-..'
+            else:
+                supp = (tx.get("supplier") or "บริษัท")[:10]
+                tx["particulars_html"] = f'รับจาก..-..GPO/..<span class="fill-text">{supp}</span>../จ่าย..-..'
+            if tx.get("lot_number") and tx.get("expiry_date"):
+                tx["lot_exp_html"] = f'<div style="font-size:10px;line-height:1.15;"><div>{tx["lot_number"]}</div><div style="color:#555;">{tx["expiry_date"]}</div></div>'
+            else:
+                tx["lot_exp_html"] = f'<span style="font-size:11px;">{tx.get("lot_number") or tx.get("expiry_date") or "-"}</span>'
+        else:
+            rec = (tx.get("recipient") or "ผู้ป่วยนอก").replace("ผู้ป่วยนอก / ", "").strip()
+            if len(rec) > 12:
+                rec = rec[:10] + ".."
+            tx["particulars_html"] = f'รับจาก..-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{rec}</span>..'
+            tx["lot_exp_html"] = '-'
+
         if tx.get("total_price"):
             tx["total_price_formatted"] = f"{round(tx['total_price']):,}"
         elif tx.get("price"):
             tx["price_formatted"] = f"{round(tx['price']):,}"
-        lot = tx.get("lot_number") or ""
-        exp = tx.get("expiry_date") or ""
-        tx["lot_exp_formatted"] = f"{lot} / {exp}" if (lot and exp) else (lot or exp)
 
     opening_date_short = ""
     used_rows = 1 + len(transactions)

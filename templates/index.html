@@ -128,6 +128,9 @@
             <button class="tab-btn" data-tab="scanner" onclick="switchTab('scanner')">
                 <i class="fas fa-barcode"></i> สแกนเนอร์บาร์โค้ด
             </button>
+            <a href="/stock-card" target="_blank" class="tab-btn" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 0.5rem;" title="เปิดระบบออกใบพิมพ์บัญชีรับ-จ่ายยา (Stock Card)">
+                <i class="fas fa-file-invoice" style="color: #0F766E;"></i> ใบรับ-จ่ายยา (Stock Card)
+            </a>
         </div>
 
         <!-- 💊 VIEW 1: DRUG INVENTORY CATALOG -->
@@ -257,7 +260,7 @@
 
                 <!-- Tier 2: Streamlined Action Row -->
                 <div class="catalog-action-row">
-                    <div class="action-group-left">
+                    <div class="action-group-left" style="display: flex; gap: 0.5rem; align-items: center;">
                         <div class="row-action-dropdown" id="toolsDropdown" style="position: relative;">
                             <button type="button" class="btn btn-outline" onclick="toggleToolsDropdown(event)" title="เครื่องมือและการจัดการเพิ่มเติม" style="height: 36px; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 500;">
                                 <i class="fas fa-sliders" style="color: var(--brand-600);"></i>
@@ -287,6 +290,10 @@
                                 </button>
                             </div>
                         </div>
+                        <a href="/stock-card" target="_blank" class="btn btn-outline" title="เปิดระบบพิมพ์บัญชีรายการรับ-จ่ายยา (Stock Card)" style="height: 36px; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; color: #0F766E; border-color: #0F766E; text-decoration: none; background: rgba(15, 118, 110, 0.08);">
+                            <i class="fas fa-file-invoice"></i>
+                            <span>ออกใบ Stock Card</span>
+                        </a>
                     </div>
 
                     <div class="action-group-right" style="display: flex; gap: 0.5rem; align-items: center;">

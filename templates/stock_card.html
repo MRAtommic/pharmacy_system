@@ -170,53 +170,60 @@
         }
 
         .card-meta-row {
+            width: 100%;
             display: flex;
             align-items: baseline;
             justify-content: space-between;
             font-size: 13.5px;
-            font-weight: 500;
-            flex-wrap: nowrap;
-            width: 100%;
-            margin-bottom: 8px;
-            white-space: nowrap;
+            margin-bottom: 10px;
+            box-sizing: border-box;
         }
 
-        .meta-field {
-            display: inline-flex;
+        .meta-col {
+            display: flex;
             align-items: baseline;
-            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .meta-col-name {
+            flex: 2.1;
+        }
+
+        .meta-col-pkg {
+            flex: 1.2;
+            margin-left: 10px;
+        }
+
+        .meta-col-form {
+            flex: 1.6;
+            margin-left: 10px;
         }
 
         .meta-label {
             font-weight: 700;
             white-space: nowrap;
-        }
-
-        .meta-dots {
+            margin-right: 2px;
             color: #000000;
-            letter-spacing: 0.5px;
-            user-select: none;
         }
 
-        .meta-dots-value {
-            border-bottom: 1px dotted #000000;
+        .meta-line {
+            flex: 1;
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            border-bottom: 1.5px dotted #000000;
+            min-width: 30px;
             padding: 0 4px;
-            display: inline-block;
-            text-align: center;
+            overflow: hidden;
+        }
+
+        .meta-val {
             font-weight: 600;
+            color: #000000;
             outline: none;
-        }
-
-        .meta-field-name .meta-dots-value {
-            min-width: 160px;
-        }
-
-        .meta-field-pkg .meta-dots-value {
-            min-width: 80px;
-        }
-
-        .meta-field-form .meta-dots-value {
-            min-width: 70px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* ── Ledger Grid Table ── */
@@ -231,8 +238,8 @@
         .ledger-table th, 
         .ledger-table td {
             border: 1px solid #000000;
-            padding: 3.5px 4px;
-            font-size: 13px;
+            padding: 3.5px 3px;
+            font-size: 12.5px;
             line-height: 1.25;
             vertical-align: middle;
         }
@@ -241,60 +248,65 @@
             font-weight: 700;
             text-align: center;
             background-color: #F8FAFC;
-            height: 28px;
+            height: 30px;
+            white-space: nowrap;
+            padding: 3px 2px;
+            font-size: 13px;
         }
 
-        /* Column Specific Alignments & Widths */
+        /* Column Specific Alignments & Widths (Total: 100%) */
         .col-date {
-            width: 10.5%;
+            width: 11%;
             text-align: center;
             white-space: nowrap;
         }
 
         .col-particulars {
-            width: 33.5%;
+            width: 37%;
             text-align: left;
             padding-left: 5px !important;
-            overflow: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap;
+            overflow: hidden;
+            font-size: 12px;
         }
 
         .col-qty-in {
             width: 6%;
             text-align: center;
             font-weight: 600;
+            white-space: nowrap;
         }
 
         .col-qty-out {
             width: 6%;
             text-align: center;
             font-weight: 600;
+            white-space: nowrap;
         }
 
         .col-balance {
-            width: 7%;
+            width: 9%;
             text-align: center;
             font-weight: 700;
+            white-space: nowrap;
         }
 
         .col-price {
             width: 8%;
             text-align: center;
+            white-space: nowrap;
         }
 
         .col-lot-exp {
-            width: 15%;
+            width: 11.5%;
             text-align: center;
             font-size: 11px;
             white-space: nowrap;
-            letter-spacing: -0.01em;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            padding: 2px 1px !important;
         }
 
         .col-sign {
-            width: 14%;
+            width: 11.5%;
             text-align: center;
             /* Explicitly left empty for handwritten signing */
         }
@@ -415,14 +427,23 @@
 
             <!-- Drug Meta Information Row -->
             <div class="card-meta-row">
-                <div class="meta-field meta-field-name">
-                    <span class="meta-label">ชื่อสามัญ</span><span class="meta-dots">................</span><span class="meta-dots-value" contenteditable="true" id="metaGenericName" title="คลิกเพื่อแก้ไขชื่อยา">{{ selected_drug.generic_name or selected_drug.name }}</span><span class="meta-dots">............</span>
+                <div class="meta-col meta-col-name">
+                    <span class="meta-label">ชื่อสามัญ</span>
+                    <div class="meta-line">
+                        <span class="meta-val" contenteditable="true" id="metaGenericName" title="คลิกเพื่อแก้ไขชื่อยา">{{ selected_drug.generic_name or selected_drug.name }}</span>
+                    </div>
                 </div>
-                <div class="meta-field meta-field-pkg">
-                    <span class="meta-label">ขนาดบรรจุ</span><span class="meta-dots">...........</span><span class="meta-dots-value" contenteditable="true" id="metaPackaging" title="คลิกเพื่อแก้ไขขนาดบรรจุ">{{ packaging | default("1*500 's") }}</span><span class="meta-dots">........</span>
+                <div class="meta-col meta-col-pkg">
+                    <span class="meta-label">ขนาดบรรจุ</span>
+                    <div class="meta-line">
+                        <span class="meta-val" contenteditable="true" id="metaPackaging" title="คลิกเพื่อแก้ไขขนาดบรรจุ">{{ packaging | default("1*500 's") }}</span>
+                    </div>
                 </div>
-                <div class="meta-field meta-field-form">
-                    <span class="meta-label">ลักษณะ</span><span class="meta-dots">.........</span><span class="meta-dots-value" contenteditable="true" id="metaDosageForm" title="คลิกเพื่อแก้ไขลักษณะยา">{{ selected_drug.dosage_form or 'tablet' }}</span><span class="meta-dots">...........</span>
+                <div class="meta-col meta-col-form">
+                    <span class="meta-label">ลักษณะ</span>
+                    <div class="meta-line">
+                        <span class="meta-val" contenteditable="true" id="metaDosageForm" title="คลิกเพื่อแก้ไขลักษณะยา">{{ selected_drug.dosage_form or 'tablet' }}</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -460,22 +481,12 @@
                 {% for tx in transactions %}
                 <tr>
                     <td class="col-date">{{ tx.date_short }}</td>
-                    <td class="col-particulars">
-                        {% if tx.type == 'RECEIVE' %}
-                            {% if tx.supplier_short == 'GPO' %}
-                                รับจาก...<span class="fill-text">GPO</span>/...-.....บริษัท/จ่าย...-.....
-                            {% else %}
-                                รับจาก...-.....GPO/...<span class="fill-text">{{ tx.supplier_short or 'บริษัท' }}</span>.../จ่าย...-.....
-                            {% endif %}
-                        {% else %}
-                            รับจาก...-.....GPO/...-.....บริษัท/จ่าย...<span class="fill-text">{{ tx.recipient or 'ผู้ป่วยนอก' }}</span>.....
-                        {% endif %}
-                    </td>
+                    <td class="col-particulars">{{ tx.particulars_html | safe }}</td>
                     <td class="col-qty-in">{% if tx.type == 'RECEIVE' %}{{ tx.qty_in }}{% else %}-{% endif %}</td>
                     <td class="col-qty-out">{% if tx.type == 'DISPENSE' %}{{ tx.qty_out }}{% else %}-{% endif %}</td>
                     <td class="col-balance">{{ tx.balance }}</td>
                     <td class="col-price">{{ tx.total_price_formatted or tx.price_formatted or '-' }}</td>
-                    <td class="col-lot-exp">{{ tx.lot_exp_formatted or '-' }}</td>
+                    <td class="col-lot-exp">{{ tx.lot_exp_html | safe }}</td>
                     <td class="col-sign"></td> <!-- Blank for signature -->
                 </tr>
                 {% endfor %}
@@ -602,21 +613,29 @@
             transactions.forEach(tx => {
                 const dateShort = formatDateShort(tx.created_at);
                 let particulars = '';
+                let lotExp = '-';
+
                 if (tx.type === 'RECEIVE') {
                     const isGpo = (tx.supplier && (tx.supplier.toUpperCase().includes('GPO') || tx.supplier.includes('องค์การ')));
                     if (isGpo) {
-                        particulars = `รับจาก...<span class="fill-text">GPO</span>/...-.....บริษัท/จ่าย...-.....`;
+                        particulars = `รับจาก...<span class="fill-text">GPO</span>/..-..บริษัท/จ่าย..-..`;
                     } else {
-                        const supp = tx.supplier || 'บริษัท';
-                        particulars = `รับจาก...-.....GPO/...<span class="fill-text">${supp}</span>.../จ่าย...-.....`;
+                        const supp = (tx.supplier || 'บริษัท').substring(0, 10);
+                        particulars = `รับจาก..-..GPO/..<span class="fill-text">${escapeHtml(supp)}</span>../จ่าย..-..`;
+                    }
+                    if (tx.lot_number && tx.expiry_date) {
+                        lotExp = `<div style="font-size: 10px; line-height: 1.15;"><div>${escapeHtml(tx.lot_number)}</div><div style="color: #555;">${escapeHtml(tx.expiry_date)}</div></div>`;
+                    } else {
+                        lotExp = `<span style="font-size: 11px;">${escapeHtml(tx.lot_number || tx.expiry_date || '-')}</span>`;
                     }
                 } else {
-                    const recipient = tx.recipient || 'ผู้ป่วยนอก';
-                    particulars = `รับจาก...-.....GPO/...-.....บริษัท/จ่าย...<span class="fill-text">${recipient}</span>.....`;
+                    let rec = (tx.recipient || 'ผู้ป่วยนอก').replace(/ผู้ป่วยนอก\s*\/\s*/g, '').trim();
+                    if (rec.length > 12) rec = rec.substring(0, 10) + '..';
+                    particulars = `รับจาก..-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">${escapeHtml(rec)}</span>..`;
+                    lotExp = '-';
                 }
 
                 const priceDisplay = tx.total_price ? Math.round(tx.total_price) : (tx.price ? Math.round(tx.price) : '-');
-                const lotExp = tx.lot_number ? `${tx.lot_number}${tx.expiry_date ? ' / ' + tx.expiry_date : ''}` : (tx.expiry_date || '-');
 
                 html += `
                     <tr>
@@ -654,6 +673,16 @@
             }
 
             tbody.innerHTML = html;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
 
         function exportStockCardExcel() {
