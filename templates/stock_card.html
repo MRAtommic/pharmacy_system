@@ -41,30 +41,69 @@
             border-bottom: 1px solid #1E293B;
             padding: 10px 1.5rem;
             color: #FFFFFF;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
+            width: 100%;
         }
 
         .toolbar-inner {
-            max-width: 1300px;
+            max-width: 1350px;
             margin: 0 auto;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 1rem;
+            gap: 12px;
             flex-wrap: wrap;
         }
 
-        .toolbar-group {
+        .toolbar-row-top {
             display: flex;
             align-items: center;
-            gap: 0.65rem;
+            gap: 10px;
+        }
+
+        .toolbar-row-filter {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             flex-wrap: wrap;
+            flex: 1;
+            justify-content: center;
+        }
+
+        .toolbar-item-drug {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .toolbar-item-drug select {
+            min-width: 260px;
+            max-width: 340px;
+        }
+
+        .toolbar-item-dates {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .date-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .toolbar-group-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         .toolbar-label {
             font-size: 0.8125rem;
             color: #94A3B8;
             font-weight: 500;
+            white-space: nowrap;
         }
 
         .toolbar-select, .toolbar-input {
@@ -77,6 +116,7 @@
             font-family: inherit;
             font-size: 0.8125rem;
             outline: none;
+            max-width: 100%;
         }
 
         .toolbar-select:focus, .toolbar-input:focus {
@@ -97,6 +137,7 @@
             border: 1px solid transparent;
             transition: all 0.15s ease;
             text-decoration: none;
+            white-space: nowrap;
         }
 
         .btn-print {
@@ -122,6 +163,7 @@
         .quick-presets {
             display: flex;
             gap: 0.35rem;
+            align-items: center;
         }
 
         .btn-preset {
@@ -133,21 +175,159 @@
             color: #CBD5E1;
             border: 1px solid rgba(255,255,255,0.12);
             cursor: pointer;
+            white-space: nowrap;
         }
         .btn-preset:hover {
             background: rgba(255,255,255,0.16);
             color: #FFFFFF;
         }
 
+        /* ── Sheet Horizontal Scroll Wrapper ── */
+        .sheet-scroll-area {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 0 16px 40px 16px;
+            display: flex;
+            justify-content: safe center;
+        }
+
         /* ── Physical Sheet (A4 Portrait) ── */
         .sheet-container {
             width: 210mm;
             min-height: 297mm;
-            margin: 0 auto;
+            flex-shrink: 0;
+            margin: 0;
             background: #FFFFFF;
             padding: 16mm 14mm 16mm 18mm; /* Extra left padding for 2-hole/3-hole ring binder */
             box-shadow: 0 8px 30px rgba(0,0,0,0.3);
             position: relative;
+        }
+
+        .mobile-hint {
+            display: none;
+        }
+
+        /* ── Responsive Adaptations for Mobile / Tablet (< 992px) ── */
+        @media screen and (max-width: 991px) {
+            .print-toolbar {
+                padding: 10px 12px;
+                margin-bottom: 12px;
+            }
+
+            .toolbar-inner {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .toolbar-row-top {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                gap: 8px;
+            }
+
+            .toolbar-row-top .btn-outline-tool {
+                flex-shrink: 0;
+                padding: 0 0.75rem;
+                font-size: 0.8rem;
+            }
+
+            .toolbar-group-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .toolbar-group-actions .btn-tool {
+                padding: 0 0.65rem;
+                font-size: 0.75rem;
+                height: 34px;
+            }
+
+            .toolbar-row-filter {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .toolbar-item-drug {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 3px;
+                width: 100%;
+            }
+
+            .toolbar-item-drug select {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+                font-size: 0.8125rem;
+            }
+
+            .toolbar-item-dates {
+                display: flex;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .date-input-wrap {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 3px;
+                min-width: 0;
+            }
+
+            .date-input-wrap input {
+                width: 100%;
+                font-size: 0.75rem;
+                padding: 0 0.4rem;
+            }
+
+            .quick-presets {
+                display: flex;
+                gap: 5px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 3px;
+                width: 100%;
+            }
+
+            .btn-preset {
+                flex-shrink: 0;
+            }
+
+            .sheet-scroll-area {
+                display: block;
+                padding: 0 8px 30px 8px;
+            }
+
+            .sheet-container {
+                margin: 0;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            }
+
+            .mobile-hint {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                background: #1E293B;
+                color: #CBD5E1;
+                font-size: 11.5px;
+                padding: 6px 14px;
+                border-radius: 20px;
+                margin: 0 auto 12px auto;
+                width: fit-content;
+                max-width: 95%;
+                border: 1px solid #334155;
+            }
         }
 
         /* ── Header Information ── */
@@ -369,8 +549,17 @@
                 margin: 0 !important;
             }
 
-            .print-toolbar {
+            .print-toolbar,
+            .mobile-hint {
                 display: none !important;
+            }
+
+            .sheet-scroll-area {
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block !important;
+                overflow: visible !important;
+                width: 100% !important;
             }
 
             .sheet-container {
@@ -403,25 +592,42 @@
     <!-- 🛠️ Floating Control Toolbar (Screen Only) -->
     <div class="print-toolbar">
         <div class="toolbar-inner">
-            <div class="toolbar-group">
+            <div class="toolbar-row-top">
                 <a href="/{% if request.args.get('code') %}?code={{ request.args.get('code') }}{% endif %}" class="btn-tool btn-outline-tool" title="กลับหน้าแดชบอร์ดหลัก">
                     <i class="fas fa-arrow-left"></i> กลับคลังยา
                 </a>
+                <div class="toolbar-group-actions">
+                    <button type="button" class="btn-tool btn-outline-tool" onclick="exportStockCardExcel()" title="ดาวน์โหลดเป็นไฟล์ Excel">
+                        <i class="fas fa-file-excel" style="color: #10B981;"></i> ส่งออก Excel
+                    </button>
+                    <button type="button" class="btn-tool btn-print" onclick="window.print()" title="พิมพ์ใบสต็อกการ์ด (Ctrl + P)">
+                        <i class="fas fa-print"></i> พิมพ์เอกสาร (Print A4)
+                    </button>
+                </div>
+            </div>
 
-                <label class="toolbar-label" for="selectDrug">เลือกยา:</label>
-                <select id="selectDrug" class="toolbar-select" onchange="refreshStockCardData()" oninput="refreshStockCardData()" style="min-width: 260px;">
-                    {% for d in drugs %}
-                    <option value="{{ d.id }}" {% if selected_drug and selected_drug.id == d.id %}selected{% endif %}>
-                        {{ d.name }} (คงเหลือ: {{ d.stock_qty }} {{ d.unit }})
-                    </option>
-                    {% endfor %}
-                </select>
+            <div class="toolbar-row-filter">
+                <div class="toolbar-item-drug">
+                    <label class="toolbar-label" for="selectDrug">เลือกยา:</label>
+                    <select id="selectDrug" class="toolbar-select" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
+                        {% for d in drugs %}
+                        <option value="{{ d.id }}" {% if selected_drug and selected_drug.id == d.id %}selected{% endif %}>
+                            {{ d.name }} (คงเหลือ: {{ d.stock_qty }} {{ d.unit }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-                <label class="toolbar-label" for="inputStartDate">ตั้งแต่วันที่:</label>
-                <input type="date" id="inputStartDate" class="toolbar-input" value="{{ start_date }}" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
-
-                <label class="toolbar-label" for="inputEndDate">ถึงวันที่:</label>
-                <input type="date" id="inputEndDate" class="toolbar-input" value="{{ end_date }}" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
+                <div class="toolbar-item-dates">
+                    <div class="date-input-wrap">
+                        <label class="toolbar-label" for="inputStartDate">ตั้งแต่วันที่:</label>
+                        <input type="date" id="inputStartDate" class="toolbar-input" value="{{ start_date }}" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
+                    </div>
+                    <div class="date-input-wrap">
+                        <label class="toolbar-label" for="inputEndDate">ถึงวันที่:</label>
+                        <input type="date" id="inputEndDate" class="toolbar-input" value="{{ end_date }}" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
+                    </div>
+                </div>
 
                 <div class="quick-presets">
                     <button type="button" class="btn-preset" onclick="setPreset('this_month')">เดือนนี้</button>
@@ -430,20 +636,16 @@
                     <button type="button" class="btn-preset" onclick="setPreset('all')">ทั้งหมด</button>
                 </div>
             </div>
-
-            <div class="toolbar-group">
-                <button type="button" class="btn-tool btn-outline-tool" onclick="exportStockCardExcel()" title="ดาวน์โหลดเป็นไฟล์ Excel">
-                    <i class="fas fa-file-excel" style="color: #10B981;"></i> ส่งออก Excel
-                </button>
-                <button type="button" class="btn-tool btn-print" onclick="window.print()" title="พิมพ์ใบสต็อกการ์ด (Ctrl + P)">
-                    <i class="fas fa-print"></i> พิมพ์เอกสาร (Print A4)
-                </button>
-            </div>
         </div>
     </div>
 
+    <div class="mobile-hint">
+        <i class="fas fa-arrows-alt-h"></i> ปัดซ้าย-ขวาเพื่อเลื่อนดูตาราง A4 ทั้งแผ่น
+    </div>
+
     <!-- 📄 Official Physical Stock Card Sheet (A4 Portrait) -->
-    <div class="sheet-container" id="stockCardSheet">
+    <div class="sheet-scroll-area">
+        <div class="sheet-container" id="stockCardSheet">
         
         <!-- Header Section -->
         <div class="card-header-block">
@@ -532,6 +734,7 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
     </div>
 
     <script>
