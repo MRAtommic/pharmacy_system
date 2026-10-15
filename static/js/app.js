@@ -1328,24 +1328,24 @@ function renderLogsTable(logs) {
                         ${l.drive_file_link ? `<div style="margin-top: 4px;"><a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 22px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> สลิป</a></div>` : ''}
                     </td>
                     <td class="col-dispenser">
-                        <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">${escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by)}</span>
+                        <span style="font-size: 0.84rem; color: var(--text-primary); font-weight: 600;">${escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by)}</span>
                         ${l.patient_name ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-user" style="font-size: 0.65rem; color: var(--brand-500);"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
                         ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
-                        ${l.is_voided && l.void_reason ? `<div style="font-size: 0.7rem; color: #DC2626; margin-top: 2px;"><i class="fas fa-info-circle"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})</div>` : ''}
+                        ${l.is_voided && l.void_reason ? `<div style="font-size: 0.72rem; color: #DC2626; margin-top: 2px; line-height: 1.35;"><i class="fas fa-circle-exclamation"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})</div>` : ''}
                     </td>
                     <td class="col-action" style="text-align: center;">
-                        <div style="display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: nowrap;">
                             ${l.batch_id ? `
-                                <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; font-weight: 600; padding: 0.2rem 0.5rem; font-size: 0.725rem;" title="พิมพ์ใบสั่งยา / ใบเบิกจ่ายทางการ A4 รวมทุกรายการในใบสั่งยานี้">
+                                <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; font-weight: 600; padding: 0.2rem 0.5rem; font-size: 0.725rem; white-space: nowrap;" title="พิมพ์ใบสั่งยา / ใบเบิกจ่ายทางการ A4 รวมทุกรายการในใบสั่งยานี้">
                                     <i class="fas fa-file-medical"></i> ใบสั่งยา A4
                                 </button>
-                                <button class="btn-requisition btn-requisition-outline" style="${l.is_voided ? 'opacity: 0.6;' : ''} padding: 0.2rem 0.45rem; font-size: 0.7rem;" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกเฉพาะรายการนี้">
+                                <button class="btn-requisition btn-requisition-outline" style="${l.is_voided ? 'opacity: 0.6;' : ''} padding: 0.2rem 0.45rem; font-size: 0.7rem; white-space: nowrap;" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกเฉพาะรายการนี้">
                                     <i class="fas fa-file-invoice"></i> ใบย่อย
                                 </button>
                             ` : `
-                                <button class="btn-requisition" style="${l.is_voided ? 'opacity: 0.6;' : ''}" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยาทางการ (A4)"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
+                                <button class="btn-requisition" style="${l.is_voided ? 'opacity: 0.6;' : ''} white-space: nowrap;" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยาทางการ (A4)"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
                             `}
-                            ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก" style="padding: 0.2rem 0.5rem; font-size: 0.725rem; height: 26px; color: var(--rose-600); border-color: var(--rose-200);"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
+                            ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก" style="padding: 0.2rem 0.5rem; font-size: 0.725rem; height: 26px; color: var(--rose-600); border-color: var(--rose-200); white-space: nowrap;"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
                         </div>
                     </td>
                 </tr>
