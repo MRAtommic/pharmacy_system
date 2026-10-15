@@ -1575,6 +1575,111 @@ body {
   gap: 0.45rem;
 }
 
+/* 📱 Mobile Specific Dispensing Toolbar (< 768px) */
+@media (max-width: 768px) {
+  #view-logs,
+  .dispense-toolbar-card,
+  .dispense-filter-cluster,
+  .dispense-date-range,
+  .dispense-channel-box,
+  .dispense-actions-cluster {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-toolbar-card {
+    padding: 0.85rem !important;
+    gap: 0.65rem !important;
+    border-radius: 16px !important;
+    margin-bottom: 1rem !important;
+    background: var(--bg-surface) !important;
+    overflow-x: hidden !important;
+  }
+
+  .dispense-filter-cluster {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.55rem !important;
+    width: 100% !important;
+  }
+
+  .dispense-date-range {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto 1fr auto !important;
+    align-items: center !important;
+    gap: 0.3rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-label {
+    font-size: 0.75rem !important;
+    white-space: nowrap !important;
+    color: var(--text-muted) !important;
+  }
+
+  .dispense-input-date {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 38px !important;
+    padding: 0 0.35rem !important;
+    font-size: 0.775rem !important;
+    border-radius: 8px !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-sep {
+    font-size: 0.75rem !important;
+    color: var(--text-muted) !important;
+    padding: 0 1px !important;
+    white-space: nowrap !important;
+  }
+
+  .btn-reset-date {
+    height: 38px !important;
+    padding: 0 0.5rem !important;
+    font-size: 0.775rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-channel-box {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.45rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-select {
+    flex: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 38px !important;
+    font-size: 0.825rem !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-actions-cluster {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .dispense-actions-cluster .btn {
+    width: 100% !important;
+    height: 40px !important;
+    font-size: 0.8rem !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+  }
+}
+
 /* ==========================================================================
    Table: Dispensing Audit Logs (Balanced, 100% Fit, Zero Overflow)
    ========================================================================== */
