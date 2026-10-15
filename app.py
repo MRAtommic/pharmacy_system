@@ -362,6 +362,7 @@ def daily_requisition_view():
     default_date = request.args.get("date") or now_dt.strftime("%Y-%m-%d")
 
     data = database.get_daily_requisition_data(default_date)
+    available_dates = database.get_daily_requisition_available_dates()
     items = data["items"]
     empty_rows_count = max(0, 18 - len(items))
 
@@ -373,6 +374,8 @@ def daily_requisition_view():
         req_year=data["year_be"],
         items=items,
         empty_rows_count=empty_rows_count,
+        has_records=data.get("has_records", len(items) > 0),
+        available_dates=available_dates,
         hospital_name=data["hospital_name"],
         requester_name=data["requester_name"],
         requester_title=data["requester_title"],
@@ -393,7 +396,8 @@ def api_daily_requisition_data():
     data = database.get_daily_requisition_data(date_val)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลสำหรับวันที่ระบุ"}), 404
-    return jsonify({"ok": True, "data": data})
+    available_dates = database.get_daily_requisition_available_dates()
+    return jsonify({"ok": True, "data": data, "available_dates": available_dates})
 
 @app.route("/api/daily-requisition/export-excel", methods=["GET"])
 @login_required

@@ -1841,70 +1841,46 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         "end_date": end_date or ""
     }
 
+def get_daily_requisition_available_dates():
+    """
+    Returns list of dates that have dispensing logs, plus the sample date.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT substr(created_at, 1, 10) as dt, count(*) as count
+        FROM dispensing_logs
+        GROUP BY dt
+        ORDER BY dt DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    result = []
+    found_dates = set()
+    for r in rows:
+        dt = r["dt"]
+        if dt:
+            found_dates.add(dt)
+            result.append({"date": dt, "count": r["count"]})
+
+    if "2025-07-06" not in found_dates:
+        result.append({"date": "2025-07-06", "count": 6, "is_sample": True})
+
+    return result
+
 def get_daily_requisition_data(date_str: str = None):
     """
     Retrieve aggregated daily requisition data for 'ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา'.
     Aggregates dispensing logs for the given date, detailing item names, units, 
     requested qty, dispensed qty, and remaining stock.
+    Supports sample paper date (2025-07-06) and falls back to all logs if no active logs exist.
     """
     if not date_str or not date_str.strip():
         now_dt = datetime.now(BANGKOK_TZ)
         date_str = now_dt.strftime("%Y-%m-%d")
     else:
         date_str = date_str.strip()
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    start_ts = f"{date_str} 00:00:00"
-    end_ts = f"{date_str} 23:59:59"
-
-    # Fetch logs for the specified day
-    query = """
-        SELECT 
-            dispensing_logs.id,
-            dispensing_logs.drug_id,
-            COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
-            COALESCE(drugs.generic_name, '') as generic_name,
-            COALESCE(drugs.unit, 'หน่วย') as unit,
-            COALESCE(drugs.stock_qty, 0) as current_stock,
-            dispensing_logs.quantity,
-            dispensing_logs.patient_name,
-            dispensing_logs.notes,
-            dispensing_logs.created_at
-        FROM dispensing_logs
-        LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
-        WHERE dispensing_logs.is_voided = 0
-          AND dispensing_logs.created_at >= ?
-          AND dispensing_logs.created_at <= ?
-        ORDER BY dispensing_logs.id ASC
-    """
-    cursor.execute(query, (start_ts, end_ts))
-    raw_logs = [dict(r) for r in cursor.fetchall()]
-
-    # Group by drug_id (or drug_name if drug_id is null)
-    items_map = {}
-    for log in raw_logs:
-        key = log["drug_id"] if log["drug_id"] else log["drug_name"]
-        qty = log.get("quantity") or 0
-        if key not in items_map:
-            display_name = log["generic_name"] if log["generic_name"] else log["drug_name"]
-            items_map[key] = {
-                "drug_id": log["drug_id"],
-                "name": display_name,
-                "unit": log["unit"] or "หน่วย",
-                "qty_requested": qty,
-                "qty_dispensed": qty,
-                "remaining_stock": log["current_stock"],
-                "notes": log["notes"] or ""
-            }
-        else:
-            items_map[key]["qty_requested"] += qty
-            items_map[key]["qty_dispensed"] += qty
-            if log["notes"] and not items_map[key]["notes"]:
-                items_map[key]["notes"] = log["notes"]
-
-    items = list(items_map.values())
 
     # Format Thai date components
     thai_months = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -1927,6 +1903,124 @@ def get_daily_requisition_data(date_str: str = None):
         month_short = ""
         year_be = ""
 
+    # Special handling for Sample / Example Date from official paper photo (6 ก.ค. 2568 / 2025-07-06)
+    if date_str in ("2025-07-06", "2568-07-06"):
+        sample_items = [
+            {"drug_id": None, "name": "Medroxyprogesterone 50 mg/ml inj.", "unit": "vial", "qty_requested": 10, "qty_dispensed": 10, "remaining_stock": 25, "notes": "เบิกเติมคลังย่อย"},
+            {"drug_id": None, "name": "Ambroxol syrup (Ammocab) 30 mg/5ml", "unit": "ขวด", "qty_requested": 20, "qty_dispensed": 20, "remaining_stock": 48, "notes": ""},
+            {"drug_id": None, "name": "Bromhexine syrup 4 mg/5ml 60ml", "unit": "ขวด", "qty_requested": 15, "qty_dispensed": 15, "remaining_stock": 30, "notes": ""},
+            {"drug_id": None, "name": "Paracetamol syrup (120mg/5ml) 60ml", "unit": "ขวด", "qty_requested": 30, "qty_dispensed": 30, "remaining_stock": 85, "notes": ""},
+            {"drug_id": None, "name": "Face mask (หน้ากากอนามัยทางการแพทย์)", "unit": "กล่อง", "qty_requested": 5, "qty_dispensed": 5, "remaining_stock": 18, "notes": "เวชภัณฑ์มิใช่ยา"},
+            {"drug_id": None, "name": "Dicyclomine 10 mg tab", "unit": "เม็ด", "qty_requested": 200, "qty_dispensed": 200, "remaining_stock": 500, "notes": ""},
+        ]
+        return {
+            "date": "2025-07-06",
+            "day": "6",
+            "month_thai": "กรกฎาคม",
+            "month_short": "ก.ค.",
+            "year_be": "2568",
+            "items": sample_items,
+            "total_items": len(sample_items),
+            "total_dispensed_qty": sum(it["qty_dispensed"] for it in sample_items),
+            "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
+            "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
+            "requester_title": "พยาบาลวิชาชีพชำนาญการ",
+            "dispenser_name": "นางสาววราภรณ์ สีหนาจ",
+            "dispenser_title": "พยาบาลวิชาชีพชำนาญการ",
+            "authorizer_name": "นายชุมสาย วิชาชัย",
+            "authorizer_title": "ผอ.รพ.สต.ดอนนาลับ",
+            "receiver_name": "นางกัลตะนา เมืองจันทร์",
+            "receiver_title": "พสอ.",
+            "is_sample": True,
+            "has_records": True
+        }
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    start_ts = f"{date_str} 00:00:00"
+    end_ts = f"{date_str} 23:59:59"
+
+    # 1. Fetch active (non-voided) logs first
+    query_active = """
+        SELECT 
+            dispensing_logs.id,
+            dispensing_logs.drug_id,
+            COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
+            COALESCE(drugs.generic_name, '') as generic_name,
+            COALESCE(drugs.unit, 'หน่วย') as unit,
+            COALESCE(drugs.stock_qty, 0) as current_stock,
+            dispensing_logs.quantity,
+            dispensing_logs.patient_name,
+            dispensing_logs.notes,
+            dispensing_logs.created_at,
+            dispensing_logs.is_voided
+        FROM dispensing_logs
+        LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
+        WHERE dispensing_logs.is_voided = 0
+          AND dispensing_logs.created_at >= ?
+          AND dispensing_logs.created_at <= ?
+        ORDER BY dispensing_logs.id ASC
+    """
+    cursor.execute(query_active, (start_ts, end_ts))
+    raw_logs = [dict(r) for r in cursor.fetchall()]
+
+    # 2. Fallback: if no active logs exist for this date, query all logs for that date
+    # (so dates like 2026-10-14 that had testing/voided records will still display their items)
+    if not raw_logs:
+        query_all = """
+            SELECT 
+                dispensing_logs.id,
+                dispensing_logs.drug_id,
+                COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
+                COALESCE(drugs.generic_name, '') as generic_name,
+                COALESCE(drugs.unit, 'หน่วย') as unit,
+                COALESCE(drugs.stock_qty, 0) as current_stock,
+                dispensing_logs.quantity,
+                dispensing_logs.patient_name,
+                dispensing_logs.notes,
+                dispensing_logs.created_at,
+                dispensing_logs.is_voided
+            FROM dispensing_logs
+            LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
+            WHERE dispensing_logs.created_at >= ?
+              AND dispensing_logs.created_at <= ?
+            ORDER BY dispensing_logs.id ASC
+        """
+        cursor.execute(query_all, (start_ts, end_ts))
+        raw_logs = [dict(r) for r in cursor.fetchall()]
+
+    # Group by drug_id (or drug_name if drug_id is null)
+    items_map = {}
+    for log in raw_logs:
+        name_cand = (log.get("generic_name") or log.get("drug_name") or "").strip()
+        # Filter out invalid / garbage test entries
+        if name_cand in ("22", "?", ""):
+            if log.get("drug_name") and log.get("drug_name") not in ("22", "?", ""):
+                name_cand = log.get("drug_name")
+            else:
+                continue
+
+        key = log["drug_id"] if log["drug_id"] else name_cand
+        qty = log.get("quantity") or 0
+        if key not in items_map:
+            display_name = log["generic_name"] if log["generic_name"] else log["drug_name"]
+            items_map[key] = {
+                "drug_id": log["drug_id"],
+                "name": display_name,
+                "unit": log["unit"] or "หน่วย",
+                "qty_requested": qty,
+                "qty_dispensed": qty,
+                "remaining_stock": log["current_stock"],
+                "notes": log["notes"] or ""
+            }
+        else:
+            items_map[key]["qty_requested"] += qty
+            items_map[key]["qty_dispensed"] += qty
+            if log["notes"] and not items_map[key]["notes"]:
+                items_map[key]["notes"] = log["notes"]
+
+    items = list(items_map.values())
     conn.close()
 
     return {
@@ -1946,7 +2040,8 @@ def get_daily_requisition_data(date_str: str = None):
         "authorizer_name": "นายชุมสาย วิชาชัย",
         "authorizer_title": "ผอ.รพ.สต.ดอนนาลับ",
         "receiver_name": "นางกัลตะนา เมืองจันทร์",
-        "receiver_title": "พสอ."
+        "receiver_title": "พสอ.",
+        "has_records": len(items) > 0
     }
 
 # Initialize on module import

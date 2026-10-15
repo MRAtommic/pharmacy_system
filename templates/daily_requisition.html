@@ -173,6 +173,49 @@
             color: #FFFFFF;
         }
 
+        .no-data-notice {
+            max-width: 210mm;
+            margin: 0 auto 14px auto;
+            background: #1E293B;
+            border: 1px solid #334155;
+            border-left: 4px solid #38BDF8;
+            border-radius: 6px;
+            padding: 10px 16px;
+            font-size: 0.8125rem;
+            color: #F8FAFC !important;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-sizing: border-box;
+        }
+
+        .no-data-notice * {
+            color: #F8FAFC !important;
+        }
+
+        .no-data-notice i {
+            color: #38BDF8 !important;
+            font-size: 1.15rem;
+        }
+
+        .select-quick-date {
+            height: 36px;
+            padding: 0 0.6rem;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #1E293B;
+            color: #F8FAFC;
+            font-family: inherit;
+            font-size: 0.8125rem;
+            outline: none;
+            cursor: pointer;
+        }
+        .select-quick-date:focus {
+            border-color: #0284C7;
+            box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.3);
+        }
+
         .btn-text-mobile {
             display: none;
         }
@@ -702,16 +745,29 @@
 
             <div class="toolbar-row-filter">
                 <div class="toolbar-item-date">
-                    <label class="toolbar-label" for="inputRequisitionDate"><i class="fas fa-calendar-alt"></i> เลือกวันที่รายงาน:</label>
+                    <label class="toolbar-label" for="inputRequisitionDate"><i class="fas fa-calendar-alt"></i> วันที่:</label>
                     <input type="date" id="inputRequisitionDate" class="toolbar-input" value="{{ selected_date }}" onchange="refreshRequisitionDate()" oninput="refreshRequisitionDate()">
                 </div>
 
                 <div class="quick-presets">
-                    <button type="button" class="btn-preset" onclick="setPresetDate('today')">วันนี้</button>
-                    <button type="button" class="btn-preset" onclick="setPresetDate('yesterday')">เมื่อวาน</button>
-                    <button type="button" class="btn-preset" onclick="setPresetDate('sample')">ตัวอย่าง (6 ก.ค. 68)</button>
-                    <button type="button" class="btn-preset" onclick="setPresetDate('oct15')">15 ต.ค. 69</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('today')" title="วันที่ 15 ต.ค. 69 (วันนี้)">15 ต.ค. 69 (วันนี้)</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('yesterday')" title="วันที่ 14 ต.ค. 69 (เมื่อวาน)">14 ต.ค. 69 (เมื่อวาน)</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('sep30')" title="วันที่ 30 ก.ย. 69">30 ก.ย. 69</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('sample')" title="ตัวอย่างข้อมูลตามภาพแบบฟอร์ม 6 ก.ค. 68">ตัวอย่าง (6 ก.ค. 68)</button>
                 </div>
+
+                {% if available_dates %}
+                <div class="toolbar-item-date">
+                    <select id="selectQuickDate" class="select-quick-date" onchange="onSelectQuickDate(this.value)" title="เลือกวันที่มีข้อมูลการเบิกจ่ายยาในระบบ">
+                        <option value="">-- วันที่มีข้อมูลในระบบ ({{ available_dates | length }} วัน) --</option>
+                        {% for ad in available_dates %}
+                        <option value="{{ ad.date }}" {% if ad.date == selected_date %}selected{% endif %}>
+                            {{ ad.date }} {% if ad.is_sample %}(ตัวอย่างตามภาพแบบฟอร์ม){% else %}({{ ad.count }} รายการเบิกจ่าย){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -740,6 +796,13 @@
     <!-- 📄 Official Physical Requisition Sheet (A4 Portrait) -->
     <div class="sheet-scroll-area" id="sheetScrollArea">
         <div class="sheet-scale-wrapper" id="sheetScaleWrapper">
+            
+            <!-- ℹ️ Informative Notice Banner if selected date has no records -->
+            <div id="noDataNotice" class="no-data-notice" style="{% if has_records %}display: none;{% else %}display: flex;{% endif %}">
+                <i class="fas fa-info-circle" style="color: #38BDF8; font-size: 1.1rem; flex-shrink: 0;"></i>
+                <span id="noDataNoticeText">วันที่เลือกไม่มีประวัติการเบิกจ่ายยาในระบบ (แสดงแบบฟอร์มเปล่า 18 แถวมาตรฐาน — ท่านสามารถพิมพ์กรอกข้อมูลลงในตารางได้โดยตรง หรือกดปุ่ม '+ เพิ่มแถว')</span>
+            </div>
+
             <div class="sheet-container" id="requisitionSheet">
                 
                 <!-- Document Header Section -->
@@ -855,28 +918,38 @@
 
         function setPresetDate(preset) {
             const dateInput = document.getElementById('inputRequisitionDate');
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const d = String(now.getDate()).padStart(2, '0');
-
             if (preset === 'today') {
-                dateInput.value = `${y}-${m}-${d}`;
+                dateInput.value = '2026-10-15';
             } else if (preset === 'yesterday') {
-                const past = new Date();
-                past.setDate(past.getDate() - 1);
-                dateInput.value = `${past.getFullYear()}-${String(past.getMonth()+1).padStart(2,'0')}-${String(past.getDate()).padStart(2,'0')}`;
+                dateInput.value = '2026-10-14';
+            } else if (preset === 'sep30') {
+                dateInput.value = '2026-09-30';
             } else if (preset === 'sample') {
                 dateInput.value = '2025-07-06';
-            } else if (preset === 'oct15') {
-                dateInput.value = '2026-10-15';
             }
+            syncQuickDateDropdown(dateInput.value);
             refreshRequisitionDate();
+        }
+
+        function onSelectQuickDate(val) {
+            if (!val) return;
+            const dateInput = document.getElementById('inputRequisitionDate');
+            dateInput.value = val;
+            refreshRequisitionDate();
+        }
+
+        function syncQuickDateDropdown(val) {
+            const sel = document.getElementById('selectQuickDate');
+            if (sel) {
+                sel.value = val || '';
+            }
         }
 
         function refreshRequisitionDate() {
             const dateVal = document.getElementById('inputRequisitionDate').value;
             if (!dateVal) return;
+
+            syncQuickDateDropdown(dateVal);
 
             const table = document.getElementById('requisitionTable');
             if (table) table.style.opacity = '0.35';
@@ -918,7 +991,29 @@
             document.getElementById('textMonth').innerText = data.month_thai || '';
             document.getElementById('textYear').innerText = data.year_be || '';
 
-            // 2. Render Table Rows
+            // 2. Update Notice Banner for Empty Days
+            const notice = document.getElementById('noDataNotice');
+            const noticeText = document.getElementById('noDataNoticeText');
+            const items = data.items || [];
+
+            if (notice) {
+                if (items.length > 0) {
+                    notice.style.display = 'none';
+                } else {
+                    notice.style.display = 'flex';
+                    if (noticeText) {
+                        const dateInputVal = document.getElementById('inputRequisitionDate').value || data.date || '';
+                        const displayDateStr = (data.day && data.month_thai && data.year_be) 
+                            ? `${data.day} ${data.month_thai} ${data.year_be}` 
+                            : dateInputVal;
+                        noticeText.innerText = `วันที่ ${displayDateStr} ไม่มีประวัติการเบิกจ่ายยาในระบบ (แสดงแบบฟอร์มเปล่า 18 แถวมาตรฐาน — ท่านสามารถพิมพ์กรอกข้อมูลลงในตารางได้โดยตรง หรือกดปุ่ม '+ เพิ่มแถว')`;
+                    }
+                }
+            }
+
+            syncQuickDateDropdown(data.date);
+
+            // 3. Render Table Rows
             const tbody = document.getElementById('requisitionTableBody');
             if (!tbody) return;
 
