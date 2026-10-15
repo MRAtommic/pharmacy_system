@@ -475,7 +475,7 @@ body {
 .kpi-card {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   padding: 0.9rem 1.05rem;
   display: flex;
   align-items: center;
@@ -511,11 +511,11 @@ body {
 
 /* Subtle Clinical Tinted Borders & Elevation */
 .kpi-card-blue, .kpi-blue {
-  border-color: rgba(37, 99, 235, 0.18);
+  border-color: var(--border-default);
 }
 .kpi-card-blue:hover, .kpi-blue:hover {
-  border-color: rgba(37, 99, 235, 0.45);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .kpi-card-hero, .kpi-emerald {
@@ -535,35 +535,35 @@ body {
 }
 
 .kpi-card-alert {
-  border-color: rgba(225, 29, 72, 0.18);
+  border-color: var(--border-default);
 }
 .kpi-card-alert:hover {
-  border-color: rgba(225, 29, 72, 0.4);
-  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.08);
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .kpi-card-warning {
-  border-color: rgba(217, 119, 6, 0.2);
+  border-color: var(--border-default);
 }
 .kpi-card-warning:hover {
-  border-color: rgba(217, 119, 6, 0.45);
-  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.08);
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .kpi-card-indigo, .kpi-indigo {
-  border-color: rgba(79, 70, 229, 0.18);
+  border-color: var(--border-default);
 }
 .kpi-card-indigo:hover, .kpi-indigo:hover {
-  border-color: rgba(79, 70, 229, 0.45);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08);
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .kpi-card-purple, .kpi-purple {
-  border-color: rgba(124, 58, 237, 0.18);
+  border-color: var(--border-default);
 }
 .kpi-card-purple:hover, .kpi-purple:hover {
-  border-color: rgba(124, 58, 237, 0.45);
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.08);
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 /* ── 🌙 Dark Mode KPI Cards: Calm Matte Slate (No Neon Outlines) ── */
