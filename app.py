@@ -55,9 +55,10 @@ def login_required(f):
     def decorated(*args, **kwargs):
         code = (request.args.get('code') or request.args.get('passcode') or '').strip()
         if code and code in ['otwxc8x', os.environ.get('STAFF_PASSCODE', 'otwxc8x')]:
-            session['user_email'] = 'admin@pharmacore.clinic'
-            session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
-            session['user_picture'] = '/static/uploads/drugs/app_icon_192.png'
+            if not session.get('user_email'):
+                session['user_email'] = 'admin@pharmacore.clinic'
+                session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
+                session['user_picture'] = '/static/uploads/drugs/app_icon_192.png'
         if not session.get('user_email'):
             if request.path.startswith('/api/') and '/requisition' not in request.path:
                 return jsonify({"ok": False, "error": "กรุณาล็อกอินก่อนใช้งาน", "login_required": True}), 401
@@ -563,13 +564,13 @@ def export_daily_requisition_excel():
 def login_page():
     code = (request.args.get('code') or request.args.get('passcode') or '').strip()
     next_url = request.args.get('next') or '/'
+    if session.get('user_email'):
+        return redirect(next_url)
     if code and code in ['otwxc8x', os.environ.get('STAFF_PASSCODE', 'otwxc8x')]:
         session['user_email'] = 'admin@pharmacore.clinic'
         session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
         session['user_picture'] = '/static/uploads/drugs/app_icon_192.png'
         audit('LOGIN', 'AUTH', 'passcode', 'Admin', 'เข้าสู่ระบบด้วย Passcode')
-        return redirect(next_url)
-    if session.get('user_email'):
         return redirect(next_url)
     error = request.args.get('error', '')
     return render_template("login.html", error=error, base_url=Config.BASE_URL)
@@ -800,8 +801,10 @@ def dispense_stock():
     u = current_user()
     actor_email = u.get('email', '')
     actor_name = u.get('name', '')
-    default_dispenser = f"{actor_name} ({actor_email})" if actor_name and actor_name != actor_email else (actor_email or "เภสัชกร/เจ้าหน้าที่")
-    dispensed_by = data.get("dispensed_by") or default_dispenser
+    default_dispenser = actor_name or actor_email or "ผู้ดูแลระบบคลังยา (Admin)"
+    dispensed_by = (data.get("dispensed_by") or "").strip()
+    if not dispensed_by or dispensed_by in ("เภสัชกร/เจ้าหน้าที่", "เจ้าหน้าที่"):
+        dispensed_by = default_dispenser
     patient_name = data.get("patient_name") or ""
     notes = data.get("notes") or ""
 
@@ -1004,13 +1007,15 @@ def stock_in_endpoint():
     u = current_user()
     actor_email = u.get('email', '')
     actor_name = u.get('name', '')
-    default_receiver = f"{actor_name} ({actor_email})" if actor_name and actor_name != actor_email else (actor_email or "เภสัชกร/เจ้าหน้าที่")
+    default_receiver = actor_name or actor_email or "ผู้ดูแลระบบคลังยา (Admin)"
 
     lot_number = (data.get("lot_number") or "").strip()
     cost_per_unit = data.get("cost_per_unit")
     expiry_date = (data.get("expiry_date") or "").strip()
     supplier = (data.get("supplier") or "องค์การเภสัชกรรม (GPO)").strip()
-    received_by = (data.get("received_by") or default_receiver).strip()
+    received_by = (data.get("received_by") or "").strip()
+    if not received_by or received_by in ("เภสัชกร/เจ้าหน้าที่", "เจ้าหน้าที่"):
+        received_by = default_receiver
     notes = (data.get("notes") or "").strip()
 
     success, result = database.stock_in(
@@ -1081,6 +1086,10 @@ def get_stock_in_endpoint(log_id):
 @login_required
 def update_stock_in_endpoint(log_id):
     data = request.json or {}
+    rec_by = (data.get("received_by") or "").strip()
+    if not rec_by or rec_by in ("เภสัชกร/เจ้าหน้าที่", "เจ้าหน้าที่"):
+        rec_by = current_user().get('name') or current_user().get('email') or 'ผู้ดูแลระบบคลังยา (Admin)'
+
     success, result = database.update_stock_in_log(
         log_id,
         quantity=data.get("quantity"),
@@ -1088,7 +1097,7 @@ def update_stock_in_endpoint(log_id):
         expiry_date=data.get("expiry_date"),
         cost_per_unit=data.get("cost_per_unit"),
         supplier=data.get("supplier"),
-        received_by=data.get("received_by"),
+        received_by=rec_by,
         notes=data.get("notes"),
         created_at=data.get("created_at")
     )

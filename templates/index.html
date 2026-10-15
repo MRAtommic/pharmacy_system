@@ -881,7 +881,7 @@
 
                     <div class="form-group">
                         <label class="form-label">ผู้จ่ายยา / เจ้าหน้าที่</label>
-                        <input type="text" id="dispenserNameInput" class="form-input" value="เภสัชกร/เจ้าหน้าที่" required>
+                        <input type="text" id="dispenserNameInput" class="form-input" value="{{ current_user.name or current_user.email or 'ผู้ดูแลระบบคลังยา (Admin)' }}" required>
                     </div>
 
                     <div class="form-group">
@@ -1566,7 +1566,7 @@
 
                         <div class="form-group">
                             <label class="form-label">ผู้ตรวจรับมอบ</label>
-                            <input type="text" id="stockInReceivedByInput" class="form-input" value="เภสัชกร/เจ้าหน้าที่">
+                            <input type="text" id="stockInReceivedByInput" class="form-input" value="{{ current_user.name or current_user.email or 'ผู้ดูแลระบบคลังยา (Admin)' }}" placeholder="ชื่อบัญชีผู้ตรวจรับ">
                         </div>
 
                         <div class="form-group">
@@ -1704,7 +1704,7 @@
                     <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem;">
                         <div class="form-group">
                             <label class="form-label">ผู้ตรวจรับมอบ</label>
-                            <input type="text" id="editStockInReceivedBy" class="form-input">
+                            <input type="text" id="editStockInReceivedBy" class="form-input" placeholder="ชื่อบัญชีผู้ตรวจรับ">
                         </div>
                         <div class="form-group">
                             <label class="form-label">เลขที่ใบส่งของ / บันทึก</label>
@@ -2111,7 +2111,9 @@
     <!-- App Script with Cache Busting -->
     <script>
         window.PHARMACY_BASE = "{{ base_prefix | default('') }}";
+        window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
+        window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=36.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=37.0"></script>
 </body>
 </html>

@@ -1006,6 +1006,11 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
     document.getElementById('dispensePatientInput').value = '';
     document.getElementById('dispenseNoteInput').value = '';
 
+    const dispInput = document.getElementById('dispenserNameInput');
+    if (dispInput && (!dispInput.value || dispInput.value === 'เภสัชกร/เจ้าหน้าที่' || dispInput.value === 'เจ้าหน้าที่')) {
+        dispInput.value = window.CURRENT_USER_NAME || 'ผู้ดูแลระบบคลังยา (Admin)';
+    }
+
     // Hide any previous high quantity alert
     const alertEl = document.getElementById('dispenseHighQtyAlert');
     if (alertEl) alertEl.style.display = 'none';
@@ -1114,7 +1119,7 @@ async function submitDispense(e) {
 
     const patient = (document.getElementById('dispensePatientInput')?.value || '').trim();
     const notes = (document.getElementById('dispenseNoteInput')?.value || '').trim();
-    const dispenser = document.getElementById('dispenserNameInput')?.value || 'เภสัชกร/เจ้าหน้าที่';
+    const dispenser = (document.getElementById('dispenserNameInput')?.value || '').trim() || window.CURRENT_USER_NAME || 'ผู้ดูแลระบบคลังยา (Admin)';
     const channel = currentDispenseChannel || 'WEB_MANUAL';
 
     // 2. High Quantity Check: >= 100 OR >= 50% of current stock
@@ -1323,7 +1328,7 @@ function renderLogsTable(logs) {
                         ${l.drive_file_link ? `<div style="margin-top: 4px;"><a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 22px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> สลิป</a></div>` : ''}
                     </td>
                     <td class="col-dispenser">
-                        <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">${escapeHtml(l.dispensed_by || '-')}</span>
+                        <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">${escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by)}</span>
                         ${l.patient_name ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-user" style="font-size: 0.65rem; color: var(--brand-500);"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
                         ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
                         ${l.is_voided && l.void_reason ? `<div style="font-size: 0.7rem; color: #DC2626; margin-top: 2px;"><i class="fas fa-info-circle"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})</div>` : ''}
@@ -3290,7 +3295,9 @@ function openStockInModal(drugId = null) {
     }
 
     const recByInput = document.getElementById('stockInReceivedByInput');
-    if (recByInput && !recByInput.value) recByInput.value = 'เภสัชกร/เจ้าหน้าที่';
+    if (recByInput) {
+        recByInput.value = window.CURRENT_USER_NAME || recByInput.value || 'ผู้ดูแลระบบคลังยา (Admin)';
+    }
 
     setStockInSupplierType('GPO');
 
@@ -3624,7 +3631,7 @@ function renderStockInTable(logs) {
                             ${escapeHtml(l.expiry_date || '-')}
                         </td>
                         <td style="font-size: 0.8125rem; color: var(--text-secondary);">
-                            <span style="font-weight: 600;">${escapeHtml(l.received_by || '-')}</span>
+                            <span style="font-weight: 600;">${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</span>
                             ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
                         </td>
                         <td style="text-align: center; white-space: nowrap;">
@@ -3832,7 +3839,11 @@ function openEditStockInModal(logId) {
     document.getElementById('editStockInLot').value = log.lot_number || '';
     document.getElementById('editStockInExpiry').value = log.expiry_date || '';
     document.getElementById('editStockInCost').value = log.cost_per_unit || '';
-    document.getElementById('editStockInReceivedBy').value = log.received_by || 'เภสัชกร/เจ้าหน้าที่';
+    let editRecVal = (log.received_by || '').trim();
+    if (!editRecVal || editRecVal === 'เภสัชกร/เจ้าหน้าที่' || editRecVal === 'เจ้าหน้าที่') {
+        editRecVal = window.CURRENT_USER_NAME || editRecVal || 'ผู้ดูแลระบบคลังยา (Admin)';
+    }
+    document.getElementById('editStockInReceivedBy').value = editRecVal;
     document.getElementById('editStockInNotes').value = log.notes || '';
 
     // Supplier init
