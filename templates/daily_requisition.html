@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา - โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ</title>
+    <!-- Google Fonts: Sarabun (Official Thai Government Standard) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            color: #000000;
+        }
+
+        html, body {
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        body {
+            font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+            background-color: #334155;
+            margin: 0;
+            padding: 0 0 40px 0;
+            font-size: 14px;
+            line-height: 1.35;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* ── Screen-Only Interactive Control Toolbar ── */
+        .print-toolbar {
+            position: sticky;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #0F172A;
+            z-index: 9999;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            border-bottom: 1px solid #1E293B;
+            padding: 10px 1.5rem;
+            color: #FFFFFF;
+            margin-bottom: 16px;
+            width: 100%;
+            max-width: 100vw;
+            box-sizing: border-box;
+        }
+
+        .toolbar-inner {
+            max-width: 1350px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-row-top {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toolbar-row-filter {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            flex: 1;
+            justify-content: center;
+        }
+
+        .toolbar-item-date {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .toolbar-group-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar-label {
+            font-size: 0.8125rem;
+            color: #94A3B8;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .toolbar-input {
+            height: 36px;
+            padding: 0 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #1E293B;
+            color: #F8FAFC;
+            font-family: inherit;
+            font-size: 0.8125rem;
+            outline: none;
+        }
+
+        .toolbar-input:focus {
+            border-color: #0284C7;
+            box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.3);
+        }
+
+        .btn-tool {
+            height: 36px;
+            padding: 0 1rem;
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .btn-print {
+            background: #0284C7;
+            color: #FFFFFF;
+            border-color: #0284C7;
+        }
+        .btn-print:hover {
+            background: #0369A1;
+            color: #FFFFFF;
+        }
+
+        .btn-outline-tool {
+            background: #1E293B;
+            color: #E2E8F0;
+            border-color: #334155;
+        }
+        .btn-outline-tool:hover {
+            background: #334155;
+            color: #FFFFFF;
+        }
+
+        .quick-presets {
+            display: flex;
+            gap: 0.35rem;
+            align-items: center;
+        }
+
+        .btn-preset {
+            height: 28px;
+            padding: 0 0.6rem;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.08);
+            color: #CBD5E1;
+            border: 1px solid rgba(255,255,255,0.12);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-preset:hover {
+            background: rgba(255,255,255,0.16);
+            color: #FFFFFF;
+        }
+
+        .btn-text-mobile {
+            display: none;
+        }
+
+        /* ── Sheet Horizontal Scroll Wrapper ── */
+        .sheet-scroll-area {
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: auto;
+            overflow-y: visible;
+            -webkit-overflow-scrolling: touch;
+            padding: 0 16px 40px 16px;
+            box-sizing: border-box;
+        }
+
+        @media screen and (min-width: 992px) {
+            .sheet-scroll-area {
+                display: flex;
+                justify-content: center;
+            }
+        }
+
+        .sheet-scale-wrapper {
+            display: inline-block;
+            transform-origin: top left;
+            transition: transform 0.15s ease-out;
+            max-width: 100%;
+        }
+
+        /* ── Physical Sheet (A4 Portrait) ── */
+        .sheet-container {
+            width: 210mm;
+            min-height: 297mm;
+            flex-shrink: 0;
+            margin: 0 auto;
+            background: #FFFFFF;
+            padding: 16mm 14mm 16mm 18mm; /* Extra left padding for 2-hole/3-hole ring binder */
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        .mobile-view-bar {
+            display: none;
+        }
+
+        .mobile-hint {
+            display: none;
+        }
+
+        /* ── Responsive Adaptations for Mobile / Tablet (< 992px) ── */
+        @media screen and (max-width: 991px) {
+            .btn-text {
+                display: none;
+            }
+            .btn-text-mobile {
+                display: inline;
+            }
+
+            .print-toolbar {
+                padding: 10px 12px;
+                margin-bottom: 10px;
+                position: sticky;
+                top: 0;
+                width: 100%;
+                max-width: 100vw;
+                box-sizing: border-box;
+            }
+
+            .toolbar-inner {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .toolbar-row-top {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                gap: 6px;
+            }
+
+            .toolbar-row-top .btn-outline-tool {
+                flex-shrink: 0;
+                padding: 0 0.65rem;
+                font-size: 0.8rem;
+                height: 32px;
+            }
+
+            .toolbar-group-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .toolbar-group-actions .btn-tool {
+                padding: 0 0.65rem;
+                font-size: 0.75rem;
+                height: 32px;
+            }
+
+            .toolbar-row-filter {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .toolbar-item-date {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .toolbar-item-date input {
+                flex: 1;
+                width: 100%;
+                font-size: 0.8125rem;
+                height: 36px;
+            }
+
+            .quick-presets {
+                display: flex;
+                gap: 5px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 2px;
+                width: 100%;
+                scrollbar-width: none;
+            }
+            .quick-presets::-webkit-scrollbar {
+                display: none;
+            }
+
+            .btn-preset {
+                flex-shrink: 0;
+                height: 26px;
+                padding: 0 0.55rem;
+                font-size: 0.7rem;
+            }
+
+            .sheet-scroll-area {
+                display: block;
+                padding: 0 8px 30px 8px;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .sheet-scale-wrapper {
+                display: block;
+            }
+
+            .sheet-container {
+                margin: 0 auto;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            }
+
+            .mobile-view-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                background: #1E293B;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 6px 10px;
+                margin: 0 auto 10px auto;
+                width: 100%;
+                max-width: 500px;
+                box-sizing: border-box;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            }
+
+            .view-mode-toggle {
+                display: flex;
+                background: #0F172A;
+                border-radius: 6px;
+                padding: 2px;
+                gap: 2px;
+            }
+
+            .btn-mode-tab {
+                border: none;
+                background: transparent;
+                color: #94A3B8;
+                font-family: inherit;
+                font-size: 11.5px;
+                font-weight: 500;
+                padding: 5px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                white-space: nowrap;
+                transition: all 0.15s ease;
+            }
+
+            .btn-mode-tab.active {
+                background: #0284C7;
+                color: #FFFFFF;
+                font-weight: 600;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            }
+
+            .zoom-stepper {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .btn-zoom-step {
+                width: 28px;
+                height: 28px;
+                border-radius: 4px;
+                background: #334155;
+                color: #F8FAFC;
+                border: 1px solid #475569;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 11px;
+                cursor: pointer;
+            }
+            .btn-zoom-step:active {
+                background: #475569;
+            }
+
+            .zoom-badge {
+                font-size: 11px;
+                font-weight: 600;
+                color: #CBD5E1;
+                min-width: 36px;
+                text-align: center;
+            }
+
+            .mobile-hint {
+                display: none;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                background: #1E293B;
+                color: #94A3B8;
+                font-size: 11px;
+                padding: 5px 12px;
+                border-radius: 16px;
+                margin: 0 auto 10px auto;
+                width: fit-content;
+                max-width: 95%;
+                border: 1px solid #334155;
+            }
+        }
+
+        /* ── Official Document Header Typography ── */
+        .doc-header-block {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .doc-title-main {
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            margin-bottom: 4px;
+            color: #000000;
+        }
+
+        .doc-org-name {
+            font-size: 14.5px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #000000;
+            outline: none;
+        }
+
+        .doc-target-line {
+            font-size: 13.5px;
+            font-weight: 400;
+            margin-bottom: 5px;
+            color: #000000;
+            line-height: 1.4;
+        }
+
+        .doc-date-line {
+            font-size: 13.5px;
+            font-weight: 400;
+            margin-bottom: 12px;
+            color: #000000;
+        }
+
+        .underline-field {
+            display: inline-block;
+            min-width: 32px;
+            text-align: center;
+            font-weight: 500;
+            padding: 0 4px;
+            border-bottom: 1px dotted #000000;
+            outline: none;
+        }
+
+        /* ── Official Ledger Table Style (Black & White Formal) ── */
+        .requisition-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            color: #000000;
+            margin-bottom: 24px;
+        }
+
+        .requisition-table th, 
+        .requisition-table td {
+            border: 1px solid #000000;
+            padding: 5px 6px;
+            vertical-align: middle;
+            color: #000000;
+        }
+
+        .requisition-table th {
+            background-color: transparent;
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            height: 32px;
+        }
+
+        .col-seq {
+            width: 7%;
+            text-align: center;
+        }
+
+        .col-name {
+            width: 37%;
+            text-align: left;
+            padding-left: 8px !important;
+        }
+
+        .col-unit {
+            width: 11%;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .col-qty-req {
+            width: 11%;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .col-qty-disp {
+            width: 11%;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .col-stock-rem {
+            width: 11%;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .col-remark {
+            width: 12%;
+            text-align: center;
+        }
+
+        .row-data td {
+            height: 27px;
+            font-size: 12.5px;
+        }
+
+        .row-empty td {
+            height: 27px;
+        }
+
+        .cell-editable {
+            outline: none;
+            cursor: text;
+        }
+
+        .cell-editable:focus {
+            background-color: #FEF3C7;
+        }
+
+        /* ── Official 4-Person Signatures Section ── */
+        .signatures-section {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 32px;
+            row-gap: 22px;
+            font-size: 13px;
+            color: #000000;
+        }
+
+        .sig-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .sig-dots-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        .sig-dots-line {
+            display: inline-block;
+            width: 160px;
+            border-bottom: 1px dotted #000000;
+            margin: 0 4px;
+            height: 1px;
+        }
+
+        .sig-name {
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 3px;
+            outline: none;
+            cursor: text;
+            padding: 1px 6px;
+            border-radius: 2px;
+        }
+
+        .sig-name:hover, .sig-title:hover {
+            background: #F1F5F9;
+        }
+
+        .sig-name:focus, .sig-title:focus {
+            background: #FEF3C7;
+        }
+
+        .sig-title {
+            font-size: 12.5px;
+            font-weight: 400;
+            outline: none;
+            cursor: text;
+            padding: 1px 6px;
+            border-radius: 2px;
+        }
+
+        /* ── Print Specific Adjustments ── */
+        @media print {
+            body {
+                background: #FFFFFF !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            .print-toolbar,
+            .mobile-view-bar,
+            .mobile-hint {
+                display: none !important;
+            }
+
+            .sheet-scroll-area {
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block !important;
+                overflow: visible !important;
+                width: 100% !important;
+            }
+
+            .sheet-scale-wrapper {
+                transform: none !important;
+                width: auto !important;
+                height: auto !important;
+                margin: 0 !important;
+                display: block !important;
+            }
+
+            .sheet-container {
+                width: 100% !important;
+                min-height: auto !important;
+                margin: 0 !important;
+                padding: 12mm 12mm 12mm 16mm !important;
+                box-shadow: none !important;
+                page-break-after: avoid;
+            }
+
+            .requisition-table th, 
+            .requisition-table td {
+                border-color: #000000 !important;
+            }
+
+            .cell-editable:focus,
+            .sig-name:focus,
+            .sig-title:focus {
+                background: transparent !important;
+            }
+
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 🛠️ Floating Control Toolbar (Screen Only) -->
+    <div class="print-toolbar">
+        <div class="toolbar-inner">
+            <div class="toolbar-row-top">
+                <a href="/{% if request.args.get('code') %}?code={{ request.args.get('code') }}{% endif %}" class="btn-tool btn-outline-tool" title="กลับหน้าแดชบอร์ดหลัก">
+                    <i class="fas fa-arrow-left"></i> <span class="btn-text">กลับคลังยา</span><span class="btn-text-mobile">กลับ</span>
+                </a>
+                <div class="toolbar-group-actions">
+                    <button type="button" class="btn-tool btn-outline-tool" onclick="addNewItemRow()" title="เพิ่มแถวรายการใหม่">
+                        <i class="fas fa-plus" style="color: #38BDF8;"></i> <span class="btn-text">เพิ่มแถว</span><span class="btn-text-mobile">+แถว</span>
+                    </button>
+                    <button type="button" class="btn-tool btn-outline-tool" onclick="exportDailyRequisitionExcel()" title="ดาวน์โหลดเป็นไฟล์ Excel">
+                        <i class="fas fa-file-excel" style="color: #10B981;"></i> <span class="btn-text">ส่งออก Excel</span><span class="btn-text-mobile">Excel</span>
+                    </button>
+                    <button type="button" class="btn-tool btn-print" onclick="window.print()" title="พิมพ์ใบเบิกเวชภัณฑ์ยา (Ctrl + P)">
+                        <i class="fas fa-print"></i> <span class="btn-text">พิมพ์เอกสาร (Print A4)</span><span class="btn-text-mobile">พิมพ์ A4</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="toolbar-row-filter">
+                <div class="toolbar-item-date">
+                    <label class="toolbar-label" for="inputRequisitionDate"><i class="fas fa-calendar-alt"></i> เลือกวันที่รายงาน:</label>
+                    <input type="date" id="inputRequisitionDate" class="toolbar-input" value="{{ selected_date }}" onchange="refreshRequisitionDate()" oninput="refreshRequisitionDate()">
+                </div>
+
+                <div class="quick-presets">
+                    <button type="button" class="btn-preset" onclick="setPresetDate('today')">วันนี้</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('yesterday')">เมื่อวาน</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('sample')">ตัวอย่าง (6 ก.ค. 68)</button>
+                    <button type="button" class="btn-preset" onclick="setPresetDate('oct15')">15 ต.ค. 69</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📱 Mobile View Mode & Zoom Controls (Mobile/Tablet Only) -->
+    <div class="mobile-view-bar" id="mobileViewBar">
+        <div class="view-mode-toggle">
+            <button type="button" class="btn-mode-tab active" id="btnModeFit" onclick="setMobileViewMode('fit')">
+                <i class="fas fa-compress-arrows-alt"></i> ย่อพอดีจอ
+            </button>
+            <button type="button" class="btn-mode-tab" id="btnModeActual" onclick="setMobileViewMode('actual')">
+                <i class="fas fa-search-plus"></i> ขนาดจริง 100%
+            </button>
+        </div>
+        <div class="zoom-stepper">
+            <button type="button" class="btn-zoom-step" onclick="zoomStep(-0.1)" title="ย่อขนาด"><i class="fas fa-minus"></i></button>
+            <span class="zoom-badge" id="zoomLevelText">พอดีจอ</span>
+            <button type="button" class="btn-zoom-step" onclick="zoomStep(0.1)" title="ขยายขนาด"><i class="fas fa-plus"></i></button>
+        </div>
+    </div>
+
+    <div class="mobile-hint" id="mobileHint">
+        <i class="fas fa-arrows-alt-h"></i> ปัดซ้าย-ขวาเพื่อเลื่อนดูตาราง A4 ทั้งแผ่น
+    </div>
+
+    <!-- 📄 Official Physical Requisition Sheet (A4 Portrait) -->
+    <div class="sheet-scroll-area" id="sheetScrollArea">
+        <div class="sheet-scale-wrapper" id="sheetScaleWrapper">
+            <div class="sheet-container" id="requisitionSheet">
+                
+                <!-- Document Header Section -->
+                <div class="doc-header-block">
+                    <h1 class="doc-title-main">ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา</h1>
+                    <div class="doc-org-name" contenteditable="true" id="orgName" title="คลิกเพื่อแก้ไขชื่อหน่วยงาน">
+                        จากหน่วยงาน{{ hospital_name | default('โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี') }}
+                    </div>
+                    <div class="doc-target-line">
+                        ถึง  ผู้รับผิดคลังยาใหญ่   ข้าพเจ้าขอเบิกเวชภัณฑ์มิใช่ยาตามข้างล่างนี้เพื่อใช้ในงานรักษาพยาบาล
+                    </div>
+                    <div class="doc-date-line">
+                        ตามใบเบิกนี้ภายใน  วันที่ <span class="underline-field" contenteditable="true" id="textDay">{{ req_day }}</span>
+                        เดือน <span class="underline-field" contenteditable="true" id="textMonth">{{ req_month }}</span>
+                        พ.ศ. <span class="underline-field" contenteditable="true" id="textYear">{{ req_year }}</span>
+                    </div>
+                </div>
+
+                <!-- Ledger Table Section (ตรงตามแบบฟอร์ม 7 คอลัมน์) -->
+                <table class="requisition-table" id="requisitionTable">
+                    <thead>
+                        <tr>
+                            <th class="col-seq">ลำดับที่</th>
+                            <th class="col-name">รายการ</th>
+                            <th class="col-unit">หน่วยนับ</th>
+                            <th class="col-qty-req">จำนวนเบิก</th>
+                            <th class="col-qty-disp">จำนวนจ่าย</th>
+                            <th class="col-stock-rem">คงเหลือ</th>
+                            <th class="col-remark">หมายเหตุ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requisitionTableBody">
+                        {% for it in items %}
+                        <tr class="row-data">
+                            <td class="col-seq cell-editable" contenteditable="true">{{ loop.index }}</td>
+                            <td class="col-name cell-editable" contenteditable="true">{{ it.name }}</td>
+                            <td class="col-unit cell-editable" contenteditable="true">{{ it.unit }}</td>
+                            <td class="col-qty-req cell-editable" contenteditable="true">{{ it.qty_requested }}</td>
+                            <td class="col-qty-disp cell-editable" contenteditable="true">{{ it.qty_dispensed }}</td>
+                            <td class="col-stock-rem cell-editable" contenteditable="true">{{ it.remaining_stock }}</td>
+                            <td class="col-remark cell-editable" contenteditable="true">{{ it.notes or '' }}</td>
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Pad with pre-printed empty rows to fill full A4 page -->
+                        {% for i in range(empty_rows_count) %}
+                        <tr class="row-empty">
+                            <td class="col-seq cell-editable" contenteditable="true">{% if items | length == 0 %}{{ i + 1 }}{% else %}&nbsp;{% endif %}</td>
+                            <td class="col-name cell-editable" contenteditable="true">&nbsp;</td>
+                            <td class="col-unit cell-editable" contenteditable="true">&nbsp;</td>
+                            <td class="col-qty-req cell-editable" contenteditable="true">&nbsp;</td>
+                            <td class="col-qty-disp cell-editable" contenteditable="true">&nbsp;</td>
+                            <td class="col-stock-rem cell-editable" contenteditable="true">&nbsp;</td>
+                            <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <!-- Official 4 Signatories Section (ตรงตามรูปภาพตัวอย่าง 100%) -->
+                <div class="signatures-section">
+                    <!-- 1. ผู้เบิก (ซ้ายบน) -->
+                    <div class="sig-block">
+                        <div class="sig-dots-row">
+                            <span>(ลงชื่อ)</span>
+                            <span class="sig-dots-line"></span>
+                            <span>ผู้เบิก</span>
+                        </div>
+                        <div class="sig-name" contenteditable="true" id="nameRequester">( {{ requester_name | default('นางสาวกรรณิกา ชัยเลิศ') }} )</div>
+                        <div class="sig-title" contenteditable="true" id="titleRequester">ตำแหน่ง {{ requester_title | default('พยาบาลวิชาชีพชำนาญการ') }}</div>
+                    </div>
+
+                    <!-- 2. ผู้จ่าย (ขวาบน) -->
+                    <div class="sig-block">
+                        <div class="sig-dots-row">
+                            <span>(ลงชื่อ)</span>
+                            <span class="sig-dots-line"></span>
+                            <span>ผู้จ่าย</span>
+                        </div>
+                        <div class="sig-name" contenteditable="true" id="nameDispenser">( {{ dispenser_name | default('นางสาววราภรณ์ สีหนาจ') }} )</div>
+                        <div class="sig-title" contenteditable="true" id="titleDispenser">ตำแหน่ง {{ dispenser_title | default('พยาบาลวิชาชีพชำนาญการ') }}</div>
+                    </div>
+
+                    <!-- 3. ผู้สั่งจ่าย (ซ้ายล่าง) -->
+                    <div class="sig-block">
+                        <div class="sig-dots-row">
+                            <span>(ลงชื่อ)</span>
+                            <span class="sig-dots-line"></span>
+                            <span>ผู้สั่งจ่าย</span>
+                        </div>
+                        <div class="sig-name" contenteditable="true" id="nameAuthorizer">( {{ authorizer_name | default('นายชุมสาย  วิชาชัย') }} )</div>
+                        <div class="sig-title" contenteditable="true" id="titleAuthorizer">ตำแหน่ง {{ authorizer_title | default('ผอ.รพ.สต.ดอนนาลับ') }}</div>
+                    </div>
+
+                    <!-- 4. ผู้รับ (ขวาล่าง) -->
+                    <div class="sig-block">
+                        <div class="sig-dots-row">
+                            <span>(ลงชื่อ)</span>
+                            <span class="sig-dots-line"></span>
+                            <span>ผู้รับ</span>
+                        </div>
+                        <div class="sig-name" contenteditable="true" id="nameReceiver">( {{ receiver_name | default('นางกัลตะนา เมืองจันทร์') }} )</div>
+                        <div class="sig-title" contenteditable="true" id="titleReceiver">ตำแหน่ง {{ receiver_title | default('พสอ.') }}</div>
+                    </div>
+                </div>
+
+            </div> <!-- #requisitionSheet -->
+        </div> <!-- #sheetScaleWrapper -->
+    </div> <!-- #sheetScrollArea -->
+
+    <script>
+        const TOTAL_DOC_ROWS = 18;
+
+        function setPresetDate(preset) {
+            const dateInput = document.getElementById('inputRequisitionDate');
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+
+            if (preset === 'today') {
+                dateInput.value = `${y}-${m}-${d}`;
+            } else if (preset === 'yesterday') {
+                const past = new Date();
+                past.setDate(past.getDate() - 1);
+                dateInput.value = `${past.getFullYear()}-${String(past.getMonth()+1).padStart(2,'0')}-${String(past.getDate()).padStart(2,'0')}`;
+            } else if (preset === 'sample') {
+                dateInput.value = '2025-07-06';
+            } else if (preset === 'oct15') {
+                dateInput.value = '2026-10-15';
+            }
+            refreshRequisitionDate();
+        }
+
+        function refreshRequisitionDate() {
+            const dateVal = document.getElementById('inputRequisitionDate').value;
+            if (!dateVal) return;
+
+            const table = document.getElementById('requisitionTable');
+            if (table) table.style.opacity = '0.35';
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code') || '';
+            let apiUrl = `/api/daily-requisition/data?date=${encodeURIComponent(dateVal)}`;
+            if (code) apiUrl += `&code=${encodeURIComponent(code)}`;
+
+            fetch(apiUrl)
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) {
+                        alert(res.error || 'ไม่สามารถโหลดข้อมูลได้');
+                        return;
+                    }
+                    renderRequisitionData(res.data);
+
+                    // Sync URL history
+                    try {
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.set('date', dateVal);
+                        window.history.replaceState({}, '', newUrl.toString());
+                    } catch (e) {}
+                })
+                .catch(err => {
+                    console.error('Fetch daily requisition error:', err);
+                })
+                .finally(() => {
+                    if (table) table.style.opacity = '1';
+                });
+        }
+
+        function renderRequisitionData(data) {
+            if (!data) return;
+
+            // 1. Update Thai Date in Header
+            document.getElementById('textDay').innerText = data.day || '';
+            document.getElementById('textMonth').innerText = data.month_thai || '';
+            document.getElementById('textYear').innerText = data.year_be || '';
+
+            // 2. Render Table Rows
+            const tbody = document.getElementById('requisitionTableBody');
+            if (!tbody) return;
+
+            const items = data.items || [];
+            let html = '';
+
+            items.forEach((it, idx) => {
+                html += `
+                    <tr class="row-data">
+                        <td class="col-seq cell-editable" contenteditable="true">${idx + 1}</td>
+                        <td class="col-name cell-editable" contenteditable="true">${escapeHtml(it.name || '')}</td>
+                        <td class="col-unit cell-editable" contenteditable="true">${escapeHtml(it.unit || '')}</td>
+                        <td class="col-qty-req cell-editable" contenteditable="true">${it.qty_requested != null ? it.qty_requested : ''}</td>
+                        <td class="col-qty-disp cell-editable" contenteditable="true">${it.qty_dispensed != null ? it.qty_dispensed : ''}</td>
+                        <td class="col-stock-rem cell-editable" contenteditable="true">${it.remaining_stock != null ? it.remaining_stock : ''}</td>
+                        <td class="col-remark cell-editable" contenteditable="true">${escapeHtml(it.notes || '')}</td>
+                    </tr>
+                `;
+            });
+
+            // Fill empty rows to make full page
+            const emptyCount = Math.max(0, TOTAL_DOC_ROWS - items.length);
+            for (let i = 0; i < emptyCount; i++) {
+                const seq = (items.length === 0) ? (i + 1) : '&nbsp;';
+                html += `
+                    <tr class="row-empty">
+                        <td class="col-seq cell-editable" contenteditable="true">${seq}</td>
+                        <td class="col-name cell-editable" contenteditable="true">&nbsp;</td>
+                        <td class="col-unit cell-editable" contenteditable="true">&nbsp;</td>
+                        <td class="col-qty-req cell-editable" contenteditable="true">&nbsp;</td>
+                        <td class="col-qty-disp cell-editable" contenteditable="true">&nbsp;</td>
+                        <td class="col-stock-rem cell-editable" contenteditable="true">&nbsp;</td>
+                        <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
+                    </tr>
+                `;
+            }
+
+            tbody.innerHTML = html;
+            setTimeout(updateSheetScaling, 50);
+        }
+
+        function addNewItemRow() {
+            const tbody = document.getElementById('requisitionTableBody');
+            if (!tbody) return;
+
+            // Find first empty row or append
+            const emptyRows = tbody.querySelectorAll('.row-empty');
+            if (emptyRows.length > 0) {
+                const target = emptyRows[0];
+                target.className = 'row-data';
+                target.cells[0].innerText = tbody.querySelectorAll('.row-data').length;
+                target.cells[1].focus();
+            } else {
+                const curCount = tbody.querySelectorAll('tr').length;
+                const tr = document.createElement('tr');
+                tr.className = 'row-data';
+                tr.innerHTML = `
+                    <td class="col-seq cell-editable" contenteditable="true">${curCount + 1}</td>
+                    <td class="col-name cell-editable" contenteditable="true">&nbsp;</td>
+                    <td class="col-unit cell-editable" contenteditable="true">&nbsp;</td>
+                    <td class="col-qty-req cell-editable" contenteditable="true">&nbsp;</td>
+                    <td class="col-qty-disp cell-editable" contenteditable="true">&nbsp;</td>
+                    <td class="col-stock-rem cell-editable" contenteditable="true">&nbsp;</td>
+                    <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
+                `;
+                tbody.appendChild(tr);
+                tr.cells[1].focus();
+            }
+            setTimeout(updateSheetScaling, 50);
+        }
+
+        function exportDailyRequisitionExcel() {
+            const dateVal = document.getElementById('inputRequisitionDate').value;
+            const code = new URLSearchParams(window.location.search).get('code') || '';
+            const reqName = (document.getElementById('nameRequester')?.innerText || '').replace(/[()]/g, '').trim();
+            const dispName = (document.getElementById('nameDispenser')?.innerText || '').replace(/[()]/g, '').trim();
+            const authName = (document.getElementById('nameAuthorizer')?.innerText || '').replace(/[()]/g, '').trim();
+            const recName = (document.getElementById('nameReceiver')?.innerText || '').replace(/[()]/g, '').trim();
+
+            let exportUrl = `/api/daily-requisition/export-excel?date=${encodeURIComponent(dateVal)}`;
+            if (code) exportUrl += `&code=${encodeURIComponent(code)}`;
+            if (reqName) exportUrl += `&requester=${encodeURIComponent(reqName)}`;
+            if (dispName) exportUrl += `&dispenser=${encodeURIComponent(dispName)}`;
+            if (authName) exportUrl += `&authorizer=${encodeURIComponent(authName)}`;
+            if (recName) exportUrl += `&receiver=${encodeURIComponent(recName)}`;
+
+            window.location.href = exportUrl;
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // ── Mobile Responsiveness & View Mode Scaling ──
+        let currentViewMode = (window.innerWidth < 992) ? 'fit' : 'actual';
+        let currentCustomScale = 1.0;
+
+        function updateSheetScaling() {
+            const area = document.getElementById('sheetScrollArea');
+            const wrapper = document.getElementById('sheetScaleWrapper');
+            const sheet = document.getElementById('requisitionSheet');
+            const badge = document.getElementById('zoomLevelText');
+            const hint = document.getElementById('mobileHint');
+            const btnFit = document.getElementById('btnModeFit');
+            const btnActual = document.getElementById('btnModeActual');
+            if (!area || !wrapper || !sheet) return;
+
+            if (window.innerWidth >= 992) {
+                wrapper.style.transform = '';
+                wrapper.style.width = '';
+                wrapper.style.height = '';
+                wrapper.style.marginBottom = '';
+                wrapper.style.marginRight = '';
+                area.style.overflowX = 'visible';
+                if (hint) hint.style.display = 'none';
+                return;
+            }
+
+            if (currentViewMode === 'fit') {
+                if (btnFit) btnFit.classList.add('active');
+                if (btnActual) btnActual.classList.remove('active');
+
+                const availableW = Math.max(280, area.clientWidth - 16);
+                const sheetW = 794;
+                const sheetH = sheet.offsetHeight || 1123;
+                const scale = Math.min(1.0, Math.max(0.25, availableW / sheetW));
+                currentCustomScale = scale;
+
+                wrapper.style.transform = `scale(${scale})`;
+                wrapper.style.transformOrigin = 'top left';
+                wrapper.style.width = `${sheetW}px`;
+                wrapper.style.height = `${sheetH}px`;
+                wrapper.style.marginBottom = `-${Math.round(sheetH * (1 - scale))}px`;
+                wrapper.style.marginRight = `-${Math.round(sheetW * (1 - scale))}px`;
+                area.style.overflowX = 'hidden';
+                area.scrollLeft = 0;
+
+                if (badge) badge.innerText = `${Math.round(scale * 100)}%`;
+                if (hint) hint.style.display = 'none';
+            } else if (currentViewMode === 'actual') {
+                if (btnFit) btnFit.classList.remove('active');
+                if (btnActual) btnActual.classList.add('active');
+
+                wrapper.style.transform = '';
+                wrapper.style.width = '';
+                wrapper.style.height = '';
+                wrapper.style.marginBottom = '';
+                wrapper.style.marginRight = '';
+                area.style.overflowX = 'auto';
+                currentCustomScale = 1.0;
+
+                if (badge) badge.innerText = '100%';
+                if (hint) hint.style.display = 'flex';
+            } else if (currentViewMode === 'custom') {
+                if (btnFit) btnFit.classList.remove('active');
+                if (btnActual) btnActual.classList.remove('active');
+
+                const scale = currentCustomScale;
+                const sheetW = 794;
+                const sheetH = sheet.offsetHeight || 1123;
+
+                wrapper.style.transform = `scale(${scale})`;
+                wrapper.style.transformOrigin = 'top left';
+                wrapper.style.width = `${sheetW}px`;
+                wrapper.style.height = `${sheetH}px`;
+
+                if (scale < 1.0) {
+                    wrapper.style.marginBottom = `-${Math.round(sheetH * (1 - scale))}px`;
+                    wrapper.style.marginRight = `-${Math.round(sheetW * (1 - scale))}px`;
+                    area.style.overflowX = (sheetW * scale > area.clientWidth) ? 'auto' : 'hidden';
+                } else {
+                    wrapper.style.marginBottom = `${Math.round(sheetH * (scale - 1))}px`;
+                    wrapper.style.marginRight = `${Math.round(sheetW * (scale - 1))}px`;
+                    area.style.overflowX = 'auto';
+                }
+
+                if (badge) badge.innerText = `${Math.round(scale * 100)}%`;
+                if (hint) hint.style.display = (sheetW * scale > area.clientWidth) ? 'flex' : 'none';
+            }
+        }
+
+        function setMobileViewMode(mode) {
+            currentViewMode = mode;
+            updateSheetScaling();
+        }
+
+        function zoomStep(delta) {
+            currentViewMode = 'custom';
+            let nextScale = Math.round((currentCustomScale + delta) * 10) / 10;
+            nextScale = Math.min(1.5, Math.max(0.3, nextScale));
+            currentCustomScale = nextScale;
+            updateSheetScaling();
+        }
+
+        window.addEventListener('resize', updateSheetScaling);
+        window.addEventListener('orientationchange', () => setTimeout(updateSheetScaling, 250));
+        document.addEventListener('DOMContentLoaded', () => setTimeout(updateSheetScaling, 100));
+        setTimeout(updateSheetScaling, 100);
+    </script>
+</body>
+</html>

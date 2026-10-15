@@ -354,6 +354,207 @@ def export_stock_card_excel():
         download_name=filename
     )
 
+@app.route("/daily-requisition")
+@login_required
+def daily_requisition_view():
+    u = current_user()
+    now_dt = datetime.now()
+    default_date = request.args.get("date") or now_dt.strftime("%Y-%m-%d")
+
+    data = database.get_daily_requisition_data(default_date)
+    items = data["items"]
+    empty_rows_count = max(0, 18 - len(items))
+
+    return render_template(
+        "daily_requisition.html",
+        selected_date=default_date,
+        req_day=data["day"],
+        req_month=data["month_thai"],
+        req_year=data["year_be"],
+        items=items,
+        empty_rows_count=empty_rows_count,
+        hospital_name=data["hospital_name"],
+        requester_name=data["requester_name"],
+        requester_title=data["requester_title"],
+        dispenser_name=data["dispenser_name"],
+        dispenser_title=data["dispenser_title"],
+        authorizer_name=data["authorizer_name"],
+        authorizer_title=data["authorizer_title"],
+        receiver_name=data["receiver_name"],
+        receiver_title=data["receiver_title"],
+        current_user=u,
+        base_url=Config.BASE_URL
+    )
+
+@app.route("/api/daily-requisition/data", methods=["GET"])
+@login_required
+def api_daily_requisition_data():
+    date_val = request.args.get("date")
+    data = database.get_daily_requisition_data(date_val)
+    if not data:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลสำหรับวันที่ระบุ"}), 404
+    return jsonify({"ok": True, "data": data})
+
+@app.route("/api/daily-requisition/export-excel", methods=["GET"])
+@login_required
+def export_daily_requisition_excel():
+    date_val = request.args.get("date")
+    data = database.get_daily_requisition_data(date_val)
+    if not data:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลสำหรับวันที่ระบุ"}), 404
+
+    requester = request.args.get("requester") or data["requester_name"]
+    dispenser = request.args.get("dispenser") or data["dispenser_name"]
+    authorizer = request.args.get("authorizer") or data["authorizer_name"]
+    receiver = request.args.get("receiver") or data["receiver_name"]
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    import io
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Daily Requisition"
+
+    font_title = Font(name="Sarabun", size=15, bold=True)
+    font_bold = Font(name="Sarabun", size=11, bold=True)
+    font_regular = Font(name="Sarabun", size=11)
+    align_center = Alignment(horizontal="center", vertical="center")
+    align_left = Alignment(horizontal="left", vertical="center")
+    align_right = Alignment(horizontal="right", vertical="center")
+    border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    fill_header = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา"
+    ws["A1"].font = font_title
+    ws["A1"].alignment = align_center
+
+    ws.merge_cells("A2:G2")
+    ws["A2"] = f"จากหน่วยงาน{data['hospital_name']}"
+    ws["A2"].font = font_bold
+    ws["A2"].alignment = align_center
+
+    ws.merge_cells("A3:G3")
+    ws["A3"] = "ถึง  ผู้รับผิดคลังยาใหญ่   ข้าพเจ้าขอเบิกเวชภัณฑ์มิใช่ยาตามข้างล่างนี้เพื่อใช้ในงานรักษาพยาบาล"
+    ws["A3"].font = font_regular
+    ws["A3"].alignment = align_center
+
+    ws.merge_cells("A4:G4")
+    ws["A4"] = f"ตามใบเบิกนี้ภายใน  วันที่ {data['day']}  เดือน {data['month_thai']}  พ.ศ. {data['year_be']}"
+    ws["A4"].font = font_regular
+    ws["A4"].alignment = align_center
+
+    headers = ["ลำดับที่", "รายการ", "หน่วยนับ", "จำนวนเบิก", "จำนวนจ่าย", "คงเหลือ", "หมายเหตุ"]
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=6, column=col_num, value=header)
+        cell.font = font_bold
+        cell.alignment = align_center
+        cell.border = border_thin
+        cell.fill = fill_header
+
+    r_idx = 6
+    items = data.get("items", [])
+    for idx, it in enumerate(items, 1):
+        r_idx += 1
+        ws.cell(row=r_idx, column=1, value=idx).alignment = align_center
+        ws.cell(row=r_idx, column=2, value=it.get("name", "")).alignment = align_left
+        ws.cell(row=r_idx, column=3, value=it.get("unit", "")).alignment = align_center
+        ws.cell(row=r_idx, column=4, value=it.get("qty_requested", 0)).alignment = align_center
+        ws.cell(row=r_idx, column=5, value=it.get("qty_dispensed", 0)).alignment = align_center
+        ws.cell(row=r_idx, column=6, value=it.get("remaining_stock", 0)).alignment = align_center
+        ws.cell(row=r_idx, column=7, value=it.get("notes", "")).alignment = align_left
+        for c in range(1, 8):
+            ws.cell(row=r_idx, column=c).border = border_thin
+            ws.cell(row=r_idx, column=c).font = font_regular
+
+    # Pad with empty rows to at least 18 rows
+    empty_count = max(0, 18 - len(items))
+    for i in range(empty_count):
+        r_idx += 1
+        seq_val = len(items) + i + 1 if len(items) == 0 else ""
+        ws.cell(row=r_idx, column=1, value=seq_val).alignment = align_center
+        for c in range(1, 8):
+            ws.cell(row=r_idx, column=c).border = border_thin
+            ws.cell(row=r_idx, column=c).font = font_regular
+
+    # Signatures block
+    r_idx += 2
+    # Row 1 of signatures: ผู้เบิก and ผู้จ่าย
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=1, value="(ลงชื่อ) .................................................... ผู้เบิก").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_regular
+
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=7)
+    ws.cell(row=r_idx, column=5, value="(ลงชื่อ) .................................................... ผู้จ่าย").alignment = align_center
+    ws.cell(row=r_idx, column=5).font = font_regular
+
+    r_idx += 1
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=1, value=f"( {requester} )").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_bold
+
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=7)
+    ws.cell(row=r_idx, column=5, value=f"( {dispenser} )").alignment = align_center
+    ws.cell(row=r_idx, column=5).font = font_bold
+
+    r_idx += 1
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=1, value=f"ตำแหน่ง {data['requester_title']}").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_regular
+
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=7)
+    ws.cell(row=r_idx, column=5, value=f"ตำแหน่ง {data['dispenser_title']}").alignment = align_center
+    ws.cell(row=r_idx, column=5).font = font_regular
+
+    r_idx += 2
+    # Row 2 of signatures: ผู้สั่งจ่าย and ผู้รับ
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=1, value="(ลงชื่อ) .................................................... ผู้สั่งจ่าย").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_regular
+
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=7)
+    ws.cell(row=r_idx, column=5, value="(ลงชื่อ) .................................................... ผู้รับ").alignment = align_center
+    ws.cell(row=r_idx, column=5).font = font_regular
+
+    r_idx += 1
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=1, value=f"( {authorizer} )").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_bold
+
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=7)
+    ws.cell(row=r_idx, column=5, value=f"( {receiver} )").alignment = align_center
+    ws.cell(row=r_idx, column=5).font = font_bold
+
+    r_idx += 1
+    ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=3)
+    ws.cell(row=r_idx, column=1, value=f"ตำแหน่ง {data['authorizer_title']}").alignment = align_center
+    ws.cell(row=r_idx, column=1).font = font_regular
+
+    ws.merge_cells(start_row=r_idx, start_column=5, end_row=r_idx, end_column=7)
+    ws.cell(row=r_idx, column=5, value=f"ตำแหน่ง {data['receiver_title']}").alignment = align_center
+    ws.cell(row=r_idx, column=5).font = font_regular
+
+    ws.column_dimensions['A'].width = 10
+    ws.column_dimensions['B'].width = 38
+    ws.column_dimensions['C'].width = 14
+    ws.column_dimensions['D'].width = 14
+    ws.column_dimensions['E'].width = 14
+    ws.column_dimensions['F'].width = 14
+    ws.column_dimensions['G'].width = 16
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"daily_requisition_{data['date'].replace('-', '')}.xlsx"
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
 @app.route("/login")
 def login_page():
     code = (request.args.get('code') or request.args.get('passcode') or '').strip()

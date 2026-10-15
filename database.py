@@ -1841,5 +1841,113 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         "end_date": end_date or ""
     }
 
+def get_daily_requisition_data(date_str: str = None):
+    """
+    Retrieve aggregated daily requisition data for 'ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา'.
+    Aggregates dispensing logs for the given date, detailing item names, units, 
+    requested qty, dispensed qty, and remaining stock.
+    """
+    if not date_str or not date_str.strip():
+        now_dt = datetime.now(BANGKOK_TZ)
+        date_str = now_dt.strftime("%Y-%m-%d")
+    else:
+        date_str = date_str.strip()
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    start_ts = f"{date_str} 00:00:00"
+    end_ts = f"{date_str} 23:59:59"
+
+    # Fetch logs for the specified day
+    query = """
+        SELECT 
+            dispensing_logs.id,
+            dispensing_logs.drug_id,
+            COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
+            COALESCE(drugs.generic_name, '') as generic_name,
+            COALESCE(drugs.unit, 'หน่วย') as unit,
+            COALESCE(drugs.stock_qty, 0) as current_stock,
+            dispensing_logs.quantity,
+            dispensing_logs.patient_name,
+            dispensing_logs.notes,
+            dispensing_logs.created_at
+        FROM dispensing_logs
+        LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
+        WHERE dispensing_logs.is_voided = 0
+          AND dispensing_logs.created_at >= ?
+          AND dispensing_logs.created_at <= ?
+        ORDER BY dispensing_logs.id ASC
+    """
+    cursor.execute(query, (start_ts, end_ts))
+    raw_logs = [dict(r) for r in cursor.fetchall()]
+
+    # Group by drug_id (or drug_name if drug_id is null)
+    items_map = {}
+    for log in raw_logs:
+        key = log["drug_id"] if log["drug_id"] else log["drug_name"]
+        qty = log.get("quantity") or 0
+        if key not in items_map:
+            display_name = log["generic_name"] if log["generic_name"] else log["drug_name"]
+            items_map[key] = {
+                "drug_id": log["drug_id"],
+                "name": display_name,
+                "unit": log["unit"] or "หน่วย",
+                "qty_requested": qty,
+                "qty_dispensed": qty,
+                "remaining_stock": log["current_stock"],
+                "notes": log["notes"] or ""
+            }
+        else:
+            items_map[key]["qty_requested"] += qty
+            items_map[key]["qty_dispensed"] += qty
+            if log["notes"] and not items_map[key]["notes"]:
+                items_map[key]["notes"] = log["notes"]
+
+    items = list(items_map.values())
+
+    # Format Thai date components
+    thai_months = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+                   "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"]
+    thai_months_short = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+                         "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+    
+    try:
+        parts = date_str.split("-")
+        y = int(parts[0])
+        m = int(parts[1])
+        d = int(parts[2])
+        day_str = str(d)
+        month_name = thai_months[m] if 1 <= m <= 12 else str(m)
+        month_short = thai_months_short[m] if 1 <= m <= 12 else str(m)
+        year_be = str(y + 543)
+    except Exception:
+        day_str = ""
+        month_name = ""
+        month_short = ""
+        year_be = ""
+
+    conn.close()
+
+    return {
+        "date": date_str,
+        "day": day_str,
+        "month_thai": month_name,
+        "month_short": month_short,
+        "year_be": year_be,
+        "items": items,
+        "total_items": len(items),
+        "total_dispensed_qty": sum(it["qty_dispensed"] for it in items),
+        "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
+        "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
+        "requester_title": "พยาบาลวิชาชีพชำนาญการ",
+        "dispenser_name": "นางสาววราภรณ์ สีหนาจ",
+        "dispenser_title": "พยาบาลวิชาชีพชำนาญการ",
+        "authorizer_name": "นายชุมสาย วิชาชัย",
+        "authorizer_title": "ผอ.รพ.สต.ดอนนาลับ",
+        "receiver_name": "นางกัลตะนา เมืองจันทร์",
+        "receiver_title": "พสอ."
+    }
+
 # Initialize on module import
 init_db()
