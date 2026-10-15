@@ -3868,6 +3868,18 @@ function openEditStockInModal(logId) {
 
     calcEditStockInImpact();
 
+    // Check if delete button should warn or disable
+    const delBtn = document.getElementById('btnDeleteFromEditModal');
+    if (delBtn) {
+        if (curStock < (log.quantity || 0)) {
+            delBtn.title = `ไม่สามารถลบได้เพราะยาถูกจ่ายไปแล้วจนเหลือคงคลัง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${log.quantity})`;
+            delBtn.style.opacity = '0.45';
+        } else {
+            delBtn.title = 'ลบรายการนี้';
+            delBtn.style.opacity = '1';
+        }
+    }
+
     const modal = document.getElementById('editStockInModal');
     if (modal) modal.classList.add('active');
 }
@@ -3887,18 +3899,31 @@ function calcEditStockInImpact() {
         totalCostInp.value = '฿' + (newQty * cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    const curStock = parseInt(document.getElementById('editPreviewCurrentStock')?.textContent || '0', 10);
     const diff = newQty - origQty;
     const hintEl = document.getElementById('editStockInImpactHint');
+    const saveBtn = document.getElementById('btnSaveEditStockIn');
+
     if (hintEl) {
         if (diff === 0) {
             hintEl.textContent = 'จำนวนรับเข้าเท่าเดิม ไม่กระทบสต็อกปัจจุบัน';
             hintEl.style.color = 'var(--text-muted)';
+            if (saveBtn) saveBtn.disabled = false;
         } else if (diff > 0) {
-            hintEl.textContent = `สต็อกยาจะเพิ่มขึ้น +${diff} หน่วย (จากเดิมรับเข้า ${origQty})`;
+            hintEl.innerHTML = `<i class="fas fa-arrow-trend-up"></i> สต็อกยาจะเพิ่มขึ้น +${diff} หน่วย (จากคงเหลือปัจจุบัน ${curStock} ➔ <strong>${curStock + diff}</strong>)`;
             hintEl.style.color = '#059669';
+            if (saveBtn) saveBtn.disabled = false;
         } else {
-            hintEl.textContent = `สต็อกยาจะลดลง ${diff} หน่วย (จากเดิมรับเข้า ${origQty})`;
-            hintEl.style.color = '#DC2626';
+            // User is reducing received quantity
+            if (curStock + diff < 0) {
+                hintEl.innerHTML = `⚠️ <strong>ไม่สามารถลดยอดรับเข้าเหลือ ${newQty} ได้:</strong> ยานี้ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย หากลดลง ${Math.abs(diff)} หน่วย สต็อกจะติดลบ (${curStock + diff}) ระบบจึงล็อคป้องกันไว้`;
+                hintEl.style.color = '#DC2626';
+                if (saveBtn) saveBtn.disabled = true;
+            } else {
+                hintEl.innerHTML = `<i class="fas fa-arrow-trend-down"></i> สต็อกยาจะลดลง ${diff} หน่วย (จากคงเหลือปัจจุบัน ${curStock} ➔ <strong>${curStock + diff}</strong>)`;
+                hintEl.style.color = '#D97706';
+                if (saveBtn) saveBtn.disabled = false;
+            }
         }
     }
 }
@@ -3966,9 +3991,18 @@ async function saveEditStockIn(event) {
 async function deleteStockInRecord(logId) {
     const log = stockInLogsList.find(l => Number(l.id) === Number(logId));
     const drugName = log ? log.drug_name : `รายการ #${logId}`;
-    const qty = log ? log.quantity : '';
+    const qty = log ? Number(log.quantity || 0) : 0;
 
-    if (!confirm(`คุณต้องการลบรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาจะถูกปรับลดยอดรับเข้านี้ออก`)) {
+    // Check drug stock
+    const drug = typeof allDrugs !== 'undefined' ? allDrugs.find(d => Number(d.id) === Number(log?.drug_id)) : null;
+    const curStock = drug ? Number(drug.stock_qty || 0) : (log?.current_drug_stock != null ? Number(log.current_drug_stock) : null);
+
+    if (curStock !== null && curStock < qty) {
+        showToast(`❌ ไม่สามารถลบรายการรับเข้าได้: ยา '${drugName}' ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${qty} หน่วย) ระบบบล็อกไว้เพื่อป้องกันไม่ให้สต็อกติดลบ`, 'error', 7000);
+        return;
+    }
+
+    if (!confirm(`คุณต้องการลบรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาในคลังจะถูกปรับลดลง ${qty} หน่วย (จากคงเหลือ ${curStock !== null ? curStock : 'ปัจจุบัน'} ➔ ${curStock !== null ? curStock - qty : ''})`)) {
         return;
     }
 
