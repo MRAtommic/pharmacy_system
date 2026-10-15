@@ -1413,7 +1413,7 @@ body {
   overflow-x: auto !important;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 2rem;
+  padding-bottom: 0.5rem;
 }
 
 .clinical-table {
@@ -1427,7 +1427,82 @@ body {
 }
 
 #view-logs .clinical-table {
-  min-width: 1100px;
+  min-width: 900px;
+  width: 100%;
+}
+
+#view-logs .clinical-table th,
+#view-logs .clinical-table td {
+  padding: 0.65rem 0.65rem;
+}
+
+#view-logs .clinical-table th.col-thumb,
+#view-logs .clinical-table td.col-thumb,
+#view-logs #logsTableBody td:first-child {
+  width: 52px !important;
+  min-width: 52px !important;
+  max-width: 52px !important;
+  padding: 6px 4px !important;
+  text-align: center !important;
+}
+
+#view-logs .clinical-table th.col-datetime,
+#view-logs .clinical-table td.col-datetime {
+  width: 145px !important;
+  min-width: 140px !important;
+  max-width: 155px !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  font-size: 0.8rem !important;
+  white-space: nowrap !important;
+}
+
+#view-logs .clinical-table th.col-drug,
+#view-logs .clinical-table td.col-drug {
+  width: auto !important;
+  min-width: 170px !important;
+}
+
+#view-logs .clinical-table th.col-qty,
+#view-logs .clinical-table td.col-qty {
+  width: 90px !important;
+  min-width: 85px !important;
+  max-width: 100px !important;
+  text-align: center !important;
+  padding-left: 0.35rem !important;
+  padding-right: 0.35rem !important;
+}
+
+#view-logs .clinical-table th.col-balance,
+#view-logs .clinical-table td.col-balance {
+  width: 120px !important;
+  min-width: 110px !important;
+  max-width: 130px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+#view-logs .clinical-table th.col-channel,
+#view-logs .clinical-table td.col-channel {
+  width: 100px !important;
+  min-width: 90px !important;
+  max-width: 110px !important;
+  text-align: center !important;
+}
+
+#view-logs .clinical-table th.col-dispenser,
+#view-logs .clinical-table td.col-dispenser {
+  width: 145px !important;
+  min-width: 130px !important;
+  max-width: 165px !important;
+}
+
+#view-logs .clinical-table th.col-action,
+#view-logs .clinical-table td.col-action {
+  width: 120px !important;
+  min-width: 110px !important;
+  max-width: 135px !important;
+  text-align: center !important;
 }
 
 #view-stockin .clinical-table {

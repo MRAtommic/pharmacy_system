@@ -1300,7 +1300,7 @@ function renderLogsTable(logs) {
                     <td class="col-datetime">
                         <i class="far fa-clock" style="color: var(--text-muted); margin-right: 6px;"></i>${escapeHtml(l.created_at || '-')}
                     </td>
-                    <td>
+                    <td class="col-drug">
                         <div style="font-weight: 700; color: var(--text-primary); font-size: 0.925rem; line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
                         <div style="display: flex; gap: 0.35rem; align-items: center; margin-top: 3px; flex-wrap: wrap;">
                             ${l.drug_code ? `<span class="code-pill">${escapeHtml(l.drug_code)}</span>` : ''}
@@ -1308,24 +1308,27 @@ function renderLogsTable(logs) {
                             ${l.batch_id ? `<a href="/api/dispense/requisition/batch/${escapeHtml(l.batch_id)}" target="_blank" class="code-pill" style="background: rgba(99, 102, 241, 0.08); color: #4338CA; border-color: rgba(99, 102, 241, 0.25); text-decoration: none; font-size: 0.675rem; font-weight: 600;" title="คลิกเพื่อเปิดใบสั่งยาทางการ (A4) รวมทั้งชุด"><i class="fas fa-clipboard-list"></i> ${escapeHtml(l.batch_id)}</a>` : ''}
                         </div>
                     </td>
-                    <td>
+                    <td class="col-qty" style="text-align: center;">
                         ${l.is_voided
                             ? `<span style="font-weight: 600; color: var(--text-muted); text-decoration: line-through; font-family: var(--font-mono); font-size: 0.85rem;">-${l.quantity}</span><div style="margin-top: 3px;"><span class="badge" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; font-size:0.675rem; padding:1px 5px;"><i class="fas fa-ban"></i> ยกเลิกแล้ว</span></div>`
                             : `<span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.875rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>
                                ${l.price && Number(l.price) > 0 ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 3px; font-weight: 500;">฿${(Number(l.price) * l.quantity).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="font-size: 0.65rem;">(@${Number(l.price).toFixed(2)})</span></div>` : ''}`
                         }
                     </td>
-                    <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">
+                    <td class="col-balance" style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; text-align: center;">
                         ${l.balance_before} <i class="fas fa-arrow-right" style="font-size: 0.7rem; color: var(--text-muted); margin: 0 3px;"></i> <strong style="color: var(--emerald-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
                     </td>
-                    <td>${channelBadge}</td>
-                    <td>
+                    <td class="col-channel" style="text-align: center;">
+                        ${channelBadge}
+                        ${l.drive_file_link ? `<div style="margin-top: 4px;"><a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 22px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> สลิป</a></div>` : ''}
+                    </td>
+                    <td class="col-dispenser">
                         <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">${escapeHtml(l.dispensed_by || '-')}</span>
                         ${l.patient_name ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-user" style="font-size: 0.65rem; color: var(--brand-500);"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
                         ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
                         ${l.is_voided && l.void_reason ? `<div style="font-size: 0.7rem; color: #DC2626; margin-top: 2px;"><i class="fas fa-info-circle"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})</div>` : ''}
                     </td>
-                    <td style="text-align: center;">
+                    <td class="col-action" style="text-align: center;">
                         <div style="display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap;">
                             ${l.batch_id ? `
                                 <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; font-weight: 600; padding: 0.2rem 0.5rem; font-size: 0.725rem;" title="พิมพ์ใบสั่งยา / ใบเบิกจ่ายทางการ A4 รวมทุกรายการในใบสั่งยานี้">
@@ -1340,7 +1343,6 @@ function renderLogsTable(logs) {
                             ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก" style="padding: 0.2rem 0.5rem; font-size: 0.725rem; height: 26px; color: var(--rose-600); border-color: var(--rose-200);"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
                         </div>
                     </td>
-                    <td style="text-align: right;">${driveBtn}</td>
                 </tr>
             `;
         }).join('');
