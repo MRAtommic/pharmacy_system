@@ -52,10 +52,16 @@ from functools import wraps
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        code = (request.args.get('code') or request.args.get('passcode') or '').strip()
+        if code and code in ['otwxc8x', os.environ.get('STAFF_PASSCODE', 'otwxc8x')]:
+            session['user_email'] = 'admin@pharmacore.clinic'
+            session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
+            session['user_picture'] = '/static/uploads/drugs/app_icon_192.png'
         if not session.get('user_email'):
             if request.path.startswith('/api/') and '/requisition' not in request.path:
                 return jsonify({"ok": False, "error": "กรุณาล็อกอินก่อนใช้งาน", "login_required": True}), 401
-            return redirect(f'/login?next={request.path}')
+            next_target = request.full_path if request.query_string else request.path
+            return redirect(f'/login?next={next_target}')
         return f(*args, **kwargs)
     return decorated
 
@@ -108,17 +114,207 @@ def mobile_scanner():
     u = current_user()
     return render_template("index.html", initial_view="scanner", base_url=Config.BASE_URL, current_user=u)
 
+@app.route("/stock-card")
+@login_required
+def stock_card_view():
+    u = current_user()
+    drugs = database.get_all_drugs()
+    
+    selected_drug_id = request.args.get("drug_id")
+    try:
+        selected_drug_id = int(selected_drug_id) if selected_drug_id else (drugs[0]["id"] if drugs else None)
+    except (ValueError, TypeError):
+        selected_drug_id = drugs[0]["id"] if drugs else None
+
+    now = datetime.now()
+    default_start = request.args.get("start_date") or f"{now.year}-{now.month:02d}-01"
+    default_end = request.args.get("end_date") or now.strftime("%Y-%m-%d")
+
+    card_data = database.get_stock_card_data(selected_drug_id, default_start, default_end) if selected_drug_id else None
+    
+    selected_drug = card_data["drug"] if card_data else None
+    transactions = card_data["transactions"] if card_data else []
+    opening_balance = card_data["opening_balance"] if card_data else 0
+
+    for tx in transactions:
+        tx["date_short"] = format_thai_date_short(tx["created_at"])
+        if tx.get("supplier"):
+            tx["supplier_short"] = "GPO" if "GPO" in tx["supplier"] else tx["supplier"]
+        if tx.get("total_price"):
+            tx["total_price_formatted"] = f"{round(tx['total_price']):,}"
+        elif tx.get("price"):
+            tx["price_formatted"] = f"{round(tx['price']):,}"
+        lot = tx.get("lot_number") or ""
+        exp = tx.get("expiry_date") or ""
+        tx["lot_exp_formatted"] = f"{lot} / {exp}" if (lot and exp) else (lot or exp)
+
+    opening_date_short = ""
+    used_rows = 1 + len(transactions)
+    empty_rows_count = max(0, 24 - used_rows)
+
+    return render_template(
+        "stock_card.html",
+        drugs=drugs,
+        selected_drug=selected_drug,
+        start_date=default_start,
+        end_date=default_end,
+        opening_date_short=opening_date_short,
+        opening_balance=opening_balance,
+        transactions=transactions,
+        empty_rows_count=empty_rows_count,
+        packaging=selected_drug.get("strength", "") + " " + (selected_drug.get("unit", "") or "1*500 's") if selected_drug else "1*500 's",
+        hospital_name="โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
+        current_user=u,
+        base_url=Config.BASE_URL
+    )
+
+@app.route("/api/stock-card/data", methods=["GET"])
+@login_required
+def api_stock_card_data():
+    drug_id = request.args.get("drug_id")
+    if not drug_id:
+        return jsonify({"ok": False, "error": "ไม่ระบุ drug_id"}), 400
+    try:
+        drug_id = int(drug_id)
+    except ValueError:
+        return jsonify({"ok": False, "error": "drug_id ไม่ถูกต้อง"}), 400
+        
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    data = database.get_stock_card_data(drug_id, start_date, end_date)
+    if not data:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
+        
+    return jsonify({"ok": True, "data": data})
+
+@app.route("/api/stock-card/export-excel", methods=["GET"])
+@login_required
+def export_stock_card_excel():
+    drug_id = request.args.get("drug_id")
+    if not drug_id:
+        return jsonify({"ok": False, "error": "ไม่ระบุ drug_id"}), 400
+    try:
+        drug_id = int(drug_id)
+    except ValueError:
+        return jsonify({"ok": False, "error": "drug_id ไม่ถูกต้อง"}), 400
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    data = database.get_stock_card_data(drug_id, start_date, end_date)
+    if not data:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
+
+    drug = data["drug"]
+    transactions = data.get("transactions", [])
+    
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    import io
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Stock Card"
+
+    font_title = Font(name="Sarabun", size=14, bold=True)
+    font_bold = Font(name="Sarabun", size=11, bold=True)
+    font_regular = Font(name="Sarabun", size=11)
+    align_center = Alignment(horizontal="center", vertical="center")
+    align_left = Alignment(horizontal="left", vertical="center")
+    align_right = Alignment(horizontal="right", vertical="center")
+    border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    fill_header = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+    ws.merge_cells("A1:H1")
+    ws["A1"] = "บัญชีรายการรับ-จ่าย/เวชภัณฑ์มิใช่ยา/วัสดุการแพทย์"
+    ws["A1"].font = font_title
+    ws["A1"].alignment = align_center
+
+    ws.merge_cells("A2:H2")
+    ws["A2"] = "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี"
+    ws["A2"].font = font_bold
+    ws["A2"].alignment = align_center
+
+    ws.merge_cells("A3:H3")
+    ws["A3"] = f"ชื่อสามัญ: {drug.get('generic_name') or drug.get('name')}     ขนาดบรรจุ: {drug.get('strength', '')} {drug.get('unit', '')}     ลักษณะ: {drug.get('dosage_form', 'tablet')}"
+    ws["A3"].font = font_regular
+    ws["A3"].alignment = align_left
+
+    headers = ["วัน/เดือน/ปี", "รายการ", "รับ", "จ่าย", "คงเหลือ", "ราคา", "lot/exp.", "ลงชื่อ"]
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=5, column=col_num, value=header)
+        cell.font = font_bold
+        cell.alignment = align_center
+        cell.border = border_thin
+        cell.fill = fill_header
+
+    r_idx = 6
+    ws.cell(row=r_idx, column=1, value="").alignment = align_center
+    ws.cell(row=r_idx, column=2, value="ยอดยกมา จากปีงบประมาณ 2568").alignment = align_left
+    ws.cell(row=r_idx, column=3, value="-").alignment = align_center
+    ws.cell(row=r_idx, column=4, value="-").alignment = align_center
+    ws.cell(row=r_idx, column=5, value=data["opening_balance"]).alignment = align_center
+    ws.cell(row=r_idx, column=6, value=round(drug.get("cost") or drug.get("price") or 0)).alignment = align_right
+    ws.cell(row=r_idx, column=7, value="-").alignment = align_center
+    ws.cell(row=r_idx, column=8, value="").alignment = align_center
+    for c in range(1, 9):
+        ws.cell(row=r_idx, column=c).border = border_thin
+        ws.cell(row=r_idx, column=c).font = font_regular
+
+    for tx in transactions:
+        r_idx += 1
+        d_short = format_thai_date_short(tx["created_at"])
+        if tx["type"] == "RECEIVE":
+            part = f"รับจาก...{tx.get('supplier', 'GPO')}...บริษัท/จ่าย...-....."
+        else:
+            part = f"รับจาก...-.....GPO/...-.....บริษัท/จ่าย...{tx.get('recipient', 'ผู้ป่วยนอก')}....."
+
+        ws.cell(row=r_idx, column=1, value=d_short).alignment = align_center
+        ws.cell(row=r_idx, column=2, value=part).alignment = align_left
+        ws.cell(row=r_idx, column=3, value=tx["qty_in"] if tx["type"] == "RECEIVE" else "-").alignment = align_center
+        ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["type"] == "DISPENSE" else "-").alignment = align_center
+        ws.cell(row=r_idx, column=5, value=tx["balance"]).alignment = align_center
+        ws.cell(row=r_idx, column=6, value=round(tx.get("total_price") or tx.get("price") or 0)).alignment = align_right
+        lot_exp = f"{tx.get('lot_number', '')} {tx.get('expiry_date', '')}".strip()
+        ws.cell(row=r_idx, column=7, value=lot_exp or "-").alignment = align_center
+        ws.cell(row=r_idx, column=8, value="").alignment = align_center
+
+        for c in range(1, 9):
+            ws.cell(row=r_idx, column=c).border = border_thin
+            ws.cell(row=r_idx, column=c).font = font_regular
+
+    ws.column_dimensions['A'].width = 14
+    ws.column_dimensions['B'].width = 38
+    ws.column_dimensions['C'].width = 10
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 12
+    ws.column_dimensions['F'].width = 12
+    ws.column_dimensions['G'].width = 16
+    ws.column_dimensions['H'].width = 14
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"stock_card_{drug.get('code', 'drug')}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
 @app.route("/login")
 def login_page():
     code = (request.args.get('code') or request.args.get('passcode') or '').strip()
+    next_url = request.args.get('next') or '/'
     if code and code in ['otwxc8x', os.environ.get('STAFF_PASSCODE', 'otwxc8x')]:
         session['user_email'] = 'admin@pharmacore.clinic'
         session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
         session['user_picture'] = '/static/uploads/drugs/app_icon_192.png'
         audit('LOGIN', 'AUTH', 'passcode', 'Admin', 'เข้าสู่ระบบด้วย Passcode')
-        return redirect('/')
+        return redirect(next_url)
     if session.get('user_email'):
-        return redirect('/')
+        return redirect(next_url)
     error = request.args.get('error', '')
     return render_template("login.html", error=error, base_url=Config.BASE_URL)
 

@@ -577,6 +577,9 @@ function renderDrugsTable(drugs) {
                                     <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">
                                         <i class="fas fa-plus" style="color: #059669; width:14px;"></i> รับยาเข้าคลัง
                                     </button>
+                                    <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">
+                                        <i class="fas fa-file-invoice" style="color: #0F766E; width:14px;"></i> บัญชีรับ-จ่าย (Stock Card)
+                                    </a>
                                     <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">
                                         <i class="fas fa-qrcode" style="color: #6366F1; width:14px;"></i> พิมพ์ QR Code
                                     </button>
@@ -657,6 +660,9 @@ function renderDrugsTable(drugs) {
                                 <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">
                                     <i class="fas fa-plus" style="color: #059669; width: 14px;"></i> รับยาเข้าคลัง
                                 </button>
+                                <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">
+                                    <i class="fas fa-file-invoice" style="color: #0F766E; width: 14px;"></i> บัญชีรับ-จ่าย (Stock Card)
+                                </a>
                                 <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">
                                     <i class="fas fa-qrcode" style="color: #6366F1; width: 14px;"></i> พิมพ์ QR Code
                                 </button>

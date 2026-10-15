@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>บัญชีรายการรับ-จ่าย/เวชภัณฑ์มิใช่ยา/วัสดุการแพทย์ (Stock Card)</title>
+    <!-- Google Fonts: Sarabun (Official Thai Government Standard) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            color: #000000;
+        }
+
+        body {
+            font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
+            background-color: #525659;
+            margin: 0;
+            padding: 70px 0 40px 0;
+            font-size: 14px;
+            line-height: 1.35;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* ── Screen-Only Interactive Control Toolbar ── */
+        .print-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #0F172A;
+            z-index: 9999;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            border-bottom: 1px solid #1E293B;
+            padding: 10px 1.5rem;
+            color: #FFFFFF;
+        }
+
+        .toolbar-inner {
+            max-width: 1300px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-label {
+            font-size: 0.8125rem;
+            color: #94A3B8;
+            font-weight: 500;
+        }
+
+        .toolbar-select, .toolbar-input {
+            height: 36px;
+            padding: 0 0.75rem;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            background: #1E293B;
+            color: #F8FAFC;
+            font-family: inherit;
+            font-size: 0.8125rem;
+            outline: none;
+        }
+
+        .toolbar-select:focus, .toolbar-input:focus {
+            border-color: #0F766E;
+            box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.3);
+        }
+
+        .btn-tool {
+            height: 36px;
+            padding: 0 1rem;
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+            text-decoration: none;
+        }
+
+        .btn-print {
+            background: #0F766E;
+            color: #FFFFFF;
+            border-color: #0F766E;
+        }
+        .btn-print:hover {
+            background: #115E59;
+            color: #FFFFFF;
+        }
+
+        .btn-outline-tool {
+            background: #1E293B;
+            color: #E2E8F0;
+            border-color: #334155;
+        }
+        .btn-outline-tool:hover {
+            background: #334155;
+            color: #FFFFFF;
+        }
+
+        .quick-presets {
+            display: flex;
+            gap: 0.35rem;
+        }
+
+        .btn-preset {
+            height: 28px;
+            padding: 0 0.6rem;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.08);
+            color: #CBD5E1;
+            border: 1px solid rgba(255,255,255,0.12);
+            cursor: pointer;
+        }
+        .btn-preset:hover {
+            background: rgba(255,255,255,0.16);
+            color: #FFFFFF;
+        }
+
+        /* ── Physical Sheet (A4 Portrait) ── */
+        .sheet-container {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: #FFFFFF;
+            padding: 16mm 14mm 16mm 18mm; /* Extra left padding for 2-hole/3-hole ring binder */
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        /* ── Header Information ── */
+        .card-header-block {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .card-title-main {
+            font-size: 17.5px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            margin-bottom: 3px;
+        }
+
+        .card-hospital-name {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            outline: none;
+        }
+
+        .card-meta-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            font-size: 13.5px;
+            font-weight: 500;
+            flex-wrap: nowrap;
+            width: 100%;
+            margin-bottom: 8px;
+            white-space: nowrap;
+        }
+
+        .meta-field {
+            display: inline-flex;
+            align-items: baseline;
+            white-space: nowrap;
+        }
+
+        .meta-label {
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .meta-dots {
+            color: #000000;
+            letter-spacing: 0.5px;
+            user-select: none;
+        }
+
+        .meta-dots-value {
+            border-bottom: 1px dotted #000000;
+            padding: 0 4px;
+            display: inline-block;
+            text-align: center;
+            font-weight: 600;
+            outline: none;
+        }
+
+        .meta-field-name .meta-dots-value {
+            min-width: 160px;
+        }
+
+        .meta-field-pkg .meta-dots-value {
+            min-width: 80px;
+        }
+
+        .meta-field-form .meta-dots-value {
+            min-width: 70px;
+        }
+
+        /* ── Ledger Grid Table ── */
+        .ledger-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1.5px solid #000000;
+            table-layout: fixed;
+            background: #FFFFFF;
+        }
+
+        .ledger-table th, 
+        .ledger-table td {
+            border: 1px solid #000000;
+            padding: 3.5px 4px;
+            font-size: 13px;
+            line-height: 1.25;
+            vertical-align: middle;
+        }
+
+        .ledger-table th {
+            font-weight: 700;
+            text-align: center;
+            background-color: #F8FAFC;
+            height: 28px;
+        }
+
+        /* Column Specific Alignments & Widths */
+        .col-date {
+            width: 10.5%;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .col-particulars {
+            width: 33.5%;
+            text-align: left;
+            padding-left: 5px !important;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .col-qty-in {
+            width: 6%;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .col-qty-out {
+            width: 6%;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .col-balance {
+            width: 7%;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .col-price {
+            width: 8%;
+            text-align: center;
+        }
+
+        .col-lot-exp {
+            width: 15%;
+            text-align: center;
+            font-size: 11px;
+            white-space: nowrap;
+            letter-spacing: -0.01em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .col-sign {
+            width: 14%;
+            text-align: center;
+            /* Explicitly left empty for handwritten signing */
+        }
+
+        .row-opening-balance td {
+            font-weight: 600;
+        }
+
+        .row-empty {
+            height: 25px;
+        }
+
+        .row-empty td {
+            color: #64748B;
+        }
+
+        .particulars-preprinted {
+            color: #334155;
+            font-size: 12.5px;
+            letter-spacing: -0.01em;
+        }
+
+        .fill-text {
+            color: #000000;
+            font-weight: 600;
+        }
+
+        /* ── Print Specific Adjustments ── */
+        @media print {
+            body {
+                background: #FFFFFF !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            .print-toolbar {
+                display: none !important;
+            }
+
+            .sheet-container {
+                width: 100% !important;
+                min-height: auto !important;
+                margin: 0 !important;
+                padding: 10mm 10mm 10mm 14mm !important;
+                box-shadow: none !important;
+                page-break-after: avoid;
+            }
+
+            .ledger-table th {
+                background-color: transparent !important;
+            }
+
+            .ledger-table th, 
+            .ledger-table td {
+                border-color: #000000 !important;
+            }
+
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 🛠️ Floating Control Toolbar (Screen Only) -->
+    <div class="print-toolbar">
+        <div class="toolbar-inner">
+            <div class="toolbar-group">
+                <a href="/" class="btn-tool btn-outline-tool" title="กลับหน้าแดชบอร์ดหลัก">
+                    <i class="fas fa-arrow-left"></i> กลับคลังยา
+                </a>
+
+                <label class="toolbar-label" for="selectDrug">เลือกยา:</label>
+                <select id="selectDrug" class="toolbar-select" onchange="onDrugChange()" style="min-width: 260px;">
+                    {% for d in drugs %}
+                    <option value="{{ d.id }}" {% if selected_drug and selected_drug.id == d.id %}selected{% endif %}>
+                        {{ d.name }} (คงเหลือ: {{ d.stock_qty }} {{ d.unit }})
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <label class="toolbar-label" for="inputStartDate">ตั้งแต่วันที่:</label>
+                <input type="date" id="inputStartDate" class="toolbar-input" value="{{ start_date }}" onchange="refreshStockCardData()">
+
+                <label class="toolbar-label" for="inputEndDate">ถึงวันที่:</label>
+                <input type="date" id="inputEndDate" class="toolbar-input" value="{{ end_date }}" onchange="refreshStockCardData()">
+
+                <div class="quick-presets">
+                    <button type="button" class="btn-preset" onclick="setPreset('this_month')">เดือนนี้</button>
+                    <button type="button" class="btn-preset" onclick="setPreset('last_30')">30 วัน</button>
+                    <button type="button" class="btn-preset" onclick="setPreset('fiscal_year')">ปีงบ 68</button>
+                    <button type="button" class="btn-preset" onclick="setPreset('all')">ทั้งหมด</button>
+                </div>
+            </div>
+
+            <div class="toolbar-group">
+                <button type="button" class="btn-tool btn-outline-tool" onclick="exportStockCardExcel()" title="ดาวน์โหลดเป็นไฟล์ Excel">
+                    <i class="fas fa-file-excel" style="color: #10B981;"></i> ส่งออก Excel
+                </button>
+                <button type="button" class="btn-tool btn-print" onclick="window.print()" title="พิมพ์ใบสต็อกการ์ด (Ctrl + P)">
+                    <i class="fas fa-print"></i> พิมพ์เอกสาร (Print A4)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📄 Official Physical Stock Card Sheet (A4 Portrait) -->
+    <div class="sheet-container" id="stockCardSheet">
+        
+        <!-- Header Section -->
+        <div class="card-header-block">
+            <h1 class="card-title-main">บัญชีรายการรับ-จ่าย/เวชภัณฑ์มิใช่ยา/วัสดุการแพทย์</h1>
+            <div class="card-hospital-name" contenteditable="true" id="hospitalName" title="คลิกเพื่อแก้ไขชื่อหน่วยงาน">
+                {{ hospital_name | default('โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี') }}
+            </div>
+
+            <!-- Drug Meta Information Row -->
+            <div class="card-meta-row">
+                <div class="meta-field meta-field-name">
+                    <span class="meta-label">ชื่อสามัญ</span><span class="meta-dots">................</span><span class="meta-dots-value" contenteditable="true" id="metaGenericName" title="คลิกเพื่อแก้ไขชื่อยา">{{ selected_drug.generic_name or selected_drug.name }}</span><span class="meta-dots">............</span>
+                </div>
+                <div class="meta-field meta-field-pkg">
+                    <span class="meta-label">ขนาดบรรจุ</span><span class="meta-dots">...........</span><span class="meta-dots-value" contenteditable="true" id="metaPackaging" title="คลิกเพื่อแก้ไขขนาดบรรจุ">{{ packaging | default("1*500 's") }}</span><span class="meta-dots">........</span>
+                </div>
+                <div class="meta-field meta-field-form">
+                    <span class="meta-label">ลักษณะ</span><span class="meta-dots">.........</span><span class="meta-dots-value" contenteditable="true" id="metaDosageForm" title="คลิกเพื่อแก้ไขลักษณะยา">{{ selected_drug.dosage_form or 'tablet' }}</span><span class="meta-dots">...........</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 📊 Stock Ledger Table Grid -->
+        <table class="ledger-table" id="ledgerTable">
+            <thead>
+                <tr>
+                    <th class="col-date">วัน/เดือน/ปี</th>
+                    <th class="col-particulars">รายการ</th>
+                    <th class="col-qty-in">รับ</th>
+                    <th class="col-qty-out">จ่าย</th>
+                    <th class="col-balance">คงเหลือ</th>
+                    <th class="col-price">ราคา</th>
+                    <th class="col-lot-exp">lot/exp.</th>
+                    <th class="col-sign">ลงชื่อ</th>
+                </tr>
+            </thead>
+            <tbody id="ledgerTableBody">
+                <!-- Row 1: Opening Balance (ยอดยกมา) -->
+                <tr class="row-opening-balance">
+                    <td class="col-date" id="cellOpeningDate">&nbsp;</td>
+                    <td class="col-particulars">
+                        ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">2568</span>
+                    </td>
+                    <td class="col-qty-in">-</td>
+                    <td class="col-qty-out">-</td>
+                    <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
+                    <td class="col-price" id="cellOpeningPrice">{{ selected_drug.cost or selected_drug.price or '480' }}</td>
+                    <td class="col-lot-exp">-</td>
+                    <td class="col-sign"></td> <!-- Blank for signature -->
+                </tr>
+
+                <!-- Transaction Rows & Template Fillers -->
+                {% for tx in transactions %}
+                <tr>
+                    <td class="col-date">{{ tx.date_short }}</td>
+                    <td class="col-particulars">
+                        {% if tx.type == 'RECEIVE' %}
+                            {% if tx.supplier_short == 'GPO' %}
+                                รับจาก...<span class="fill-text">GPO</span>/...-.....บริษัท/จ่าย...-.....
+                            {% else %}
+                                รับจาก...-.....GPO/...<span class="fill-text">{{ tx.supplier_short or 'บริษัท' }}</span>.../จ่าย...-.....
+                            {% endif %}
+                        {% else %}
+                            รับจาก...-.....GPO/...-.....บริษัท/จ่าย...<span class="fill-text">{{ tx.recipient or 'ผู้ป่วยนอก' }}</span>.....
+                        {% endif %}
+                    </td>
+                    <td class="col-qty-in">{% if tx.type == 'RECEIVE' %}{{ tx.qty_in }}{% else %}-{% endif %}</td>
+                    <td class="col-qty-out">{% if tx.type == 'DISPENSE' %}{{ tx.qty_out }}{% else %}-{% endif %}</td>
+                    <td class="col-balance">{{ tx.balance }}</td>
+                    <td class="col-price">{{ tx.total_price_formatted or tx.price_formatted or '-' }}</td>
+                    <td class="col-lot-exp">{{ tx.lot_exp_formatted or '-' }}</td>
+                    <td class="col-sign"></td> <!-- Blank for signature -->
+                </tr>
+                {% endfor %}
+
+                <!-- Pad with pre-printed template rows to fill full A4 page (like the real ledger binder) -->
+                {% for i in range(empty_rows_count) %}
+                <tr class="row-empty">
+                    <td class="col-date">&nbsp;</td>
+                    <td class="col-particulars">
+                        <span class="particulars-preprinted">รับจาก......GPO/......บริษัท/จ่าย...........</span>
+                    </td>
+                    <td class="col-qty-in">&nbsp;</td>
+                    <td class="col-qty-out">&nbsp;</td>
+                    <td class="col-balance">&nbsp;</td>
+                    <td class="col-price">&nbsp;</td>
+                    <td class="col-lot-exp">&nbsp;</td>
+                    <td class="col-sign">&nbsp;</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const TOTAL_PAGE_ROWS = 24;
+
+        function onDrugChange() {
+            refreshStockCardData();
+        }
+
+        function setPreset(preset) {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            
+            const startInput = document.getElementById('inputStartDate');
+            const endInput = document.getElementById('inputEndDate');
+            
+            endInput.value = `${y}-${m}-${d}`;
+
+            if (preset === 'this_month') {
+                startInput.value = `${y}-${m}-01`;
+            } else if (preset === 'last_30') {
+                const past = new Date();
+                past.setDate(past.getDate() - 30);
+                startInput.value = `${past.getFullYear()}-${String(past.getMonth()+1).padStart(2,'0')}-${String(past.getDate()).padStart(2,'0')}`;
+            } else if (preset === 'fiscal_year') {
+                // Thai fiscal year starts on Oct 1
+                const fiscalStartYear = (now.getMonth() >= 9) ? y : y - 1;
+                startInput.value = `${fiscalStartYear}-10-01`;
+                document.getElementById('textFiscalYear').innerText = String(fiscalStartYear + 544);
+            } else if (preset === 'all') {
+                startInput.value = '';
+                endInput.value = '';
+            }
+            refreshStockCardData();
+        }
+
+        function refreshStockCardData() {
+            const drugId = document.getElementById('selectDrug').value;
+            const startDate = document.getElementById('inputStartDate').value;
+            const endDate = document.getElementById('inputEndDate').value;
+
+            if (!drugId) return;
+
+            fetch(`/api/stock-card/data?drug_id=${drugId}&start_date=${startDate}&end_date=${endDate}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data || !data.ok) {
+                        alert(data ? data.error : 'ไม่สามารถโหลดข้อมูลได้');
+                        return;
+                    }
+                    renderStockCard(data.data);
+                })
+                .catch(err => {
+                    console.error('Fetch stock card error:', err);
+                });
+        }
+
+        function formatDateShort(dateStr) {
+            if (!dateStr) return '-';
+            try {
+                const parts = dateStr.split(' ')[0].split('-');
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                const d = parseInt(parts[2], 10);
+                const thaiYear = (y + 543) % 100;
+                return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${String(thaiYear).padStart(2, '0')}`;
+            } catch (e) {
+                return dateStr;
+            }
+        }
+
+        function renderStockCard(d) {
+            const drug = d.drug || {};
+            // Update header fields
+            document.getElementById('metaGenericName').innerText = drug.generic_name || drug.name || '';
+            document.getElementById('metaDosageForm').innerText = drug.dosage_form || 'tablet';
+            
+            // Format opening balance row
+            document.getElementById('cellOpeningBalance').innerText = d.opening_balance ?? 0;
+            document.getElementById('cellOpeningPrice').innerText = drug.cost ? Math.round(drug.cost) : (drug.price ? Math.round(drug.price) : '480');
+            
+            const tbody = document.getElementById('ledgerTableBody');
+            
+            // Build Opening Balance Row
+            let html = `
+                <tr class="row-opening-balance">
+                    <td class="col-date">&nbsp;</td>
+                    <td class="col-particulars">
+                        ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">2568</span>
+                    </td>
+                    <td class="col-qty-in">-</td>
+                    <td class="col-qty-out">-</td>
+                    <td class="col-balance">${d.opening_balance}</td>
+                    <td class="col-price">${drug.cost ? Math.round(drug.cost) : (drug.price ? Math.round(drug.price) : '480')}</td>
+                    <td class="col-lot-exp">-</td>
+                    <td class="col-sign"></td>
+                </tr>
+            `;
+
+            const transactions = d.transactions || [];
+            transactions.forEach(tx => {
+                const dateShort = formatDateShort(tx.created_at);
+                let particulars = '';
+                if (tx.type === 'RECEIVE') {
+                    const isGpo = (tx.supplier && (tx.supplier.toUpperCase().includes('GPO') || tx.supplier.includes('องค์การ')));
+                    if (isGpo) {
+                        particulars = `รับจาก...<span class="fill-text">GPO</span>/...-.....บริษัท/จ่าย...-.....`;
+                    } else {
+                        const supp = tx.supplier || 'บริษัท';
+                        particulars = `รับจาก...-.....GPO/...<span class="fill-text">${supp}</span>.../จ่าย...-.....`;
+                    }
+                } else {
+                    const recipient = tx.recipient || 'ผู้ป่วยนอก';
+                    particulars = `รับจาก...-.....GPO/...-.....บริษัท/จ่าย...<span class="fill-text">${recipient}</span>.....`;
+                }
+
+                const priceDisplay = tx.total_price ? Math.round(tx.total_price) : (tx.price ? Math.round(tx.price) : '-');
+                const lotExp = tx.lot_number ? `${tx.lot_number}${tx.expiry_date ? ' / ' + tx.expiry_date : ''}` : (tx.expiry_date || '-');
+
+                html += `
+                    <tr>
+                        <td class="col-date">${dateShort}</td>
+                        <td class="col-particulars">${particulars}</td>
+                        <td class="col-qty-in">${tx.type === 'RECEIVE' ? tx.qty_in : '-'}</td>
+                        <td class="col-qty-out">${tx.type === 'DISPENSE' ? tx.qty_out : '-'}</td>
+                        <td class="col-balance">${tx.balance}</td>
+                        <td class="col-price">${priceDisplay}</td>
+                        <td class="col-lot-exp">${lotExp}</td>
+                        <td class="col-sign"></td>
+                    </tr>
+                `;
+            });
+
+            // Calculate empty rows needed to fill full page
+            const usedRows = 1 + transactions.length;
+            const emptyRowsCount = Math.max(0, TOTAL_PAGE_ROWS - usedRows);
+
+            for (let i = 0; i < emptyRowsCount; i++) {
+                html += `
+                    <tr class="row-empty">
+                        <td class="col-date">&nbsp;</td>
+                        <td class="col-particulars">
+                            <span class="particulars-preprinted">รับจาก......GPO/......บริษัท/จ่าย...........</span>
+                        </td>
+                        <td class="col-qty-in">&nbsp;</td>
+                        <td class="col-qty-out">&nbsp;</td>
+                        <td class="col-balance">&nbsp;</td>
+                        <td class="col-price">&nbsp;</td>
+                        <td class="col-lot-exp">&nbsp;</td>
+                        <td class="col-sign">&nbsp;</td>
+                    </tr>
+                `;
+            }
+
+            tbody.innerHTML = html;
+        }
+
+        function exportStockCardExcel() {
+            const drugId = document.getElementById('selectDrug').value;
+            const startDate = document.getElementById('inputStartDate').value;
+            const endDate = document.getElementById('inputEndDate').value;
+            window.location.href = `/api/stock-card/export-excel?drug_id=${drugId}&start_date=${startDate}&end_date=${endDate}`;
+        }
+    </script>
+</body>
+</html>

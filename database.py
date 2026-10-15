@@ -1694,5 +1694,126 @@ def get_audit_logs(limit: int = 200, user_email: str = None, action: str = None,
     conn.close()
     return [dict(r) for r in rows]
 
+def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = None):
+    """
+    Retrieve unified chronological Stock Card ledger data for a specific drug.
+    Combines stock-in (receive) and dispensing logs, calculates opening balance (ยอดยกมา),
+    running balance, and details formatted for official hospital ledger card.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # 1. Fetch Drug Info
+    cursor.execute("SELECT * FROM drugs WHERE id = ?", (drug_id,))
+    drug_row = cursor.fetchone()
+    if not drug_row:
+        conn.close()
+        return None
+    drug = dict(drug_row)
+    
+    start_ts = f"{start_date.strip()} 00:00:00" if start_date and start_date.strip() else None
+    end_ts = f"{end_date.strip()} 23:59:59" if end_date and end_date.strip() else None
+    
+    # 2. Fetch all transactions in period
+    in_query = "SELECT * FROM stock_in_logs WHERE drug_id = ?"
+    in_params = [drug_id]
+    if start_ts:
+        in_query += " AND created_at >= ?"
+        in_params.append(start_ts)
+    if end_ts:
+        in_query += " AND created_at <= ?"
+        in_params.append(end_ts)
+    cursor.execute(in_query, in_params)
+    stock_in_rows = [dict(r) for r in cursor.fetchall()]
+
+    out_query = "SELECT * FROM dispensing_logs WHERE drug_id = ? AND is_voided = 0"
+    out_params = [drug_id]
+    if start_ts:
+        out_query += " AND created_at >= ?"
+        out_params.append(start_ts)
+    if end_ts:
+        out_query += " AND created_at <= ?"
+        out_params.append(end_ts)
+    cursor.execute(out_query, out_params)
+    dispensing_rows = [dict(r) for r in cursor.fetchall()]
+
+    total_in_period = sum(r.get("quantity", 0) for r in stock_in_rows)
+    total_out_period = sum(r.get("quantity", 0) for r in dispensing_rows)
+    
+    # Calculate after end_ts
+    total_in_after = 0
+    total_out_after = 0
+    if end_ts:
+        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE drug_id = ? AND created_at > ?", (drug_id, end_ts))
+        total_in_after = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM dispensing_logs WHERE drug_id = ? AND is_voided = 0 AND created_at > ?", (drug_id, end_ts))
+        total_out_after = cursor.fetchone()[0] or 0
+        
+    current_stock = drug.get("stock_qty", 0)
+    
+    # Opening balance: Current Stock - (Net change during period) - (Net change after period)
+    opening_balance = current_stock - (total_in_period - total_out_period) - (total_in_after - total_out_after)
+    if opening_balance < 0:
+        opening_balance = 0
+
+    # 3. Build unified transaction items
+    items = []
+    for r in stock_in_rows:
+        supplier_name = r.get("supplier") or "องค์การเภสัชกรรม (GPO)"
+        items.append({
+            "id": f"in-{r['id']}",
+            "type": "RECEIVE",
+            "created_at": r["created_at"],
+            "qty_in": r["quantity"],
+            "qty_out": None,
+            "supplier": supplier_name,
+            "recipient": "",
+            "price": r.get("cost_per_unit") or drug.get("cost") or 0.0,
+            "total_price": r.get("total_cost") or ((r.get("cost_per_unit") or 0.0) * r["quantity"]),
+            "lot_number": r.get("lot_number") or drug.get("lot_number") or "",
+            "expiry_date": r.get("expiry_date") or drug.get("expiry_date") or "",
+            "sign": ""  # Explicitly blank for manual signature
+        })
+
+    for r in dispensing_rows:
+        items.append({
+            "id": f"out-{r['id']}",
+            "type": "DISPENSE",
+            "created_at": r["created_at"],
+            "qty_in": None,
+            "qty_out": r["quantity"],
+            "supplier": "",
+            "recipient": r.get("patient_name") or r.get("notes") or "ผู้ป่วยนอก / ห้องยา",
+            "price": drug.get("cost") or drug.get("price") or 0.0,
+            "total_price": (drug.get("cost") or drug.get("price") or 0.0) * r["quantity"],
+            "lot_number": drug.get("lot_number") or "",
+            "expiry_date": drug.get("expiry_date") or "",
+            "sign": ""  # Explicitly blank for manual signature
+        })
+
+    # Sort chronologically ASC
+    items.sort(key=lambda x: x["created_at"])
+
+    # Calculate running balance row by row
+    running_balance = opening_balance
+    for item in items:
+        if item["type"] == "RECEIVE":
+            running_balance += item["qty_in"]
+        elif item["type"] == "DISPENSE":
+            running_balance -= item["qty_out"]
+        item["balance"] = running_balance
+
+    conn.close()
+    return {
+        "drug": drug,
+        "opening_balance": opening_balance,
+        "closing_balance": running_balance,
+        "total_in": total_in_period,
+        "total_out": total_out_period,
+        "transactions": items,
+        "start_date": start_date or "",
+        "end_date": end_date or ""
+    }
+
 # Initialize on module import
 init_db()
