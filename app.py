@@ -1069,6 +1069,51 @@ def list_stock_in_logs():
     )
     return jsonify({"ok": True, "logs": logs, "count": len(logs)})
 
+@app.route("/api/stock-in/<int:log_id>", methods=["GET"])
+@login_required
+def get_stock_in_endpoint(log_id):
+    log = database.get_stock_in_log(log_id)
+    if not log:
+        return jsonify({"ok": False, "error": f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"}), 404
+    return jsonify({"ok": True, "log": log})
+
+@app.route("/api/stock-in/<int:log_id>", methods=["PUT", "POST"])
+@login_required
+def update_stock_in_endpoint(log_id):
+    data = request.json or {}
+    success, result = database.update_stock_in_log(
+        log_id,
+        quantity=data.get("quantity"),
+        lot_number=data.get("lot_number"),
+        expiry_date=data.get("expiry_date"),
+        cost_per_unit=data.get("cost_per_unit"),
+        supplier=data.get("supplier"),
+        received_by=data.get("received_by"),
+        notes=data.get("notes"),
+        created_at=data.get("created_at")
+    )
+    if not success:
+        return jsonify({"ok": False, "error": result}), 400
+
+    audit("UPDATE_STOCK_IN", "stock_in_log", log_id, result.get("drug_name", ""),
+          f"แก้ไขรายการรับเข้าย้อนหลัง: จำนวน {result.get('quantity')} {result.get('unit', '')} | Lot {result.get('lot_number')} | ผู้จำหน่าย {result.get('supplier')} | วันที่ {result.get('created_at')}")
+
+    trigger_bg_sheet_sync()
+    return jsonify({"ok": True, "log": result, "message": f"แก้ไขรายการรับเข้ายา '{result.get('drug_name')}' เรียบร้อยแล้ว"})
+
+@app.route("/api/stock-in/<int:log_id>", methods=["DELETE"])
+@login_required
+def delete_stock_in_endpoint(log_id):
+    success, result = database.delete_stock_in_log(log_id)
+    if not success:
+        return jsonify({"ok": False, "error": result}), 400
+
+    audit("DELETE_STOCK_IN", "stock_in_log", log_id, result.get("drug_name", ""),
+          f"ลบรายการรับเข้า: ยา {result.get('drug_name')} จำนวน {result.get('quantity')} หน่วย | Lot {result.get('lot_number')}")
+
+    trigger_bg_sheet_sync()
+    return jsonify({"ok": True, "log": result, "message": f"ลบรายการรับเข้ายา '{result.get('drug_name')}' เรียบร้อยแล้ว"})
+
 @app.route("/api/analytics/summary", methods=["GET"])
 def analytics_summary():
     summary = database.get_analytics_summary()

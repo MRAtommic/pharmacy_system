@@ -1458,6 +1458,164 @@ def get_stock_in_logs(limit=100, drug_id=None, date_filter=None, start_date=None
     conn.close()
     return rows
 
+def get_stock_in_log(log_id):
+    """Retrieve single stock-in log by id with joined drug details."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            stock_in_logs.*,
+            COALESCE(drugs.image_url, '') AS image_url,
+            COALESCE(drugs.unit, 'หน่วย') AS unit,
+            COALESCE(drugs.category, '-') AS category,
+            COALESCE(drugs.generic_name, '') AS generic_name,
+            COALESCE(drugs.stock_qty, 0) AS current_drug_stock
+        FROM stock_in_logs
+        LEFT JOIN drugs ON stock_in_logs.drug_id = drugs.id
+        WHERE stock_in_logs.id = ?
+    """, (log_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None,
+                        cost_per_unit=None, supplier=None, received_by=None,
+                        notes=None, created_at=None):
+    """
+    Update a stock-in log retrospectively.
+    If quantity changed, adjusts drug stock accordingly and updates audit balances.
+    """
+    with _db_write_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            with conn:
+                cursor.execute("SELECT * FROM stock_in_logs WHERE id = ?", (log_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return False, f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"
+                old_log = dict(row)
+                drug_id = old_log.get("drug_id")
+
+                new_qty = old_log["quantity"]
+                if quantity is not None:
+                    try:
+                        new_qty = int(quantity)
+                        if new_qty <= 0:
+                            return False, "จำนวนรับเข้าต้องมากกว่า 0"
+                    except (ValueError, TypeError):
+                        return False, "จำนวนรับเข้าต้องเป็นตัวเลขจำนวนเต็มบวก"
+
+                # Check drug stock adjustment if quantity changed
+                diff = new_qty - old_log["quantity"]
+                if diff != 0 and drug_id:
+                    cursor.execute("SELECT stock_qty, name FROM drugs WHERE id = ?", (drug_id,))
+                    d_row = cursor.fetchone()
+                    if d_row:
+                        cur_stock = int(d_row[0] or 0)
+                        if cur_stock + diff < 0:
+                            return False, f"ไม่สามารถลดยอดรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือ {cur_stock} หน่วย ไม่เพียงพอสำหรับการปรับลดยอด {abs(diff)} หน่วย"
+                        now_str = get_now_str()
+                        cursor.execute("""
+                            UPDATE drugs 
+                            SET stock_qty = stock_qty + ?, updated_at = ?
+                            WHERE id = ?
+                        """, (diff, now_str, drug_id))
+
+                new_cost = old_log["cost_per_unit"] if cost_per_unit is None else float(cost_per_unit or 0.0)
+                new_total_cost = round(new_qty * new_cost, 2)
+                new_lot = old_log["lot_number"] if lot_number is None else str(lot_number).strip()
+                new_exp = old_log["expiry_date"] if expiry_date is None else str(expiry_date).strip()
+                new_sup = old_log["supplier"] if supplier is None else str(supplier).strip()
+                new_rec = old_log["received_by"] if received_by is None else str(received_by).strip()
+                new_notes = old_log["notes"] if notes is None else str(notes).strip()
+                new_created_at = old_log["created_at"] if created_at is None else str(created_at).strip()
+
+                new_balance_after = old_log["balance_before"] + new_qty
+
+                cursor.execute("""
+                    UPDATE stock_in_logs
+                    SET quantity = ?,
+                        balance_after = ?,
+                        cost_per_unit = ?,
+                        total_cost = ?,
+                        lot_number = ?,
+                        expiry_date = ?,
+                        supplier = ?,
+                        received_by = ?,
+                        notes = ?,
+                        created_at = ?
+                    WHERE id = ?
+                """, (
+                    new_qty,
+                    new_balance_after,
+                    new_cost,
+                    new_total_cost,
+                    new_lot,
+                    new_exp,
+                    new_sup,
+                    new_rec,
+                    new_notes,
+                    new_created_at,
+                    log_id
+                ))
+
+                cursor.execute("""
+                    SELECT 
+                        stock_in_logs.*,
+                        COALESCE(drugs.unit, 'หน่วย') AS unit,
+                        COALESCE(drugs.stock_qty, 0) AS current_drug_stock
+                    FROM stock_in_logs
+                    LEFT JOIN drugs ON stock_in_logs.drug_id = drugs.id
+                    WHERE stock_in_logs.id = ?
+                """, (log_id,))
+                updated_row = dict(cursor.fetchone())
+                return True, updated_row
+        except Exception as e:
+            logger.error(f"Error updating stock in log {log_id}: {e}", exc_info=True)
+            return False, f"เกิดข้อผิดพลาดในการแก้ไขข้อมูล: {str(e)}"
+        finally:
+            conn.close()
+
+def delete_stock_in_log(log_id):
+    """
+    Delete a stock-in log and restore drug inventory accordingly.
+    """
+    with _db_write_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            with conn:
+                cursor.execute("SELECT * FROM stock_in_logs WHERE id = ?", (log_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return False, f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"
+                old_log = dict(row)
+                drug_id = old_log.get("drug_id")
+                qty = old_log.get("quantity") or 0
+
+                if drug_id and qty > 0:
+                    cursor.execute("SELECT stock_qty, name FROM drugs WHERE id = ?", (drug_id,))
+                    d_row = cursor.fetchone()
+                    if d_row:
+                        cur_stock = int(d_row[0] or 0)
+                        if cur_stock < qty:
+                            return False, f"ไม่สามารถลบรายการรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือ {cur_stock} หน่วย (น้อยกว่ายอดรับเข้า {qty} หน่วย เนื่องจากอาจถูกตัดจ่ายไปแล้ว)"
+                        now_str = get_now_str()
+                        cursor.execute("""
+                            UPDATE drugs 
+                            SET stock_qty = stock_qty - ?, updated_at = ?
+                            WHERE id = ?
+                        """, (qty, now_str, drug_id))
+
+                cursor.execute("DELETE FROM stock_in_logs WHERE id = ?", (log_id,))
+                return True, old_log
+        except Exception as e:
+            logger.error(f"Error deleting stock in log {log_id}: {e}", exc_info=True)
+            return False, f"เกิดข้อผิดพลาดในการลบรายการ: {str(e)}"
+        finally:
+            conn.close()
+
 def get_analytics_summary():
     """Aggregate comprehensive analytics for clinical dashboard and visual charts."""
     conn = get_db()

@@ -3015,6 +3015,71 @@ body {
   box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
 }
 
+.stockin-date-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  padding: 3px 8px;
+}
+
+.stockin-date-subwrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.stockin-date-label {
+  font-size: 0.775rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stockin-date-sep {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+.supplier-type-toggle {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.btn-supplier-type {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.825rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-supplier-type:hover {
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
+.btn-supplier-type.active {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+}
+
 .btn-stockin-reset {
   height: 40px !important;
   padding: 0 0.85rem !important;

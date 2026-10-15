@@ -1193,11 +1193,23 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
 // ─────────────────────────────────────────────────────────────
 
 async function loadDispensingLogs() {
-    const date = document.getElementById('logDateFilter')?.value || '';
+    const startDate = document.getElementById('logStartDateFilter')?.value || '';
+    const endDate = document.getElementById('logEndDateFilter')?.value || '';
+    const legacyDate = document.getElementById('logDateFilter')?.value || '';
     let channel = document.getElementById('logChannelFilter')?.value || 'all';
     if (channel === 'QR') channel = 'QR_SCAN';
 
-    const url = `/api/dispense/logs?date=${encodeURIComponent(date)}&channel=${encodeURIComponent(channel)}`;
+    let url = `/api/dispense/logs?channel=${encodeURIComponent(channel)}`;
+    if (startDate && endDate) {
+        url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+    } else if (startDate) {
+        url += `&start_date=${encodeURIComponent(startDate)}`;
+    } else if (endDate) {
+        url += `&end_date=${encodeURIComponent(endDate)}`;
+    } else if (legacyDate) {
+        url += `&date=${encodeURIComponent(legacyDate)}`;
+    }
+
     try {
         const res = await fetch(url);
         const data = await res.json();
@@ -1207,6 +1219,17 @@ async function loadDispensingLogs() {
     } catch (e) {
         console.error('Error loading logs:', e);
     }
+}
+
+function clearDispensingDateFilter() {
+    const s = document.getElementById('logStartDateFilter');
+    const e = document.getElementById('logEndDateFilter');
+    const leg = document.getElementById('logDateFilter');
+    if (s) s.value = '';
+    if (e) e.value = '';
+    if (leg) leg.value = '';
+    if (paginationState.logs) paginationState.logs.currentPage = 1;
+    loadDispensingLogs();
 }
 
 function renderLogsTable(logs) {
@@ -2516,6 +2539,18 @@ function setupEventListeners() {
         loadDispensingLogs();
     });
 
+    const logStartDate = document.getElementById('logStartDateFilter');
+    if (logStartDate) logStartDate.addEventListener('change', () => {
+        if (paginationState.logs) paginationState.logs.currentPage = 1;
+        loadDispensingLogs();
+    });
+
+    const logEndDate = document.getElementById('logEndDateFilter');
+    if (logEndDate) logEndDate.addEventListener('change', () => {
+        if (paginationState.logs) paginationState.logs.currentPage = 1;
+        loadDispensingLogs();
+    });
+
     const logChannel = document.getElementById('logChannelFilter');
     if (logChannel) logChannel.addEventListener('change', () => {
         if (paginationState.logs) paginationState.logs.currentPage = 1;
@@ -2546,12 +2581,25 @@ function setupEventListeners() {
         loadStockInLogs();
     });
 
+    const stockInStartDate = document.getElementById('stockInStartDateFilter');
+    if (stockInStartDate) stockInStartDate.addEventListener('change', () => {
+        if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
+        loadStockInLogs();
+    });
+
+    const stockInEndDate = document.getElementById('stockInEndDateFilter');
+    if (stockInEndDate) stockInEndDate.addEventListener('change', () => {
+        if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
+        loadStockInLogs();
+    });
+
     // Global Keyboard Shortcuts (Linear-grade Pro UX)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeDrugModal();
             closeDispenseModal();
             closeStockInModal();
+            closeEditStockInModal();
             closeQrModal();
             closeGoogleSettingsModal();
             closeLineSettingsModal();
@@ -2903,12 +2951,16 @@ function exportInventoryExcel() {
 
 function exportLogsExcel() {
     // Pick up active filters from UI
-    const dateVal    = document.getElementById('logDateFilter')?.value || '';
-    let channelVal = document.getElementById('logChannelFilter')?.value || 'all';
+    const startDateVal = document.getElementById('logStartDateFilter')?.value || '';
+    const endDateVal   = document.getElementById('logEndDateFilter')?.value || '';
+    const dateVal      = document.getElementById('logDateFilter')?.value || '';
+    let channelVal     = document.getElementById('logChannelFilter')?.value || 'all';
     if (channelVal === 'QR') channelVal = 'QR_SCAN';
     const params = new URLSearchParams();
-    if (dateVal)              params.set('date',    dateVal);
-    if (channelVal && channelVal !== 'all') params.set('channel', channelVal);
+    if (startDateVal)                         params.set('start_date', startDateVal);
+    if (endDateVal)                           params.set('end_date', endDateVal);
+    if (dateVal && !startDateVal && !endDateVal) params.set('date', dateVal);
+    if (channelVal && channelVal !== 'all')   params.set('channel', channelVal);
 
     const link = document.createElement('a');
     link.href = `/api/export/logs?${params.toString()}`;
@@ -3238,8 +3290,7 @@ function openStockInModal(drugId = null) {
     const recByInput = document.getElementById('stockInReceivedByInput');
     if (recByInput && !recByInput.value) recByInput.value = 'เภสัชกร/เจ้าหน้าที่';
 
-    const supInput = document.getElementById('stockInSupplierInput');
-    if (supInput && !supInput.value) supInput.value = 'องค์การเภสัชกรรม (GPO)';
+    setStockInSupplierType('GPO');
 
     calcStockInTotal();
 
@@ -3388,13 +3439,86 @@ async function submitStockIn(e) {
     }
 }
 
+let currentStockInSupplierType = 'GPO';
+
+function setStockInSupplierType(type) {
+    currentStockInSupplierType = type;
+    const btnGPO = document.getElementById('btnSupplierTypeGPO');
+    const btnCompany = document.getElementById('btnSupplierTypeCompany');
+    const companyWrap = document.getElementById('companySelectWrapper');
+    const supplierInput = document.getElementById('stockInSupplierInput');
+    const hint = document.getElementById('stockInDocHint');
+
+    if (type === 'GPO') {
+        btnGPO?.classList.add('active');
+        btnCompany?.classList.remove('active');
+        if (companyWrap) companyWrap.style.display = 'none';
+        if (supplierInput) supplierInput.value = 'องค์การเภสัชกรรม (GPO)';
+        if (hint) {
+            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "GPO"';
+            hint.style.background = 'rgba(14, 165, 233, 0.15)';
+            hint.style.color = '#0284C7';
+        }
+    } else {
+        btnCompany?.classList.add('active');
+        btnGPO?.classList.remove('active');
+        if (companyWrap) companyWrap.style.display = 'block';
+        const sel = document.getElementById('stockInCompanySelect');
+        const customInp = document.getElementById('stockInCustomCompanyInput');
+        if (sel && sel.value === 'CUSTOM') {
+            if (customInp) customInp.style.display = 'block';
+            if (supplierInput) supplierInput.value = customInp?.value.trim() || 'บริษัท';
+        } else {
+            if (customInp) customInp.style.display = 'none';
+            if (supplierInput) supplierInput.value = sel?.value || 'บริษัท';
+        }
+        if (hint) {
+            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "บริษัท"';
+            hint.style.background = 'rgba(16, 185, 129, 0.15)';
+            hint.style.color = '#059669';
+        }
+    }
+}
+
+function onStockInCompanySelectChange(val) {
+    const customInp = document.getElementById('stockInCustomCompanyInput');
+    const supplierInput = document.getElementById('stockInSupplierInput');
+    if (val === 'CUSTOM') {
+        if (customInp) {
+            customInp.style.display = 'block';
+            customInp.focus();
+            if (supplierInput) supplierInput.value = customInp.value.trim() || 'บริษัท';
+        }
+    } else {
+        if (customInp) customInp.style.display = 'none';
+        if (supplierInput) supplierInput.value = val || 'บริษัท';
+    }
+}
+
+function onCustomCompanyInput(val) {
+    const supplierInput = document.getElementById('stockInSupplierInput');
+    if (supplierInput) {
+        supplierInput.value = val.trim() || 'บริษัท';
+    }
+}
+
 async function loadStockInLogs() {
     const tbody = document.getElementById('stockInTableBody');
     const cards = document.getElementById('stockInMobileCards');
-    const dateFilter = document.getElementById('stockInDateFilter')?.value || '';
+    const startDate = document.getElementById('stockInStartDateFilter')?.value || '';
+    const endDate = document.getElementById('stockInEndDateFilter')?.value || '';
+    const legacyDate = document.getElementById('stockInDateFilter')?.value || '';
 
     let url = '/api/stock-in/logs?limit=100';
-    if (dateFilter) url += `&date=${encodeURIComponent(dateFilter)}`;
+    if (startDate && endDate) {
+        url += `&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+    } else if (startDate) {
+        url += `&start_date=${encodeURIComponent(startDate)}`;
+    } else if (endDate) {
+        url += `&end_date=${encodeURIComponent(endDate)}`;
+    } else if (legacyDate) {
+        url += `&date=${encodeURIComponent(legacyDate)}`;
+    }
 
     try {
         const res = await fetch(url);
@@ -3405,7 +3529,7 @@ async function loadStockInLogs() {
         }
     } catch (err) {
         console.error('Load Stock In Logs error:', err);
-        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--rose-600); padding: 1.5rem;">เกิดข้อผิดพลาดในการโหลดประวัติรับยา</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--rose-600); padding: 1.5rem;">เกิดข้อผิดพลาดในการโหลดประวัติรับยา</td></tr>`;
     }
 }
 
@@ -3429,7 +3553,7 @@ function renderStockInTable(logs) {
 
     if (filtered.length === 0) {
         if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--text-muted); padding: 2.5rem;"><i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; opacity: 0.4;"></i>ยังไม่มีประวัติการรับยาเข้าสต็อก</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 2.5rem;"><i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; opacity: 0.4;"></i>ยังไม่มีประวัติการรับยาเข้าสต็อก</td></tr>`;
         }
         if (cards) {
             cards.innerHTML = `<div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: 12px; border: 1px dashed var(--border-default);"><i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; opacity: 0.4;"></i>ยังไม่มีประวัติรับยาเข้า</div>`;
@@ -3455,6 +3579,11 @@ function renderStockInTable(logs) {
                          <img src="${escapeHtml(drugImg)}" alt="${escapeHtml(l.drug_name)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'drug-table-thumb-fallback\\'><i class=\\'fas fa-pills\\'></i></div>';">
                        </div>`
                     : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
+
+                const isGpo = l.supplier && (l.supplier.includes('GPO') || l.supplier.includes('องค์การ'));
+                const supplierBadge = isGpo
+                    ? `<span class="badge" style="background: rgba(14, 165, 233, 0.12); color: #0284C7; font-size: 0.75rem;"><i class="fas fa-building-columns" style="font-size: 0.65rem;"></i> GPO</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier)}</span>`
+                    : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.75rem;"><i class="fas fa-industry" style="font-size: 0.65rem;"></i> บริษัท</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier || 'บริษัท')}</span>`;
 
                 return `
                     <tr>
@@ -3486,8 +3615,8 @@ function renderStockInTable(logs) {
                         <td style="font-size: 0.875rem; font-weight: 700; color: #059669;">
                             ${l.total_cost ? `฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}` : '-'}
                         </td>
-                        <td style="font-size: 0.8125rem; color: var(--text-secondary);">
-                            ${escapeHtml(l.supplier || '-')}
+                        <td style="font-size: 0.8125rem;">
+                            ${supplierBadge}
                         </td>
                         <td style="font-size: 0.8125rem; color: var(--text-muted);">
                             ${escapeHtml(l.expiry_date || '-')}
@@ -3495,6 +3624,16 @@ function renderStockInTable(logs) {
                         <td style="font-size: 0.8125rem; color: var(--text-secondary);">
                             <span style="font-weight: 600;">${escapeHtml(l.received_by || '-')}</span>
                             ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
+                        </td>
+                        <td style="text-align: center; white-space: nowrap;">
+                            <div style="display: inline-flex; gap: 4px; align-items: center;">
+                                <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" title="แก้ไขรายการรับเข้าย้อนหลัง" style="padding: 3px 8px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; color: #0284C7; border-color: #BAE6FD;">
+                                    <i class="fas fa-pen-to-square"></i> แก้ไข
+                                </button>
+                                <button type="button" class="btn btn-outline btn-xs" onclick="deleteStockInRecord(${l.id})" title="ลบรายการรับเข้า" style="padding: 3px 6px; font-size: 0.75rem; border-radius: 6px; color: #EF4444; border-color: #FECACA;">
+                                    <i class="fas fa-trash-can"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -3515,6 +3654,11 @@ function renderStockInTable(logs) {
                          <i class="fas fa-pills"></i>
                        </div>`;
 
+                const isGpo = l.supplier && (l.supplier.includes('GPO') || l.supplier.includes('องค์การ'));
+                const supplierBadge = isGpo
+                    ? `<span class="badge" style="background: rgba(14, 165, 233, 0.12); color: #0284C7; font-size: 0.7rem;"><i class="fas fa-building-columns"></i> GPO</span>`
+                    : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.7rem;"><i class="fas fa-industry"></i> บริษัท</span>`;
+
                 return `
                     <div class="log-mobile-card">
                         <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.5rem;">
@@ -3533,9 +3677,17 @@ function renderStockInTable(logs) {
                             ${l.lot_number ? `<span>Lot: <code>${escapeHtml(l.lot_number)}</code></span>` : ''}
                             ${l.total_cost ? `<span>มูลค่า: <strong style="color: #059669;">฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong></span>` : ''}
                         </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 0.4rem;">
-                            <span><i class="fas fa-truck"></i> ${escapeHtml(l.supplier || '-')}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 0.4rem;">
+                            <span>${supplierBadge} ${escapeHtml(l.supplier || '-')}</span>
                             <span><i class="far fa-clock"></i> ${escapeHtml(l.created_at)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px dashed var(--border-subtle);">
+                            <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" style="font-size: 0.75rem; color: #0284C7; border-color: #BAE6FD;">
+                                <i class="fas fa-pen-to-square"></i> แก้ไขย้อนหลัง
+                            </button>
+                            <button type="button" class="btn btn-outline btn-xs" onclick="deleteStockInRecord(${l.id})" style="font-size: 0.75rem; color: #EF4444; border-color: #FECACA;">
+                                <i class="fas fa-trash-can"></i> ลบ
+                            </button>
                         </div>
                     </div>
                 `;
@@ -3547,8 +3699,12 @@ function renderStockInTable(logs) {
 }
 
 function clearStockInFilters() {
-    const dateInput = document.getElementById('stockInDateFilter');
-    if (dateInput) dateInput.value = '';
+    const s = document.getElementById('stockInStartDateFilter');
+    const e = document.getElementById('stockInEndDateFilter');
+    const leg = document.getElementById('stockInDateFilter');
+    if (s) s.value = '';
+    if (e) e.value = '';
+    if (leg) leg.value = '';
     const searchInput = document.getElementById('stockInSearchInput');
     if (searchInput) searchInput.value = '';
     if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
@@ -3556,9 +3712,13 @@ function clearStockInFilters() {
 }
 
 function exportStockInExcel() {
-    const dateVal = document.getElementById('stockInDateFilter')?.value || '';
+    const startDateVal = document.getElementById('stockInStartDateFilter')?.value || '';
+    const endDateVal   = document.getElementById('stockInEndDateFilter')?.value || '';
+    const dateVal      = document.getElementById('stockInDateFilter')?.value || '';
     const params = new URLSearchParams();
-    if (dateVal) params.set('date', dateVal);
+    if (startDateVal)                             params.set('start_date', startDateVal);
+    if (endDateVal)                               params.set('end_date', endDateVal);
+    if (dateVal && !startDateVal && !endDateVal) params.set('date', dateVal);
 
     const link = document.createElement('a');
     link.href = `/api/export/stock-in?${params.toString()}`;
@@ -3567,6 +3727,259 @@ function exportStockInExcel() {
     link.click();
     document.body.removeChild(link);
     showToast('📥 กำลังดาวน์โหลด Excel ประวัติการรับยาเข้า…', 'success');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Retrospective Stock-In Edit Modal Functions
+// ─────────────────────────────────────────────────────────────
+
+let currentEditSupplierType = 'GPO';
+
+function setEditSupplierType(type) {
+    currentEditSupplierType = type;
+    const btnGPO = document.getElementById('btnEditSupplierTypeGPO');
+    const btnCompany = document.getElementById('btnEditSupplierTypeCompany');
+    const companyWrap = document.getElementById('editCompanySelectWrapper');
+    const supplierInput = document.getElementById('editStockInSupplier');
+    const hint = document.getElementById('editStockInDocHint');
+
+    if (type === 'GPO') {
+        btnGPO?.classList.add('active');
+        btnCompany?.classList.remove('active');
+        if (companyWrap) companyWrap.style.display = 'none';
+        if (supplierInput) supplierInput.value = 'องค์การเภสัชกรรม (GPO)';
+        if (hint) {
+            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "GPO"';
+            hint.style.background = 'rgba(14, 165, 233, 0.15)';
+            hint.style.color = '#0284C7';
+        }
+    } else {
+        btnCompany?.classList.add('active');
+        btnGPO?.classList.remove('active');
+        if (companyWrap) companyWrap.style.display = 'block';
+        const sel = document.getElementById('editStockInCompanySelect');
+        const customInp = document.getElementById('editStockInCustomCompany');
+        if (sel && sel.value === 'CUSTOM') {
+            if (customInp) customInp.style.display = 'block';
+            if (supplierInput) supplierInput.value = customInp?.value.trim() || 'บริษัท';
+        } else {
+            if (customInp) customInp.style.display = 'none';
+            if (supplierInput) supplierInput.value = sel?.value || 'บริษัท';
+        }
+        if (hint) {
+            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "บริษัท"';
+            hint.style.background = 'rgba(16, 185, 129, 0.15)';
+            hint.style.color = '#059669';
+        }
+    }
+}
+
+function onEditCompanySelectChange(val) {
+    const customInp = document.getElementById('editStockInCustomCompany');
+    const supplierInput = document.getElementById('editStockInSupplier');
+    if (val === 'CUSTOM') {
+        if (customInp) {
+            customInp.style.display = 'block';
+            customInp.focus();
+            if (supplierInput) supplierInput.value = customInp.value.trim() || 'บริษัท';
+        }
+    } else {
+        if (customInp) customInp.style.display = 'none';
+        if (supplierInput) supplierInput.value = val || 'บริษัท';
+    }
+}
+
+function onEditCustomCompanyInput(val) {
+    const supplierInput = document.getElementById('editStockInSupplier');
+    if (supplierInput) {
+        supplierInput.value = val.trim() || 'บริษัท';
+    }
+}
+
+function openEditStockInModal(logId) {
+    const log = stockInLogsList.find(l => Number(l.id) === Number(logId));
+    if (!log) {
+        showToast('ไม่พบข้อมูลรายการรับยานี้', 'error');
+        return;
+    }
+
+    document.getElementById('editStockInId').value = log.id;
+    document.getElementById('editStockInDrugId').value = log.drug_id || '';
+    document.getElementById('editStockInOriginalQty').value = log.quantity || 0;
+
+    document.getElementById('editPreviewDrugCode').textContent = log.drug_code || '-';
+    document.getElementById('editPreviewDrugName').textContent = log.drug_name || '-';
+    
+    const drug = typeof allDrugs !== 'undefined' ? allDrugs.find(d => Number(d.id) === Number(log.drug_id)) : null;
+    const curStock = drug ? drug.stock_qty : (log.current_drug_stock || log.balance_after || 0);
+    const unitStr = drug ? drug.unit : (log.unit || 'หน่วย');
+    document.getElementById('editPreviewCurrentStock').textContent = curStock;
+    document.getElementById('editPreviewUnit').textContent = unitStr;
+
+    // Created At datetime-local formatted
+    const createdAtInput = document.getElementById('editStockInCreatedAt');
+    if (createdAtInput) {
+        let val = (log.created_at || '').trim();
+        if (val.includes(' ')) {
+            val = val.replace(' ', 'T');
+        }
+        createdAtInput.value = val;
+    }
+
+    document.getElementById('editStockInQty').value = log.quantity || 1;
+    document.getElementById('editStockInLot').value = log.lot_number || '';
+    document.getElementById('editStockInExpiry').value = log.expiry_date || '';
+    document.getElementById('editStockInCost').value = log.cost_per_unit || '';
+    document.getElementById('editStockInReceivedBy').value = log.received_by || 'เภสัชกร/เจ้าหน้าที่';
+    document.getElementById('editStockInNotes').value = log.notes || '';
+
+    // Supplier init
+    const sup = log.supplier || '';
+    const isGpo = sup.includes('GPO') || sup.includes('องค์การ');
+    if (isGpo) {
+        setEditSupplierType('GPO');
+    } else {
+        setEditSupplierType('COMPANY');
+        const sel = document.getElementById('editStockInCompanySelect');
+        const customInp = document.getElementById('editStockInCustomCompany');
+        let found = false;
+        if (sel) {
+            for (let opt of sel.options) {
+                if (opt.value === sup) {
+                    sel.value = sup;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                sel.value = 'CUSTOM';
+                if (customInp) {
+                    customInp.style.display = 'block';
+                    customInp.value = sup;
+                }
+            } else {
+                if (customInp) customInp.style.display = 'none';
+            }
+        }
+        document.getElementById('editStockInSupplier').value = sup;
+    }
+
+    calcEditStockInImpact();
+
+    const modal = document.getElementById('editStockInModal');
+    if (modal) modal.classList.add('active');
+}
+
+function closeEditStockInModal() {
+    const modal = document.getElementById('editStockInModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function calcEditStockInImpact() {
+    const origQty = parseInt(document.getElementById('editStockInOriginalQty')?.value || '0', 10);
+    const newQty = parseInt(document.getElementById('editStockInQty')?.value || '0', 10);
+    const cost = parseFloat(document.getElementById('editStockInCost')?.value || '0') || 0;
+    
+    const totalCostInp = document.getElementById('editStockInTotalCost');
+    if (totalCostInp) {
+        totalCostInp.value = '฿' + (newQty * cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    const diff = newQty - origQty;
+    const hintEl = document.getElementById('editStockInImpactHint');
+    if (hintEl) {
+        if (diff === 0) {
+            hintEl.textContent = 'จำนวนรับเข้าเท่าเดิม ไม่กระทบสต็อกปัจจุบัน';
+            hintEl.style.color = 'var(--text-muted)';
+        } else if (diff > 0) {
+            hintEl.textContent = `สต็อกยาจะเพิ่มขึ้น +${diff} หน่วย (จากเดิมรับเข้า ${origQty})`;
+            hintEl.style.color = '#059669';
+        } else {
+            hintEl.textContent = `สต็อกยาจะลดลง ${diff} หน่วย (จากเดิมรับเข้า ${origQty})`;
+            hintEl.style.color = '#DC2626';
+        }
+    }
+}
+
+async function saveEditStockIn(event) {
+    event.preventDefault();
+    const logId = document.getElementById('editStockInId')?.value;
+    if (!logId) return;
+
+    const btn = document.getElementById('btnSaveEditStockIn');
+    if (btn) btn.disabled = true;
+
+    let createdAtVal = document.getElementById('editStockInCreatedAt')?.value || '';
+    if (createdAtVal.includes('T')) {
+        createdAtVal = createdAtVal.replace('T', ' ');
+    }
+
+    const payload = {
+        quantity: parseInt(document.getElementById('editStockInQty')?.value || '1', 10),
+        lot_number: document.getElementById('editStockInLot')?.value.trim() || '',
+        expiry_date: document.getElementById('editStockInExpiry')?.value || '',
+        cost_per_unit: parseFloat(document.getElementById('editStockInCost')?.value || '0') || 0,
+        supplier: document.getElementById('editStockInSupplier')?.value.trim() || 'องค์การเภสัชกรรม (GPO)',
+        received_by: document.getElementById('editStockInReceivedBy')?.value.trim() || '',
+        notes: document.getElementById('editStockInNotes')?.value.trim() || '',
+        created_at: createdAtVal
+    };
+
+    try {
+        const res = await fetch(`/api/stock-in/${logId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message || 'แก้ไขรายการรับเข้าย้อนหลังสำเร็จ', 'success');
+            closeEditStockInModal();
+            await loadStockInLogs();
+            if (typeof loadDrugs === 'function') loadDrugs();
+        } else {
+            showToast(data.error || 'เกิดข้อผิดพลาดในการแก้ไข', 'error');
+        }
+    } catch (err) {
+        console.error('Save Edit Stock In error:', err);
+        showToast('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function deleteStockInRecord(logId) {
+    const log = stockInLogsList.find(l => Number(l.id) === Number(logId));
+    const drugName = log ? log.drug_name : `รายการ #${logId}`;
+    const qty = log ? log.quantity : '';
+
+    if (!confirm(`คุณต้องการลบรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาจะถูกปรับลดยอดรับเข้านี้ออก`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/stock-in/${logId}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message || 'ลบรายการรับเข้าสำเร็จ', 'success');
+            await loadStockInLogs();
+            if (typeof loadDrugs === 'function') loadDrugs();
+        } else {
+            showToast(data.error || 'ไม่สามารถลบรายการได้', 'error');
+        }
+    } catch (err) {
+        console.error('Delete Stock In error:', err);
+        showToast('เกิดข้อผิดพลาดในการลบรายการ', 'error');
+    }
+}
+
+async function deleteStockInFromEditModal() {
+    const logId = document.getElementById('editStockInId')?.value;
+    if (!logId) return;
+    closeEditStockInModal();
+    await deleteStockInRecord(logId);
 }
 
 // ─────────────────────────────────────────────────────────────
