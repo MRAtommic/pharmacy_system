@@ -15,7 +15,6 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            color: #000000;
         }
 
         html, body {
@@ -161,12 +160,25 @@
 
         .btn-outline-tool {
             background: #1E293B;
-            color: #E2E8F0;
-            border-color: #334155;
+            color: #F8FAFC !important;
+            border-color: #475569;
+        }
+        .btn-outline-tool span {
+            color: #F8FAFC !important;
+        }
+        .btn-outline-tool i.fa-arrow-left {
+            color: #F8FAFC !important;
         }
         .btn-outline-tool:hover {
             background: #334155;
-            color: #FFFFFF;
+            color: #FFFFFF !important;
+            border-color: #64748B;
+        }
+        .btn-outline-tool:hover span {
+            color: #FFFFFF !important;
+        }
+        .btn-outline-tool:hover i.fa-arrow-left {
+            color: #FFFFFF !important;
         }
 
         .quick-presets {
@@ -232,6 +244,12 @@
             box-shadow: 0 8px 30px rgba(0,0,0,0.3);
             position: relative;
             box-sizing: border-box;
+            color: #000000;
+        }
+
+        .sheet-container,
+        .sheet-container * {
+            color: #000000;
         }
 
         .mobile-view-bar {

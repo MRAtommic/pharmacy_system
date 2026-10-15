@@ -15,7 +15,6 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            color: #000000;
         }
 
         html, body {
@@ -93,21 +92,25 @@
 
         .toolbar-label {
             font-size: 0.8125rem;
-            color: #94A3B8;
+            color: #CBD5E1 !important;
             font-weight: 500;
             white-space: nowrap;
+        }
+        .toolbar-label i {
+            color: #38BDF8 !important;
         }
 
         .toolbar-input {
             height: 36px;
             padding: 0 0.75rem;
             border-radius: 6px;
-            border: 1px solid #334155;
+            border: 1px solid #475569;
             background: #1E293B;
-            color: #F8FAFC;
+            color: #FFFFFF !important;
             font-family: inherit;
             font-size: 0.8125rem;
             outline: none;
+            color-scheme: dark;
         }
 
         .toolbar-input:focus {
@@ -133,44 +136,38 @@
 
         .btn-print {
             background: #0284C7;
-            color: #FFFFFF;
+            color: #FFFFFF !important;
             border-color: #0284C7;
+        }
+        .btn-print * {
+            color: #FFFFFF !important;
         }
         .btn-print:hover {
             background: #0369A1;
-            color: #FFFFFF;
+            color: #FFFFFF !important;
         }
 
         .btn-outline-tool {
             background: #1E293B;
-            color: #E2E8F0;
-            border-color: #334155;
+            color: #F8FAFC !important;
+            border-color: #475569;
+        }
+        .btn-outline-tool span {
+            color: #F8FAFC !important;
+        }
+        .btn-outline-tool i.fa-arrow-left {
+            color: #F8FAFC !important;
         }
         .btn-outline-tool:hover {
             background: #334155;
-            color: #FFFFFF;
+            color: #FFFFFF !important;
+            border-color: #64748B;
         }
-
-        .quick-presets {
-            display: flex;
-            gap: 0.35rem;
-            align-items: center;
+        .btn-outline-tool:hover span {
+            color: #FFFFFF !important;
         }
-
-        .btn-preset {
-            height: 28px;
-            padding: 0 0.6rem;
-            font-size: 0.75rem;
-            border-radius: 4px;
-            background: rgba(255,255,255,0.08);
-            color: #CBD5E1;
-            border: 1px solid rgba(255,255,255,0.12);
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .btn-preset:hover {
-            background: rgba(255,255,255,0.16);
-            color: #FFFFFF;
+        .btn-outline-tool:hover i.fa-arrow-left {
+            color: #FFFFFF !important;
         }
 
         .no-data-notice {
@@ -203,13 +200,18 @@
             height: 36px;
             padding: 0 0.6rem;
             border-radius: 6px;
-            border: 1px solid #334155;
+            border: 1px solid #475569;
             background: #1E293B;
-            color: #F8FAFC;
+            color: #FFFFFF !important;
             font-family: inherit;
             font-size: 0.8125rem;
             outline: none;
             cursor: pointer;
+            color-scheme: dark;
+        }
+        .select-quick-date option {
+            background: #0F172A;
+            color: #FFFFFF;
         }
         .select-quick-date:focus {
             border-color: #0284C7;
@@ -256,6 +258,12 @@
             box-shadow: 0 8px 30px rgba(0,0,0,0.3);
             position: relative;
             box-sizing: border-box;
+            color: #000000;
+        }
+
+        .sheet-container,
+        .sheet-container * {
+            color: #000000;
         }
 
         .mobile-view-bar {
@@ -340,25 +348,7 @@
                 height: 36px;
             }
 
-            .quick-presets {
-                display: flex;
-                gap: 5px;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                padding-bottom: 2px;
-                width: 100%;
-                scrollbar-width: none;
-            }
-            .quick-presets::-webkit-scrollbar {
-                display: none;
-            }
 
-            .btn-preset {
-                flex-shrink: 0;
-                height: 26px;
-                padding: 0 0.55rem;
-                font-size: 0.7rem;
-            }
 
             .sheet-scroll-area {
                 display: block;
@@ -749,12 +739,7 @@
                     <input type="date" id="inputRequisitionDate" class="toolbar-input" value="{{ selected_date }}" onchange="refreshRequisitionDate()" oninput="refreshRequisitionDate()">
                 </div>
 
-                <div class="quick-presets">
-                    <button type="button" class="btn-preset" onclick="setPresetDate('today')" title="วันที่ 15 ต.ค. 69 (วันนี้)">15 ต.ค. 69 (วันนี้)</button>
-                    <button type="button" class="btn-preset" onclick="setPresetDate('yesterday')" title="วันที่ 14 ต.ค. 69 (เมื่อวาน)">14 ต.ค. 69 (เมื่อวาน)</button>
-                    <button type="button" class="btn-preset" onclick="setPresetDate('sep30')" title="วันที่ 30 ก.ย. 69">30 ก.ย. 69</button>
-                    <button type="button" class="btn-preset" onclick="setPresetDate('sample')" title="ตัวอย่างข้อมูลตามภาพแบบฟอร์ม 6 ก.ค. 68">ตัวอย่าง (6 ก.ค. 68)</button>
-                </div>
+
 
                 {% if available_dates %}
                 <div class="toolbar-item-date">
