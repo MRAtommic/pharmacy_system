@@ -1408,14 +1408,7 @@ function renderLogsTable(logs) {
                         <div>
                             <span>คงเหลือ: ${l.balance_before} ➔ </span><strong style="color: var(--emerald-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
                         </div>
-                        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                            ${l.batch_id ? `
-                                <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; padding: 0.15rem 0.45rem; font-size: 0.7rem;" title="พิมพ์ใบสั่งยา A4 รวม"><i class="fas fa-file-medical"></i> ใบสั่งยา A4</button>
-                                <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" style="padding: 0.15rem 0.4rem; font-size: 0.7rem;" title="พิมพ์ใบเบิกย่อย"><i class="fas fa-file-invoice"></i> ใบย่อย</button>
-                            ` : `
-                                <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยาทางการ"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
-                            `}
-                            ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่าย" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; color: var(--rose-600); border-color: var(--rose-200);"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
+                        <div style="display: flex; gap: 0.4rem; align-items: center;">
                             ${channelBadge}
                             ${driveBtn}
                         </div>
@@ -1423,6 +1416,23 @@ function renderLogsTable(logs) {
                     <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px dashed var(--border-subtle);">
                         <span><i class="fas fa-user-check"></i> ${escapeHtml(l.dispensed_by || '-')}</span>
                         <span><i class="far fa-clock"></i> ${escapeHtml(l.created_at)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px dashed var(--border-subtle);">
+                        ${l.batch_id ? `
+                            <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 6px; font-weight: 600;" title="พิมพ์ใบสั่งยา A4 รวม"><i class="fas fa-file-medical"></i> ใบสั่งยา A4</button>
+                            <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 6px; font-weight: 600;" title="พิมพ์ใบเบิกย่อย"><i class="fas fa-file-invoice"></i> ใบย่อย</button>
+                        ` : `
+                            <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 6px; font-weight: 600;" title="พิมพ์ใบเบิกจ่ายยาทางการ"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
+                        `}
+                        ${!l.is_voided ? `
+                            <button type="button" class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่าย" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; height: 28px; color: var(--rose-600); border-color: var(--rose-200); border-radius: 6px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
+                                <i class="fas fa-rotate-left"></i> ยกเลิก
+                            </button>
+                        ` : `
+                            <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.725rem; padding: 2px 8px;">
+                                <i class="fas fa-ban"></i> ยกเลิกแล้ว
+                            </span>
+                        `}
                     </div>
                 </div>
             `;
@@ -3684,60 +3694,56 @@ function renderStockInTable(logs) {
 
                 const isGpo = l.supplier && (l.supplier.includes('GPO') || l.supplier.includes('องค์การ'));
                 const supplierBadge = isGpo
-                    ? `<span class="badge" style="background: rgba(14, 165, 233, 0.1); color: #0284C7; border: 1px solid rgba(14, 165, 233, 0.25); font-size: 0.7rem; padding: 0.15rem 0.45rem;"><i class="fas fa-building-columns"></i> GPO</span>`
-                    : `<span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #059669; border: 1px solid rgba(16, 185, 129, 0.25); font-size: 0.7rem; padding: 0.15rem 0.45rem;"><i class="fas fa-industry"></i> บริษัท</span>`;
+                    ? `<span class="badge" style="background: rgba(14, 165, 233, 0.12); color: #0284C7; font-size: 0.7rem;"><i class="fas fa-building-columns"></i> GPO</span>`
+                    : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.7rem;"><i class="fas fa-industry"></i> บริษัท</span>`;
 
                 return `
                     <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.75; background: #FFF5F5;' : ''}">
                         <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.5rem;">
                             ${mobileThumbHtml}
                             <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
-                                    <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                                        <span class="code-pill">${escapeHtml(l.drug_code || '-')}</span>
-                                        ${l.lot_number ? `<span class="code-pill" style="font-size: 0.675rem; background: var(--bg-subtle); color: var(--text-secondary);"><i class="fas fa-box-archive" style="font-size: 0.6rem;"></i> ${escapeHtml(l.lot_number)}</span>` : ''}
-                                    </div>
-                                    <div style="text-align: right; flex-shrink: 0;">
-                                        ${l.is_voided
-                                            ? `<span style="text-decoration: line-through; color: var(--text-muted); font-weight: 700; font-family: var(--font-mono); font-size: 0.95rem;">+${l.quantity}</span> <span class="badge" style="background:#FEE2E2; color:#DC2626; font-size:0.65rem; padding: 1px 4px;"><i class="fas fa-ban"></i> ยกเลิก</span>`
-                                            : `<span style="font-weight: 700; color: #059669; font-family: var(--font-mono); font-size: 0.95rem; background: #ECFDF5; border: 1px solid #A7F3D0; padding: 0.2rem 0.55rem; border-radius: 6px;">+${l.quantity}</span>`
-                                        }
-                                        ${l.total_cost && Number(l.total_cost) > 0 ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px; font-weight: 500; ${l.is_voided ? 'text-decoration: line-through;' : ''}">฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>` : ''}
-                                    </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span class="code-pill">${escapeHtml(l.drug_code || '-')}</span>
+                                    ${l.is_voided
+                                        ? `<div><span style="text-decoration: line-through; color: var(--text-muted); font-weight: 600; font-size: 0.85rem;">+${l.quantity}</span> <span class="badge" style="background:#FEE2E2; color:#DC2626; font-size:0.65rem; padding: 1px 4px;"><i class="fas fa-ban"></i> ยกเลิก</span></div>`
+                                        : `<span class="badge badge-stockin">+${l.quantity} หน่วย</span>`
+                                    }
                                 </div>
                                 <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
                                 ${l.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(l.generic_name)}</div>` : ''}
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.5rem;">
-                            <div>
-                                <span>คงเหลือ: ${l.balance_before} ➔ </span><strong style="color: var(--brand-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
-                            </div>
-                            <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                                ${l.is_voided ? `
-                                    <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.7rem; padding: 0.15rem 0.45rem;">
-                                        <i class="fas fa-ban"></i> ยกเลิกแล้ว
-                                    </span>
-                                ` : `
-                                    <button type="button" class="btn btn-outline" onclick="openEditStockInModal(${l.id})" title="แก้ไขรายการรับเข้าย้อนหลัง" style="padding: 0.15rem 0.5rem; font-size: 0.725rem; height: 26px; border-radius: 6px; font-weight: 600; color: #0284C7; border-color: #BAE6FD; display: inline-flex; align-items: center; gap: 3px;">
-                                        <i class="fas fa-pen-to-square"></i> แก้ไข
-                                    </button>
-                                    <button type="button" class="btn btn-outline" onclick="voidStockInRecord(${l.id})" title="ยกเลิกรายการรับเข้า" style="padding: 0.15rem 0.5rem; font-size: 0.725rem; height: 26px; border-radius: 6px; color: var(--rose-600); border-color: var(--rose-200); font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
-                                        <i class="fas fa-rotate-left"></i> ยกเลิก
-                                    </button>
-                                `}
-                                ${supplierBadge}
-                            </div>
+                        <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                            <span>คงเหลือ: ${l.balance_before} ➔ <strong>${l.balance_after}</strong></span>
+                            ${l.lot_number ? `<span>Lot: <code>${escapeHtml(l.lot_number)}</code></span>` : ''}
+                            ${l.total_cost ? `<span>มูลค่า: <strong style="${l.is_voided ? 'color: var(--text-muted); text-decoration: line-through;' : 'color: #059669;'}">฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong></span>` : ''}
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px dashed var(--border-subtle); flex-wrap: wrap; gap: 0.35rem;">
-                            <span><i class="fas fa-user-check" style="color: var(--brand-500); font-size: 0.7rem;"></i> ${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 0.4rem;">
+                            <span>${supplierBadge} ${escapeHtml(l.supplier || '-')}</span>
                             <span><i class="far fa-clock"></i> ${escapeHtml(l.created_at)}</span>
                         </div>
-                        ${l.notes ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px;"><i class="fas fa-note-sticky"></i> ${escapeHtml(l.notes)}</div>` : ''}
-                        ${l.is_voided && l.void_reason ? `
-                            <div style="font-size: 0.7rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 3px 6px; margin-top: 4px; line-height: 1.35; white-space: normal !important; word-break: break-all;">
-                                <i class="fas fa-circle-exclamation"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
-                            </div>` : ''}
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            <div><i class="fas fa-user-check" style="color: var(--brand-500); font-size: 0.7rem;"></i> ผู้ตรวจรับ: <strong>${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</strong></div>
+                            ${l.notes ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky"></i> ${escapeHtml(l.notes)}</div>` : ''}
+                            ${l.is_voided && l.void_reason ? `
+                                <div style="font-size: 0.7rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 2px 6px; margin-top: 3px; line-height: 1.35; white-space: normal !important; word-break: break-all;">
+                                    <i class="fas fa-circle-exclamation"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
+                                </div>` : ''}
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px dashed var(--border-subtle);">
+                            ${l.is_voided ? `
+                                <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.725rem; padding: 2px 8px;">
+                                    <i class="fas fa-ban"></i> รายการนี้ถูกยกเลิกแล้ว
+                                </span>
+                            ` : `
+                                <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" style="font-size: 0.75rem; color: #0284C7; border-color: #BAE6FD;">
+                                    <i class="fas fa-pen-to-square"></i> แก้ไขย้อนหลัง
+                                </button>
+                                <button type="button" class="btn btn-outline btn-xs" onclick="voidStockInRecord(${l.id})" style="font-size: 0.75rem; color: #DC2626; border-color: #FECACA; display: inline-flex; align-items: center; gap: 3px;">
+                                    <i class="fas fa-rotate-left"></i> ยกเลิก
+                                </button>
+                            `}
+                        </div>
                     </div>
                 `;
             }).join('');
