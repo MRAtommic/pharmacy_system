@@ -4208,13 +4208,9 @@ function addToRxCart(drugId) {
 
     const existingIndex = rxCart.findIndex(item => Number(item.drug.id) === Number(drugId));
     if (existingIndex >= 0) {
-        const item = rxCart[existingIndex];
-        if (item.quantity + 1 > curStock) {
-            showToast(`จำนวนยาในใบสั่ง (${item.quantity + 1}) เกินสต็อกที่มี (${curStock} ${drug.unit})`, 'warning');
-            return;
-        }
-        item.quantity += 1;
-        showToast(`เพิ่มจำนวน "${drug.name}" เป็น ${item.quantity} ${drug.unit} ในใบสั่งยาแล้ว`, 'success');
+        openRxCartModal();
+        showToast(`ยา "${drug.name}" อยู่ในใบสั่งยาแล้ว`, 'info');
+        return;
     } else {
         rxCart.push({
             drug: drug,
@@ -4234,7 +4230,12 @@ function removeFromRxCart(drugId) {
     updateRxCartBadges();
     renderRxCartModal();
     renderDrugsTable(allDrugs);
-    showToast('ลบรายการยาออกจากใบสั่งยาแล้ว', 'info');
+    if (rxCart.length === 0) {
+        closeRxCartModal();
+        showToast('ล้างรายการยาในใบสั่งยาหมดแล้ว', 'info');
+    } else {
+        showToast('ลบรายการยาออกจากใบสั่งยาแล้ว', 'info');
+    }
 }
 
 function updateRxCartQty(drugId, newQty) {
@@ -4262,15 +4263,21 @@ function updateRxCartItemNote(drugId, note) {
     }
 }
 
-function clearRxCart() {
-    if (rxCart.length === 0) return;
-    if (confirm('คุณต้องการล้างรายการยาทั้งหมดในใบสั่งยานี้ใช่หรือไม่?')) {
-        rxCart = [];
-        updateRxCartBadges();
-        renderRxCartModal();
-        renderDrugsTable(allDrugs);
-        showToast('ล้างใบสั่งยาเรียบร้อยแล้ว', 'info');
+function cancelAndClearRxCart() {
+    if (rxCart.length === 0) {
+        closeRxCartModal();
+        return;
     }
+    rxCart = [];
+    updateRxCartBadges();
+    renderRxCartModal();
+    renderDrugsTable(allDrugs);
+    closeRxCartModal();
+    showToast('ยกเลิกใบสั่งยาและล้างรายการทั้งหมดเรียบร้อยแล้ว', 'info');
+}
+
+function clearRxCart() {
+    cancelAndClearRxCart();
 }
 
 function updateRxCartBadges() {

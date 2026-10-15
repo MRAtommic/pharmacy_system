@@ -945,8 +945,11 @@
                 <div class="rx-cart-bar-subtitle" id="floatingCartSubtitle">ยอดรวม ฿0.00</div>
             </div>
         </div>
-        <div class="rx-cart-bar-right">
-            <button type="button" class="btn btn-sm" style="background: #FFFFFF; color: #047857; font-weight: 700; border: none; border-radius: 20px; padding: 0.35rem 0.85rem; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+        <div class="rx-cart-bar-right" style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); cancelAndClearRxCart();" style="background: rgba(239, 68, 68, 0.15); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 20px; padding: 0.35rem 0.85rem; font-weight: 700;" title="ยกเลิกใบสั่งยานี้และล้างรายการทั้งหมด">
+                <i class="fas fa-xmark"></i> ยกเลิก
+            </button>
+            <button type="button" class="btn btn-sm" onclick="openRxCartModal()" style="background: #FFFFFF; color: #047857; font-weight: 700; border: none; border-radius: 20px; padding: 0.35rem 0.85rem; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
                 <i class="fas fa-arrow-right"></i> เปิดใบสั่งยา
             </button>
         </div>
@@ -1001,7 +1004,7 @@
                         <div style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
                             <i class="fas fa-pills" style="color: #059669;"></i> รายการยาในใบสั่งนี้ (<span id="rxCartItemsCount" style="color: #059669; font-family: var(--font-mono);">0</span> รายการ)
                         </div>
-                        <button type="button" class="btn btn-sm btn-subtle text-danger" onclick="clearRxCart()" style="font-size: 0.75rem; padding: 0.25rem 0.65rem;">
+                        <button type="button" class="btn btn-sm btn-subtle text-danger" onclick="cancelAndClearRxCart()" style="font-size: 0.75rem; padding: 0.25rem 0.65rem;">
                             <i class="fas fa-trash-can"></i> ล้างรายการทั้งหมด
                         </button>
                     </div>
@@ -1028,8 +1031,13 @@
                 </div>
             </div>
 
-            <div class="modal-footer" style="background: var(--bg-surface); border-top: 1px solid var(--border-subtle); padding: 0.85rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
-                <button type="button" class="btn btn-outline" onclick="closeRxCartModal()">ปิดหน้าต่าง</button>
+            <div class="modal-footer" style="background: var(--bg-surface); border-top: 1px solid var(--border-subtle); padding: 0.85rem 1.25rem; display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button type="button" class="btn btn-outline" onclick="cancelAndClearRxCart()" style="color: #DC2626; border-color: #FCA5A5; background: #FEF2F2; font-weight: 700;" title="ยกเลิกใบสั่งยานี้และล้างรายการยาทั้งหมด">
+                        <i class="fas fa-ban"></i> ยกเลิกใบสั่งยานี้
+                    </button>
+                    <button type="button" class="btn btn-outline" onclick="closeRxCartModal()" title="ปิดหน้าต่างโดยคงรายการไว้">ปิดหน้าต่าง</button>
+                </div>
                 <button type="button" id="btnSubmitRxBatch" class="btn btn-primary" onclick="submitRxBatchDispense()" style="background: #059669; border-color: #059669; padding: 0.65rem 1.4rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.5rem;">
                     <i class="fas fa-check-double"></i> ยืนยันตัดจ่ายยาทั้งหมด
                 </button>
@@ -1929,6 +1937,6 @@
     <script>
         window.PHARMACY_BASE = "{{ base_prefix | default('') }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=35.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=36.0"></script>
 </body>
 </html>
