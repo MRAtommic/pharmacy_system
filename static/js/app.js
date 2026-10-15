@@ -3713,10 +3713,12 @@ function renderStockInTable(logs) {
                                 ${l.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(l.generic_name)}</div>` : ''}
                             </div>
                         </div>
-                        <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.35rem;">
                             <span>คงเหลือ: ${l.balance_before} ➔ <strong>${l.balance_after}</strong></span>
                             ${l.lot_number ? `<span>Lot: <code>${escapeHtml(l.lot_number)}</code></span>` : ''}
-                            ${l.total_cost ? `<span>มูลค่า: <strong style="${l.is_voided ? 'color: var(--text-muted); text-decoration: line-through;' : 'color: #059669;'}">฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong></span>` : ''}
+                        </div>
+                        <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                            <span>มูลค่า: <strong style="${l.is_voided ? 'color: var(--text-muted); text-decoration: line-through;' : 'color: #059669;'}">฿${l.total_cost ? parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 }) : '0.00'}</strong></span>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 0.4rem;">
                             <span>${supplierBadge} ${escapeHtml(l.supplier || '-')}</span>
