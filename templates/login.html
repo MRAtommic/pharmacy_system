@@ -282,6 +282,26 @@
             <span>ลงชื่อเข้าใช้ด้วย Google</span>
         </a>
 
+        <!-- Divider -->
+        <div style="display: flex; align-items: center; margin: 1.25rem 0; color: var(--text-muted); font-size: 0.775rem;">
+            <div style="flex: 1; height: 1px; background-color: var(--border-color);"></div>
+            <span style="padding: 0 0.75rem;">หรือเข้าใช้งานด้วยรหัสผ่าน</span>
+            <div style="flex: 1; height: 1px; background-color: var(--border-color);"></div>
+        </div>
+
+        <!-- Passcode Form -->
+        <form id="passcodeForm" onsubmit="handlePasscodeLogin(event)" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <div style="display: flex; gap: 0.45rem;">
+                <input type="password" id="inputPasscode" placeholder="กรอกรหัสผ่านเจ้าหน้าที่..." autocomplete="current-password" required
+                    style="flex: 1; height: 40px; padding: 0 0.85rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.84rem; background: var(--bg-card); color: var(--text-heading); outline: none;">
+                <button type="submit" id="btnSubmitPasscode"
+                    style="height: 40px; padding: 0 1.1rem; background: var(--teal-primary); color: #fff; border: none; border-radius: 8px; font-weight: 600; font-size: 0.84rem; cursor: pointer;">
+                    เข้าสู่ระบบ
+                </button>
+            </div>
+            <div id="passcodeError" style="display: none; color: #E11D48; font-size: 0.75rem; padding-left: 2px;"></div>
+        </form>
+
         <!-- Security & Audit Trail Notice -->
         <div class="security-notice">
             <i class="fas fa-shield-halved security-icon"></i>
@@ -308,6 +328,40 @@
         this.style.opacity = '0.85';
         this.style.pointerEvents = 'none';
     });
+
+    function handlePasscodeLogin(e) {
+        e.preventDefault();
+        const code = document.getElementById('inputPasscode').value.trim();
+        const errEl = document.getElementById('passcodeError');
+        const btn = document.getElementById('btnSubmitPasscode');
+        if (!code) return;
+        errEl.style.display = 'none';
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+        
+        fetch('/api/auth/passcode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ passcode: code })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok && data.redirect) {
+                window.location.href = data.redirect;
+            } else {
+                errEl.innerText = data.error || 'รหัสผ่านไม่ถูกต้อง';
+                errEl.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = 'เข้าสู่ระบบ';
+            }
+        })
+        .catch(() => {
+            errEl.innerText = 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
+            errEl.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = 'เข้าสู่ระบบ';
+        });
+    }
 </script>
 </body>
 </html>
