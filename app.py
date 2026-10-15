@@ -160,10 +160,8 @@ def stock_card_view():
                 tx["particulars_html"] = f'รับจาก..<span class="fill-text">{qty_in}</span>..GPO/..-..บริษัท/จ่าย..-..'
             else:
                 tx["particulars_html"] = f'รับจาก...-..GPO/..<span class="fill-text">{qty_in}</span>..บริษัท/จ่าย..-..'
-            if tx.get("lot_number") and tx.get("expiry_date"):
-                tx["lot_exp_html"] = f'<div style="font-size:10px;line-height:1.15;"><div>{tx["lot_number"]}</div><div style="color:#555;">{tx["expiry_date"]}</div></div>'
-            else:
-                tx["lot_exp_html"] = f'<span style="font-size:11px;">{tx.get("lot_number") or tx.get("expiry_date") or "-"}</span>'
+            exp = (tx.get("expiry_date") or "").strip()
+            tx["lot_exp_html"] = exp if exp else "-"
         else:
             qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
             tx["particulars_html"] = f'รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{qty_out}</span>..'
@@ -306,7 +304,7 @@ def export_stock_card_excel():
         ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["type"] == "DISPENSE" else "-").alignment = align_center
         ws.cell(row=r_idx, column=5, value=tx["balance"]).alignment = align_center
         ws.cell(row=r_idx, column=6, value=round(tx.get("total_price") or tx.get("price") or 0)).alignment = align_right
-        lot_exp = f"{tx.get('lot_number', '')} {tx.get('expiry_date', '')}".strip()
+        lot_exp = (tx.get('expiry_date') or '').strip()
         ws.cell(row=r_idx, column=7, value=lot_exp or "-").alignment = align_center
         ws.cell(row=r_idx, column=8, value="").alignment = align_center
 

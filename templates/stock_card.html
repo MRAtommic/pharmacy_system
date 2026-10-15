@@ -302,7 +302,7 @@
         .col-lot-exp {
             width: 11.5%;
             text-align: center;
-            font-size: 11px;
+            font-size: 11.5px;
             white-space: nowrap;
             padding: 2px 1px !important;
         }
@@ -681,11 +681,7 @@
                     } else {
                         particulars = `รับจาก...-..GPO/..<span class="fill-text">${qtyVal}</span>..บริษัท/จ่าย..-..`;
                     }
-                    if (tx.lot_number && tx.expiry_date) {
-                        lotExp = `<div style="font-size: 10px; line-height: 1.15;"><div>${escapeHtml(tx.lot_number)}</div><div style="color: #555;">${escapeHtml(tx.expiry_date)}</div></div>`;
-                    } else {
-                        lotExp = `<span style="font-size: 11px;">${escapeHtml(tx.lot_number || tx.expiry_date || '-')}</span>`;
-                    }
+                    lotExp = escapeHtml(tx.expiry_date || '-');
                 } else {
                     const qtyVal = (tx.qty_out != null && tx.qty_out !== '') ? tx.qty_out : '-';
                     particulars = `รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">${qtyVal}</span>..`;
