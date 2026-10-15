@@ -5,6 +5,7 @@ Flask Application Entry Point
 
 import sys
 import os
+import re
 import json
 import sqlite3
 import logging
@@ -114,6 +115,20 @@ def mobile_scanner():
     u = current_user()
     return render_template("index.html", initial_view="scanner", base_url=Config.BASE_URL, current_user=u)
 
+def format_packaging_size(drug):
+    if not drug:
+        return "1*500 's"
+    strength = (drug.get("strength") or "").strip()
+    if strength:
+        cleaned = re.sub(r'\s*(เม็ด|ขวด|แคปซูล|ซอง|หลอด|ตลับ|กล่อง|ชิ้น|แผง)', '', strength).strip()
+        if cleaned:
+            return cleaned
+    name = drug.get("name", "")
+    m = re.search(r'(\d+(?:\.\d+)?\s*(?:mg|g|ml|mcg|มก\.?|มล\.?|%))', name, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return "1*500 's"
+
 @app.route("/stock-card")
 @login_required
 def stock_card_view():
@@ -140,20 +155,18 @@ def stock_card_view():
         tx["date_short"] = format_thai_date_short(tx["created_at"])
         if tx["type"] == "RECEIVE":
             is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
+            qty_in = tx.get("qty_in") or tx.get("quantity") or "-"
             if is_gpo:
-                tx["particulars_html"] = 'รับจาก...<span class="fill-text">GPO</span>/..-..บริษัท/จ่าย..-..'
+                tx["particulars_html"] = f'รับจาก..<span class="fill-text">{qty_in}</span>..GPO/..-..บริษัท/จ่าย..-..'
             else:
-                supp = (tx.get("supplier") or "บริษัท")[:10]
-                tx["particulars_html"] = f'รับจาก..-..GPO/..<span class="fill-text">{supp}</span>../จ่าย..-..'
+                tx["particulars_html"] = f'รับจาก...-..GPO/..<span class="fill-text">{qty_in}</span>..บริษัท/จ่าย..-..'
             if tx.get("lot_number") and tx.get("expiry_date"):
                 tx["lot_exp_html"] = f'<div style="font-size:10px;line-height:1.15;"><div>{tx["lot_number"]}</div><div style="color:#555;">{tx["expiry_date"]}</div></div>'
             else:
                 tx["lot_exp_html"] = f'<span style="font-size:11px;">{tx.get("lot_number") or tx.get("expiry_date") or "-"}</span>'
         else:
-            rec = (tx.get("recipient") or "ผู้ป่วยนอก").replace("ผู้ป่วยนอก / ", "").strip()
-            if len(rec) > 12:
-                rec = rec[:10] + ".."
-            tx["particulars_html"] = f'รับจาก..-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{rec}</span>..'
+            qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
+            tx["particulars_html"] = f'รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{qty_out}</span>..'
             tx["lot_exp_html"] = '-'
 
         if tx.get("total_price"):
@@ -175,7 +188,7 @@ def stock_card_view():
         opening_balance=opening_balance,
         transactions=transactions,
         empty_rows_count=empty_rows_count,
-        packaging=selected_drug.get("strength", "") + " " + (selected_drug.get("unit", "") or "1*500 's") if selected_drug else "1*500 's",
+        packaging=format_packaging_size(selected_drug),
         hospital_name="โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
         current_user=u,
         base_url=Config.BASE_URL
@@ -248,7 +261,7 @@ def export_stock_card_excel():
     ws["A2"].alignment = align_center
 
     ws.merge_cells("A3:H3")
-    ws["A3"] = f"ชื่อสามัญ: {drug.get('generic_name') or drug.get('name')}     ขนาดบรรจุ: {drug.get('strength', '')} {drug.get('unit', '')}     ลักษณะ: {drug.get('dosage_form', 'tablet')}"
+    ws["A3"] = f"ชื่อสามัญ: {drug.get('generic_name') or drug.get('name')}     ขนาดบรรจุ: {format_packaging_size(drug)}     ลักษณะ: {drug.get('dosage_form', 'tablet')}"
     ws["A3"].font = font_regular
     ws["A3"].alignment = align_left
 
@@ -277,9 +290,15 @@ def export_stock_card_excel():
         r_idx += 1
         d_short = format_thai_date_short(tx["created_at"])
         if tx["type"] == "RECEIVE":
-            part = f"รับจาก...{tx.get('supplier', 'GPO')}...บริษัท/จ่าย...-....."
+            is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
+            qty_in = tx.get("qty_in") or tx.get("quantity") or "-"
+            if is_gpo:
+                part = f"รับจาก...{qty_in}...GPO/...-.....บริษัท/จ่าย...-....."
+            else:
+                part = f"รับจาก...-.....GPO/...{qty_in}...บริษัท/จ่าย...-....."
         else:
-            part = f"รับจาก...-.....GPO/...-.....บริษัท/จ่าย...{tx.get('recipient', 'ผู้ป่วยนอก')}....."
+            qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
+            part = f"รับจาก...-.....GPO/...-.....บริษัท/จ่าย...{qty_out}....."
 
         ws.cell(row=r_idx, column=1, value=d_short).alignment = align_center
         ws.cell(row=r_idx, column=2, value=part).alignment = align_left

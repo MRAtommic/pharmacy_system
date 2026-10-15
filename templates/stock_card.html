@@ -219,7 +219,7 @@
         }
 
         .meta-val {
-            font-weight: 600;
+            font-weight: 400;
             color: #000000;
             outline: none;
             white-space: nowrap;
@@ -275,21 +275,21 @@
         .col-qty-in {
             width: 6%;
             text-align: center;
-            font-weight: 600;
+            font-weight: 400;
             white-space: nowrap;
         }
 
         .col-qty-out {
             width: 6%;
             text-align: center;
-            font-weight: 600;
+            font-weight: 400;
             white-space: nowrap;
         }
 
         .col-balance {
             width: 9%;
             text-align: center;
-            font-weight: 700;
+            font-weight: 400;
             white-space: nowrap;
         }
 
@@ -314,7 +314,7 @@
         }
 
         .row-opening-balance td {
-            font-weight: 600;
+            font-weight: 400;
         }
 
         .row-empty {
@@ -333,7 +333,7 @@
 
         .fill-text {
             color: #000000;
-            font-weight: 600;
+            font-weight: 400;
         }
 
         /* ── Print Specific Adjustments ── */
@@ -610,6 +610,19 @@
             }
         }
 
+        function formatPackagingSize(drug) {
+            if (!drug) return "1*500 's";
+            let str = (drug.strength || "").trim();
+            if (str) {
+                str = str.replace(/\s*(เม็ด|ขวด|แคปซูล|ซอง|หลอด|ตลับ|กล่อง|ชิ้น|แผง)/g, '').trim();
+                if (str) return str;
+            }
+            const name = drug.name || "";
+            const match = name.match(/(\d+(?:\.\d+)?\s*(?:mg|g|ml|mcg|มก\.?|มล\.?|%))/i);
+            if (match) return match[1];
+            return "1*500 's";
+        }
+
         function renderStockCard(d) {
             if (!d) return;
             const drug = d.drug || {};
@@ -620,8 +633,7 @@
 
             const pkgEl = document.getElementById('metaPackaging');
             if (pkgEl) {
-                const packagingStr = ((drug.strength || '') + ' ' + (drug.unit || '')).trim() || "1*500 's";
-                pkgEl.innerText = packagingStr;
+                pkgEl.innerText = formatPackagingSize(drug);
             }
 
             const dosageEl = document.getElementById('metaDosageForm');
@@ -663,11 +675,11 @@
 
                 if (tx.type === 'RECEIVE') {
                     const isGpo = (tx.supplier && (tx.supplier.toUpperCase().includes('GPO') || tx.supplier.includes('องค์การ')));
+                    const qtyVal = (tx.qty_in != null && tx.qty_in !== '') ? tx.qty_in : '-';
                     if (isGpo) {
-                        particulars = `รับจาก...<span class="fill-text">GPO</span>/..-..บริษัท/จ่าย..-..`;
+                        particulars = `รับจาก..<span class="fill-text">${qtyVal}</span>..GPO/..-..บริษัท/จ่าย..-..`;
                     } else {
-                        const supp = (tx.supplier || 'บริษัท').substring(0, 10);
-                        particulars = `รับจาก..-..GPO/..<span class="fill-text">${escapeHtml(supp)}</span>../จ่าย..-..`;
+                        particulars = `รับจาก...-..GPO/..<span class="fill-text">${qtyVal}</span>..บริษัท/จ่าย..-..`;
                     }
                     if (tx.lot_number && tx.expiry_date) {
                         lotExp = `<div style="font-size: 10px; line-height: 1.15;"><div>${escapeHtml(tx.lot_number)}</div><div style="color: #555;">${escapeHtml(tx.expiry_date)}</div></div>`;
@@ -675,9 +687,8 @@
                         lotExp = `<span style="font-size: 11px;">${escapeHtml(tx.lot_number || tx.expiry_date || '-')}</span>`;
                     }
                 } else {
-                    let rec = (tx.recipient || 'ผู้ป่วยนอก').replace(/ผู้ป่วยนอก\s*\/\s*/g, '').trim();
-                    if (rec.length > 12) rec = rec.substring(0, 10) + '..';
-                    particulars = `รับจาก..-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">${escapeHtml(rec)}</span>..`;
+                    const qtyVal = (tx.qty_out != null && tx.qty_out !== '') ? tx.qty_out : '-';
+                    particulars = `รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">${qtyVal}</span>..`;
                     lotExp = '-';
                 }
 
