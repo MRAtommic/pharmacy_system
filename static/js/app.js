@@ -172,7 +172,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if opened via scanned URL query param: ?scan=MED-0001 or ?dispense=MED-0001
     const urlParams = new URLSearchParams(window.location.search);
-    const codeParam = urlParams.get('scan') || urlParams.get('code') || urlParams.get('dispense');
+    const tabParam = urlParams.get('tab');
+    if (tabParam) {
+        setTimeout(() => switchTab(tabParam), 300);
+    }
+    const modalParam = urlParams.get('modal');
+    if (modalParam === 'sticker') {
+        setTimeout(() => openBatchPrintModal(), 600);
+    }
+    const codeParam = urlParams.get('scan') || urlParams.get('dispense');
     if (codeParam) {
         setTimeout(() => handleScannedCode(codeParam), 600);
     }
