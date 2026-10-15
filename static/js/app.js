@@ -3927,20 +3927,33 @@ async function saveEditStockIn(event) {
         created_at: createdAtVal
     };
 
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    const codeQuery = urlCode ? `?code=${encodeURIComponent(urlCode)}` : '';
+
     try {
-        const res = await fetch(`/api/stock-in/${logId}`, {
+        let res = await fetch(`/api/stock-in/${logId}${codeQuery}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        const data = await res.json();
-        if (data.ok) {
+
+        // Fallback to POST if PUT is not allowed by proxy
+        if (!res.ok && res.status === 405) {
+            res = await fetch(`/api/stock-in/${logId}${codeQuery}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        }
+
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.ok) {
             showToast(data.message || 'แก้ไขรายการรับเข้าย้อนหลังสำเร็จ', 'success');
             closeEditStockInModal();
             await loadStockInLogs();
             if (typeof loadDrugs === 'function') loadDrugs();
         } else {
-            showToast(data.error || 'เกิดข้อผิดพลาดในการแก้ไข', 'error');
+            showToast((data && data.error) || `เกิดข้อผิดพลาดในการแก้ไข (HTTP ${res.status})`, 'error');
         }
     } catch (err) {
         console.error('Save Edit Stock In error:', err);
@@ -3959,17 +3972,28 @@ async function deleteStockInRecord(logId) {
         return;
     }
 
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    const codeQuery = urlCode ? `?code=${encodeURIComponent(urlCode)}` : '';
+
     try {
-        const res = await fetch(`/api/stock-in/${logId}`, {
+        let res = await fetch(`/api/stock-in/${logId}${codeQuery}`, {
             method: 'DELETE'
         });
-        const data = await res.json();
-        if (data.ok) {
+
+        // Fallback to POST /delete endpoint if proxy/firewall blocked DELETE
+        if (!res.ok && (res.status === 404 || res.status === 405)) {
+            res = await fetch(`/api/stock-in/${logId}/delete${codeQuery}`, {
+                method: 'POST'
+            });
+        }
+
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.ok) {
             showToast(data.message || 'ลบรายการรับเข้าสำเร็จ', 'success');
             await loadStockInLogs();
             if (typeof loadDrugs === 'function') loadDrugs();
         } else {
-            showToast(data.error || 'ไม่สามารถลบรายการได้', 'error');
+            showToast((data && data.error) || `ไม่สามารถลบรายการได้ (HTTP ${res.status})`, 'error');
         }
     } catch (err) {
         console.error('Delete Stock In error:', err);

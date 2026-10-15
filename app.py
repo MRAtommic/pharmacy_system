@@ -1101,7 +1101,8 @@ def update_stock_in_endpoint(log_id):
     trigger_bg_sheet_sync()
     return jsonify({"ok": True, "log": result, "message": f"แก้ไขรายการรับเข้ายา '{result.get('drug_name')}' เรียบร้อยแล้ว"})
 
-@app.route("/api/stock-in/<int:log_id>", methods=["DELETE"])
+@app.route("/api/stock-in/<int:log_id>", methods=["DELETE", "POST"])
+@app.route("/api/stock-in/<int:log_id>/delete", methods=["POST", "DELETE"])
 @login_required
 def delete_stock_in_endpoint(log_id):
     success, result = database.delete_stock_in_log(log_id)
