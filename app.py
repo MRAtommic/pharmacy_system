@@ -1110,19 +1110,32 @@ def update_stock_in_endpoint(log_id):
     trigger_bg_sheet_sync()
     return jsonify({"ok": True, "log": result, "message": f"แก้ไขรายการรับเข้ายา '{result.get('drug_name')}' เรียบร้อยแล้ว"})
 
+@app.route("/api/stock-in/<int:log_id>/void", methods=["POST"])
 @app.route("/api/stock-in/<int:log_id>", methods=["DELETE", "POST"])
 @app.route("/api/stock-in/<int:log_id>/delete", methods=["POST", "DELETE"])
 @login_required
-def delete_stock_in_endpoint(log_id):
-    success, result = database.delete_stock_in_log(log_id)
+def void_stock_in_endpoint(log_id):
+    data = request.json or {}
+    reason = (data.get("reason") or "ยกเลิกรายการรับเข้าโดยเจ้าหน้าที่").strip()
+
+    u = current_user()
+    actor_email = u.get('email', '')
+    actor_name = u.get('name', '')
+    voided_by = f"{actor_name} ({actor_email})" if actor_name and actor_name != actor_email else (actor_email or "เภสัชกร/เจ้าหน้าที่")
+
+    success, result = database.void_stock_in_log(log_id, reason=reason, voided_by=voided_by)
     if not success:
         return jsonify({"ok": False, "error": result}), 400
 
-    audit("DELETE_STOCK_IN", "stock_in_log", log_id, result.get("drug_name", ""),
-          f"ลบรายการรับเข้า: ยา {result.get('drug_name')} จำนวน {result.get('quantity')} หน่วย | Lot {result.get('lot_number')}")
+    audit("VOID_STOCK_IN", "stock_in_log", log_id, result.get("drug_name", ""),
+          f"ยกเลิกรายการรับเข้า คืนสต็อกลดลง {result.get('quantity')} หน่วย | Lot {result.get('lot_number')} | คงเหลือใหม่: {result.get('new_stock', '-')} | เหตุผล: {reason}")
 
     trigger_bg_sheet_sync()
-    return jsonify({"ok": True, "log": result, "message": f"ลบรายการรับเข้ายา '{result.get('drug_name')}' เรียบร้อยแล้ว"})
+    return jsonify({
+        "ok": True,
+        "log": result,
+        "message": f"ยกเลิกรายการรับเข้ายา '{result.get('drug_name')}' จำนวน {result.get('quantity')} หน่วย เรียบร้อยแล้ว (สต็อกคงเหลือใหม่: {result.get('new_stock', '-')})"
+    })
 
 @app.route("/api/analytics/summary", methods=["GET"])
 def analytics_summary():

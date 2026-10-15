@@ -3600,7 +3600,7 @@ function renderStockInTable(logs) {
                     : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.75rem;"><i class="fas fa-industry" style="font-size: 0.65rem;"></i> บริษัท</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier || 'บริษัท')}</span>`;
 
                 return `
-                    <tr>
+                    <tr style="${l.is_voided ? 'background: rgba(239, 68, 68, 0.03);' : ''}">
                         <td class="col-thumb">
                             ${thumbHtml}
                         </td>
@@ -3617,16 +3617,20 @@ function renderStockInTable(logs) {
                         <td>
                             ${l.lot_number ? `<span style="font-family: var(--font-mono); font-size: 0.775rem; background: var(--bg-subtle); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border-subtle);">${escapeHtml(l.lot_number)}</span>` : '<span style="color: var(--text-muted);">-</span>'}
                         </td>
-                        <td>
-                            <span class="badge badge-stockin"><i class="fas fa-arrow-down"></i> +${l.quantity}</span>
+                        <td style="text-align: center;">
+                            ${l.is_voided
+                                ? `<span style="font-weight: 600; color: var(--text-muted); text-decoration: line-through; font-family: var(--font-mono); font-size: 0.85rem;">+${l.quantity}</span>
+                                   <div style="margin-top: 3px;"><span class="badge" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; font-size:0.675rem; padding:1px 5px;"><i class="fas fa-ban"></i> ยกเลิกแล้ว</span></div>`
+                                : `<span class="badge badge-stockin"><i class="fas fa-arrow-down"></i> +${l.quantity}</span>`
+                            }
                         </td>
-                        <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">
+                        <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; text-align: center;">
                             ${l.balance_before} <i class="fas fa-arrow-right" style="font-size: 0.7rem; color: var(--text-muted); margin: 0 3px;"></i> <strong style="color: var(--brand-600);">${l.balance_after}</strong>
                         </td>
                         <td style="font-size: 0.85rem; color: var(--text-secondary);">
                             ${l.cost_per_unit ? `฿${parseFloat(l.cost_per_unit).toFixed(2)}` : '-'}
                         </td>
-                        <td style="font-size: 0.875rem; font-weight: 700; color: #059669;">
+                        <td style="font-size: 0.875rem; font-weight: 700; ${l.is_voided ? 'color: var(--text-muted); text-decoration: line-through;' : 'color: #059669;'}">
                             ${l.total_cost ? `฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}` : '-'}
                         </td>
                         <td style="font-size: 0.8125rem;">
@@ -3635,19 +3639,29 @@ function renderStockInTable(logs) {
                         <td style="font-size: 0.8125rem; color: var(--text-muted);">
                             ${escapeHtml(l.expiry_date || '-')}
                         </td>
-                        <td style="font-size: 0.8125rem; color: var(--text-secondary);">
+                        <td style="font-size: 0.8125rem; color: var(--text-secondary); word-break: break-word; overflow-wrap: anywhere; min-width: 160px;">
                             <span style="font-weight: 600;">${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</span>
                             ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
+                            ${l.is_voided && l.void_reason ? `
+                                <div style="font-size: 0.72rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 3px 6px; margin-top: 3px; line-height: 1.35; white-space: normal !important; word-break: break-all; overflow-wrap: anywhere;">
+                                    <i class="fas fa-circle-exclamation" style="font-size: 0.65rem;"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
+                                </div>` : ''}
                         </td>
                         <td style="text-align: center; white-space: nowrap;">
-                            <div style="display: inline-flex; gap: 4px; align-items: center;">
-                                <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" title="แก้ไขรายการรับเข้าย้อนหลัง" style="padding: 3px 8px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; color: #0284C7; border-color: #BAE6FD;">
-                                    <i class="fas fa-pen-to-square"></i> แก้ไข
-                                </button>
-                                <button type="button" class="btn btn-outline btn-xs" onclick="deleteStockInRecord(${l.id})" title="ลบรายการรับเข้า" style="padding: 3px 6px; font-size: 0.75rem; border-radius: 6px; color: #EF4444; border-color: #FECACA;">
-                                    <i class="fas fa-trash-can"></i>
-                                </button>
-                            </div>
+                            ${l.is_voided ? `
+                                <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.725rem; padding: 3px 8px; font-weight: 600;">
+                                    <i class="fas fa-ban"></i> ยกเลิกแล้ว
+                                </span>
+                            ` : `
+                                <div style="display: inline-flex; gap: 4px; align-items: center;">
+                                    <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" title="แก้ไขรายการรับเข้าย้อนหลัง" style="padding: 3px 8px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; color: #0284C7; border-color: #BAE6FD;">
+                                        <i class="fas fa-pen-to-square"></i> แก้ไข
+                                    </button>
+                                    <button type="button" class="btn btn-outline btn-xs" onclick="voidStockInRecord(${l.id})" title="ยกเลิกรายการรับเข้าและปรับลดยาออกจากสต็อก" style="padding: 3px 8px; font-size: 0.75rem; border-radius: 6px; color: #DC2626; border-color: #FECACA; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
+                                        <i class="fas fa-rotate-left"></i> ยกเลิก
+                                    </button>
+                                </div>
+                            `}
                         </td>
                     </tr>
                 `;
@@ -3674,13 +3688,16 @@ function renderStockInTable(logs) {
                     : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.7rem;"><i class="fas fa-industry"></i> บริษัท</span>`;
 
                 return `
-                    <div class="log-mobile-card">
+                    <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.75; background: #FFF5F5;' : ''}">
                         <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.5rem;">
                             ${mobileThumbHtml}
                             <div style="flex: 1; min-width: 0;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
                                     <span class="code-pill">${escapeHtml(l.drug_code || '-')}</span>
-                                    <span class="badge badge-stockin">+${l.quantity} หน่วย</span>
+                                    ${l.is_voided
+                                        ? `<div><span style="text-decoration: line-through; color: var(--text-muted); font-weight: 600; font-size: 0.85rem;">+${l.quantity}</span> <span class="badge" style="background:#FEE2E2; color:#DC2626; font-size:0.65rem; padding: 1px 4px;"><i class="fas fa-ban"></i> ยกเลิก</span></div>`
+                                        : `<span class="badge badge-stockin">+${l.quantity} หน่วย</span>`
+                                    }
                                 </div>
                                 <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
                                 ${l.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(l.generic_name)}</div>` : ''}
@@ -3689,23 +3706,33 @@ function renderStockInTable(logs) {
                         <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
                             <span>คงเหลือ: ${l.balance_before} ➔ <strong>${l.balance_after}</strong></span>
                             ${l.lot_number ? `<span>Lot: <code>${escapeHtml(l.lot_number)}</code></span>` : ''}
-                            ${l.total_cost ? `<span>มูลค่า: <strong style="color: #059669;">฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong></span>` : ''}
+                            ${l.total_cost ? `<span>มูลค่า: <strong style="${l.is_voided ? 'color: var(--text-muted); text-decoration: line-through;' : 'color: #059669;'}">฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</strong></span>` : ''}
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 0.4rem;">
                             <span>${supplierBadge} ${escapeHtml(l.supplier || '-')}</span>
                             <span><i class="far fa-clock"></i> ${escapeHtml(l.created_at)}</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                            <span><i class="fas fa-user-check" style="color: var(--brand-500); font-size: 0.7rem;"></i> ผู้ตรวจรับ: <strong>${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</strong></span>
-                            ${l.notes ? `<span style="font-size: 0.7rem; color: var(--text-muted);"><i class="fas fa-note-sticky"></i> ${escapeHtml(l.notes)}</span>` : ''}
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            <div><i class="fas fa-user-check" style="color: var(--brand-500); font-size: 0.7rem;"></i> ผู้ตรวจรับ: <strong>${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</strong></div>
+                            ${l.notes ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky"></i> ${escapeHtml(l.notes)}</div>` : ''}
+                            ${l.is_voided && l.void_reason ? `
+                                <div style="font-size: 0.7rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 2px 6px; margin-top: 3px; line-height: 1.35; white-space: normal !important; word-break: break-all;">
+                                    <i class="fas fa-circle-exclamation"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
+                                </div>` : ''}
                         </div>
                         <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px dashed var(--border-subtle);">
-                            <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" style="font-size: 0.75rem; color: #0284C7; border-color: #BAE6FD;">
-                                <i class="fas fa-pen-to-square"></i> แก้ไขย้อนหลัง
-                            </button>
-                            <button type="button" class="btn btn-outline btn-xs" onclick="deleteStockInRecord(${l.id})" style="font-size: 0.75rem; color: #EF4444; border-color: #FECACA;">
-                                <i class="fas fa-trash-can"></i> ลบ
-                            </button>
+                            ${l.is_voided ? `
+                                <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.725rem; padding: 2px 8px;">
+                                    <i class="fas fa-ban"></i> รายการนี้ถูกยกเลิกแล้ว
+                                </span>
+                            ` : `
+                                <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" style="font-size: 0.75rem; color: #0284C7; border-color: #BAE6FD;">
+                                    <i class="fas fa-pen-to-square"></i> แก้ไขย้อนหลัง
+                                </button>
+                                <button type="button" class="btn btn-outline btn-xs" onclick="voidStockInRecord(${l.id})" style="font-size: 0.75rem; color: #DC2626; border-color: #FECACA; display: inline-flex; align-items: center; gap: 3px;">
+                                    <i class="fas fa-rotate-left"></i> ยกเลิก
+                                </button>
+                            `}
                         </div>
                     </div>
                 `;
@@ -3820,6 +3847,10 @@ function openEditStockInModal(logId) {
         showToast('ไม่พบข้อมูลรายการรับยานี้', 'error');
         return;
     }
+    if (log.is_voided) {
+        showToast('รายการรับยานี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้', 'warning');
+        return;
+    }
 
     document.getElementById('editStockInId').value = log.id;
     document.getElementById('editStockInDrugId').value = log.drug_id || '';
@@ -3888,14 +3919,14 @@ function openEditStockInModal(logId) {
 
     calcEditStockInImpact();
 
-    // Check if delete button should warn or disable
+    // Check if cancel button should warn or disable
     const delBtn = document.getElementById('btnDeleteFromEditModal');
     if (delBtn) {
         if (curStock < (log.quantity || 0)) {
-            delBtn.title = `ไม่สามารถลบได้เพราะยาถูกจ่ายไปแล้วจนเหลือคงคลัง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${log.quantity})`;
+            delBtn.title = `ไม่สามารถยกเลิกได้เพราะยาถูกจ่ายไปแล้วจนเหลือคงคลัง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${log.quantity})`;
             delBtn.style.opacity = '0.45';
         } else {
-            delBtn.title = 'ลบรายการนี้';
+            delBtn.title = 'ยกเลิกรายการนี้';
             delBtn.style.opacity = '1';
         }
     }
@@ -4008,7 +4039,7 @@ async function saveEditStockIn(event) {
     }
 }
 
-async function deleteStockInRecord(logId) {
+async function voidStockInRecord(logId) {
     const log = stockInLogsList.find(l => Number(l.id) === Number(logId));
     const drugName = log ? log.drug_name : `รายการ #${logId}`;
     const qty = log ? Number(log.quantity || 0) : 0;
@@ -4018,49 +4049,59 @@ async function deleteStockInRecord(logId) {
     const curStock = drug ? Number(drug.stock_qty || 0) : (log?.current_drug_stock != null ? Number(log.current_drug_stock) : null);
 
     if (curStock !== null && curStock < qty) {
-        showToast(`❌ ไม่สามารถลบรายการรับเข้าได้: ยา '${drugName}' ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${qty} หน่วย) ระบบบล็อกไว้เพื่อป้องกันไม่ให้สต็อกติดลบ`, 'error', 7000);
+        showToast(`❌ ไม่สามารถยกเลิกรายการรับเข้าได้: ยา '${drugName}' ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${qty} หน่วย) ระบบบล็อกไว้เพื่อป้องกันไม่ให้สต็อกติดลบ`, 'error', 7000);
         return;
     }
 
-    if (!confirm(`คุณต้องการลบรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาในคลังจะถูกปรับลดลง ${qty} หน่วย (จากคงเหลือ ${curStock !== null ? curStock : 'ปัจจุบัน'} ➔ ${curStock !== null ? curStock - qty : ''})`)) {
-        return;
-    }
+    const promptMsg = `คุณต้องการยกเลิกรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาในคลังจะถูกปรับลดลง ${qty} หน่วย (${curStock !== null ? curStock : 'ปัจจุบัน'} ➔ ${curStock !== null ? curStock - qty : ''})\n\nกรุณาระบุเหตุผลในการยกเลิก (เช่น เอกสารผิดพลาด, บันทึกยอดซ้ำ):`;
+    const reason = prompt(promptMsg, 'ยกเลิกรายการรับเข้าโดยเจ้าหน้าที่');
+    if (!reason) return;
 
     const urlCode = new URLSearchParams(window.location.search).get('code');
     const codeQuery = urlCode ? `?code=${encodeURIComponent(urlCode)}` : '';
 
     try {
-        let res = await fetch(`/api/stock-in/${logId}${codeQuery}`, {
-            method: 'DELETE'
+        let res = await fetch(`/api/stock-in/${logId}/void${codeQuery}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason })
         });
 
-        // Fallback to POST /delete endpoint if proxy/firewall blocked DELETE
+        // Fallback to /delete endpoint if needed
         if (!res.ok && (res.status === 404 || res.status === 405)) {
             res = await fetch(`/api/stock-in/${logId}/delete${codeQuery}`, {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: reason })
             });
         }
 
         const data = await res.json().catch(() => null);
         if (res.ok && data?.ok) {
-            showToast(data.message || 'ลบรายการรับเข้าสำเร็จ', 'success');
+            showToast(data.message || 'ยกเลิกรายการรับเข้าสำเร็จ', 'success');
             await loadStockInLogs();
             if (typeof loadDrugs === 'function') loadDrugs();
+            if (typeof loadDashboardStats === 'function') loadDashboardStats();
         } else {
-            showToast((data && data.error) || `ไม่สามารถลบรายการได้ (HTTP ${res.status})`, 'error');
+            showToast((data && data.error) || `ไม่สามารถยกเลิกรายการได้ (HTTP ${res.status})`, 'error');
         }
     } catch (err) {
-        console.error('Delete Stock In error:', err);
-        showToast('เกิดข้อผิดพลาดในการลบรายการ', 'error');
+        console.error('Void Stock In error:', err);
+        showToast('เกิดข้อผิดพลาดในการยกเลิกรายการ', 'error');
     }
 }
 
-async function deleteStockInFromEditModal() {
+// Alias for backwards compatibility
+const deleteStockInRecord = voidStockInRecord;
+
+async function voidStockInFromEditModal() {
     const logId = document.getElementById('editStockInId')?.value;
     if (!logId) return;
     closeEditStockInModal();
-    await deleteStockInRecord(logId);
+    await voidStockInRecord(logId);
 }
+
+const deleteStockInFromEditModal = voidStockInFromEditModal;
 
 // ─────────────────────────────────────────────────────────────
 // 📊 Visual Analytics & Chart.js Data Visualization

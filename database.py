@@ -201,6 +201,22 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_in_created ON stock_in_logs(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stock_in_drug ON stock_in_logs(drug_id)")
 
+        # Migration: Add void tracking columns to stock_in_logs if missing
+        try:
+            cur = conn.cursor()
+            cur.execute("PRAGMA table_info(stock_in_logs)")
+            existing_stock_in_cols = [c[1] for c in cur.fetchall()]
+            if "is_voided" not in existing_stock_in_cols:
+                conn.execute("ALTER TABLE stock_in_logs ADD COLUMN is_voided INTEGER DEFAULT 0")
+            if "void_reason" not in existing_stock_in_cols:
+                conn.execute("ALTER TABLE stock_in_logs ADD COLUMN void_reason TEXT")
+            if "voided_by" not in existing_stock_in_cols:
+                conn.execute("ALTER TABLE stock_in_logs ADD COLUMN voided_by TEXT")
+            if "voided_at" not in existing_stock_in_cols:
+                conn.execute("ALTER TABLE stock_in_logs ADD COLUMN voided_at TEXT")
+        except Exception as e:
+            logger.warning(f"Error migrating stock_in_logs void columns: {e}")
+
         # Table: Authenticated Users (Google OAuth login)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -1495,6 +1511,8 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                 if not row:
                     return False, f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"
                 old_log = dict(row)
+                if old_log.get("is_voided"):
+                    return False, "ไม่สามารถแก้ไขรายการรับเข้าที่ถูกยกเลิกไปแล้วได้"
                 drug_id = old_log.get("drug_id")
 
                 new_qty = old_log["quantity"]
@@ -1577,13 +1595,15 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
         finally:
             conn.close()
 
-def delete_stock_in_log(log_id):
+def void_stock_in_log(log_id, reason="ยกเลิกรายการรับเข้าโดยเจ้าหน้าที่", voided_by="เจ้าหน้าที่"):
     """
-    Delete a stock-in log and restore drug inventory accordingly.
+    Cancel/void a stock-in receiving log, deduct drug stock, and mark the log as voided (soft cancellation).
+    Returns: (success: bool, result_dict or error_message)
     """
     with _db_write_lock:
         conn = get_db()
         cursor = conn.cursor()
+        now_str = get_now_str()
         try:
             with conn:
                 cursor.execute("SELECT * FROM stock_in_logs WHERE id = ?", (log_id,))
@@ -1591,30 +1611,51 @@ def delete_stock_in_log(log_id):
                 if not row:
                     return False, f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"
                 old_log = dict(row)
+                if old_log.get("is_voided"):
+                    return False, f"รายการรับยาเข้ารหัส #{log_id} ถูกยกเลิกไปแล้วเมื่อ {old_log.get('voided_at')}"
+
                 drug_id = old_log.get("drug_id")
                 qty = old_log.get("quantity") or 0
 
+                new_stock = None
                 if drug_id and qty > 0:
                     cursor.execute("SELECT stock_qty, name FROM drugs WHERE id = ?", (drug_id,))
                     d_row = cursor.fetchone()
                     if d_row:
                         cur_stock = int(d_row[0] or 0)
                         if cur_stock < qty:
-                            return False, f"ไม่สามารถลบรายการรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือ {cur_stock} หน่วย (น้อยกว่ายอดรับเข้า {qty} หน่วย เนื่องจากอาจถูกตัดจ่ายไปแล้ว)"
-                        now_str = get_now_str()
+                            return False, f"ไม่สามารถยกเลิกรายการรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือเพียง {cur_stock} หน่วย (น้อยกว่ายอดรับเข้า {qty} หน่วย เนื่องจากอาจถูกตัดจ่ายไปแล้ว ระบบบล็อกไว้เพื่อป้องกันสต็อกติดลบ)"
                         cursor.execute("""
                             UPDATE drugs 
                             SET stock_qty = stock_qty - ?, updated_at = ?
                             WHERE id = ?
+                            RETURNING stock_qty
                         """, (qty, now_str, drug_id))
+                        res_d = cursor.fetchone()
+                        if res_d:
+                            new_stock = res_d[0]
 
-                cursor.execute("DELETE FROM stock_in_logs WHERE id = ?", (log_id,))
+                cursor.execute("""
+                    UPDATE stock_in_logs 
+                    SET is_voided = 1, void_reason = ?, voided_by = ?, voided_at = ?
+                    WHERE id = ?
+                """, (reason.strip(), voided_by.strip(), now_str, log_id))
+
+                old_log["is_voided"] = 1
+                old_log["void_reason"] = reason.strip()
+                old_log["voided_by"] = voided_by.strip()
+                old_log["voided_at"] = now_str
+                old_log["new_stock"] = new_stock
                 return True, old_log
         except Exception as e:
-            logger.error(f"Error deleting stock in log {log_id}: {e}", exc_info=True)
-            return False, f"เกิดข้อผิดพลาดในการลบรายการ: {str(e)}"
+            logger.error(f"Error voiding stock in log {log_id}: {e}", exc_info=True)
+            return False, f"เกิดข้อผิดพลาดในการยกเลิกรายการรับเข้า: {str(e)}"
         finally:
             conn.close()
+
+def delete_stock_in_log(log_id, reason="ยกเลิกรายการรับเข้าโดยเจ้าหน้าที่", voided_by="เจ้าหน้าที่"):
+    """Backward compatibility alias: calls void_stock_in_log instead of hard deletion."""
+    return void_stock_in_log(log_id, reason=reason, voided_by=voided_by)
 
 def get_analytics_summary():
     """Aggregate comprehensive analytics for clinical dashboard and visual charts."""
@@ -1675,7 +1716,7 @@ def get_analytics_summary():
         dispensed_series.append(disp_qty)
 
         # Received on day
-        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE created_at LIKE ?", (f"{day_str}%",))
+        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE created_at LIKE ? AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)", (f"{day_str}%",))
         rec_qty = cursor.fetchone()[0] or 0
         received_series.append(rec_qty)
 
@@ -1873,7 +1914,7 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
     end_ts = f"{end_date.strip()} 23:59:59" if end_date and end_date.strip() else None
     
     # 2. Fetch all transactions in period
-    in_query = "SELECT * FROM stock_in_logs WHERE drug_id = ?"
+    in_query = "SELECT * FROM stock_in_logs WHERE drug_id = ? AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)"
     in_params = [drug_id]
     if start_ts:
         in_query += " AND created_at >= ?"
@@ -1902,7 +1943,7 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
     total_in_after = 0
     total_out_after = 0
     if end_ts:
-        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE drug_id = ? AND created_at > ?", (drug_id, end_ts))
+        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE drug_id = ? AND created_at > ? AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)", (drug_id, end_ts))
         total_in_after = cursor.fetchone()[0] or 0
         cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM dispensing_logs WHERE drug_id = ? AND is_voided = 0 AND created_at > ?", (drug_id, end_ts))
         total_out_after = cursor.fetchone()[0] or 0
@@ -2118,6 +2159,7 @@ def get_daily_requisition_data(date_str: str = None):
         FROM stock_in_logs
         LEFT JOIN drugs ON stock_in_logs.drug_id = drugs.id
         WHERE stock_in_logs.created_at >= ? AND stock_in_logs.created_at <= ?
+          AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)
         ORDER BY stock_in_logs.id ASC
     """
     cursor.execute(query_stock_in, (start_ts, end_ts))

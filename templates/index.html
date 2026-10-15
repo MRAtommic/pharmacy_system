@@ -653,8 +653,8 @@
                             <th style="width: 95px; min-width: 90px;">รวมมูลค่าทุน</th>
                             <th style="width: 130px; min-width: 120px;">ผู้จำหน่าย (SUPPLIER)</th>
                             <th style="width: 95px; min-width: 90px;">วันหมดอายุ</th>
-                            <th style="width: 120px; min-width: 110px;">ผู้ตรวจรับ</th>
-                            <th style="width: 85px; min-width: 80px; text-align: center;">จัดการ</th>
+                            <th style="width: 160px; min-width: 140px;">ผู้ตรวจรับ</th>
+                            <th style="width: 120px; min-width: 110px; text-align: center;">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody id="stockInTableBody">
@@ -1712,8 +1712,8 @@
                 </div>
 
                 <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-                    <button type="button" class="btn btn-outline" id="btnDeleteFromEditModal" style="color: #EF4444; border-color: #FECACA;" onclick="deleteStockInFromEditModal()">
-                        <i class="fas fa-trash-can"></i> ลบรายการนี้
+                    <button type="button" class="btn btn-outline" id="btnDeleteFromEditModal" style="color: #DC2626; border-color: #FECACA; display: inline-flex; align-items: center; gap: 4px;" onclick="voidStockInFromEditModal()">
+                        <i class="fas fa-rotate-left"></i> ยกเลิกรายการนี้
                     </button>
                     <div style="display: flex; gap: 0.5rem;">
                         <button type="button" class="btn btn-outline" onclick="closeEditStockInModal()">ยกเลิก</button>
@@ -2112,6 +2112,6 @@
         window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
         window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=43.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=44.0"></script>
 </body>
 </html>
