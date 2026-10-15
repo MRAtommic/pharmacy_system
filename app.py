@@ -464,7 +464,7 @@ def export_daily_requisition_excel():
         ws.cell(row=r_idx, column=1, value=idx).alignment = align_center
         ws.cell(row=r_idx, column=2, value=it.get("name", "")).alignment = align_left
         ws.cell(row=r_idx, column=3, value=it.get("unit", "")).alignment = align_center
-        ws.cell(row=r_idx, column=4, value=it.get("qty_requested", 0)).alignment = align_center
+        ws.cell(row=r_idx, column=4, value=it.get("qty_requested") if it.get("qty_requested") not in (None, "") else "").alignment = align_center
         ws.cell(row=r_idx, column=5, value=it.get("qty_dispensed", 0)).alignment = align_center
         ws.cell(row=r_idx, column=6, value=it.get("remaining_stock", 0)).alignment = align_center
         ws.cell(row=r_idx, column=7, value="").alignment = align_left

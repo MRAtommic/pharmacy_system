@@ -1906,12 +1906,12 @@ def get_daily_requisition_data(date_str: str = None):
     # Special handling for Sample / Example Date from official paper photo (6 ก.ค. 2568 / 2025-07-06)
     if date_str in ("2025-07-06", "2568-07-06"):
         sample_items = [
-            {"drug_id": None, "name": "Medroxyprogesterone 50 mg/ml inj.", "unit": "vial", "qty_requested": 10, "qty_dispensed": 10, "remaining_stock": 25, "notes": ""},
-            {"drug_id": None, "name": "Ambroxol syrup (Ammocab) 30 mg/5ml", "unit": "ขวด", "qty_requested": 20, "qty_dispensed": 20, "remaining_stock": 48, "notes": ""},
-            {"drug_id": None, "name": "Bromhexine syrup 4 mg/5ml 60ml", "unit": "ขวด", "qty_requested": 15, "qty_dispensed": 15, "remaining_stock": 30, "notes": ""},
-            {"drug_id": None, "name": "Paracetamol syrup (120mg/5ml) 60ml", "unit": "ขวด", "qty_requested": 30, "qty_dispensed": 30, "remaining_stock": 85, "notes": ""},
-            {"drug_id": None, "name": "Face mask (หน้ากากอนามัยทางการแพทย์)", "unit": "กล่อง", "qty_requested": 5, "qty_dispensed": 5, "remaining_stock": 18, "notes": ""},
-            {"drug_id": None, "name": "Dicyclomine 10 mg tab", "unit": "เม็ด", "qty_requested": 200, "qty_dispensed": 200, "remaining_stock": 500, "notes": ""},
+            {"drug_id": None, "name": "Medroxyprogesterone", "unit": "30", "qty_requested": 10, "qty_dispensed": 10, "remaining_stock": 20, "notes": ""},
+            {"drug_id": None, "name": "Ammocab(syr)", "unit": "50", "qty_requested": 60, "qty_dispensed": 50, "remaining_stock": 0, "notes": ""},
+            {"drug_id": None, "name": "Bromhexine 60ml", "unit": "50", "qty_requested": 50, "qty_dispensed": 50, "remaining_stock": 0, "notes": ""},
+            {"drug_id": None, "name": "Paracetamol (120mg/5ml)", "unit": "50", "qty_requested": 50, "qty_dispensed": 5, "remaining_stock": 0, "notes": ""},
+            {"drug_id": None, "name": "Face mask", "unit": "10", "qty_requested": 3, "qty_dispensed": 3, "remaining_stock": 7, "notes": ""},
+            {"drug_id": None, "name": "Dicyclomine 10mg", "unit": "1", "qty_requested": 1, "qty_dispensed": 1, "remaining_stock": 0, "notes": ""},
         ]
         return {
             "date": "2025-07-06",
@@ -1921,7 +1921,7 @@ def get_daily_requisition_data(date_str: str = None):
             "year_be": "2568",
             "items": sample_items,
             "total_items": len(sample_items),
-            "total_dispensed_qty": sum(it["qty_dispensed"] for it in sample_items),
+            "total_dispensed_qty": sum(int(it["qty_dispensed"]) for it in sample_items),
             "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
             "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
             "requester_title": "พยาบาลวิชาชีพชำนาญการ",
@@ -2009,13 +2009,12 @@ def get_daily_requisition_data(date_str: str = None):
                 "drug_id": log["drug_id"],
                 "name": display_name,
                 "unit": log["unit"] or "หน่วย",
-                "qty_requested": qty,
+                "qty_requested": "",
                 "qty_dispensed": qty,
                 "remaining_stock": log["current_stock"],
                 "notes": ""
             }
         else:
-            items_map[key]["qty_requested"] += qty
             items_map[key]["qty_dispensed"] += qty
 
     items = list(items_map.values())
