@@ -841,7 +841,7 @@
                             <td class="col-name cell-editable" contenteditable="true">{{ it.name }}</td>
                             <td class="col-unit cell-editable" contenteditable="true">{{ it.unit }}</td>
                             <td class="col-qty-req cell-editable" contenteditable="true">{% if it.qty_requested %}{{ it.qty_requested }}{% else %}&nbsp;{% endif %}</td>
-                            <td class="col-qty-disp cell-editable" contenteditable="true">{{ it.qty_dispensed }}</td>
+                            <td class="col-qty-disp cell-editable" contenteditable="true">{% if it.qty_dispensed %}{{ it.qty_dispensed }}{% else %}&nbsp;{% endif %}</td>
                             <td class="col-stock-rem cell-editable" contenteditable="true">{{ it.remaining_stock }}</td>
                             <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
                         </tr>
@@ -1026,7 +1026,7 @@
                         <td class="col-name cell-editable" contenteditable="true">${escapeHtml(it.name || '')}</td>
                         <td class="col-unit cell-editable" contenteditable="true">${escapeHtml(it.unit || '')}</td>
                         <td class="col-qty-req cell-editable" contenteditable="true">${(it.qty_requested !== null && it.qty_requested !== undefined && it.qty_requested !== '') ? it.qty_requested : '&nbsp;'}</td>
-                        <td class="col-qty-disp cell-editable" contenteditable="true">${it.qty_dispensed != null ? it.qty_dispensed : ''}</td>
+                        <td class="col-qty-disp cell-editable" contenteditable="true">${(it.qty_dispensed !== null && it.qty_dispensed !== undefined && it.qty_dispensed !== '') ? it.qty_dispensed : '&nbsp;'}</td>
                         <td class="col-stock-rem cell-editable" contenteditable="true">${it.remaining_stock != null ? it.remaining_stock : ''}</td>
                         <td class="col-remark cell-editable" contenteditable="true">&nbsp;</td>
                     </tr>

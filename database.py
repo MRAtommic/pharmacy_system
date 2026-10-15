@@ -1843,13 +1843,17 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
 
 def get_daily_requisition_available_dates():
     """
-    Returns list of dates that have dispensing logs, plus the sample date.
+    Returns list of dates that have dispensing logs or stock-in logs, plus the sample date.
     """
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT substr(created_at, 1, 10) as dt, count(*) as count
-        FROM dispensing_logs
+        SELECT dt, SUM(cnt) as count FROM (
+            SELECT substr(created_at, 1, 10) as dt, count(*) as cnt FROM dispensing_logs GROUP BY dt
+            UNION ALL
+            SELECT substr(created_at, 1, 10) as dt, count(*) as cnt FROM stock_in_logs GROUP BY dt
+        )
+        WHERE dt IS NOT NULL AND dt != ''
         GROUP BY dt
         ORDER BY dt DESC
     """)
@@ -1941,7 +1945,27 @@ def get_daily_requisition_data(date_str: str = None):
     start_ts = f"{date_str} 00:00:00"
     end_ts = f"{date_str} 23:59:59"
 
-    # 1. Fetch active (non-voided) logs first
+    # 1. Fetch Stock In logs (ยอดเบิกยาเข้าคลังในวันนั้น)
+    query_stock_in = """
+        SELECT 
+            stock_in_logs.id,
+            stock_in_logs.drug_id,
+            COALESCE(drugs.name, stock_in_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
+            COALESCE(drugs.generic_name, '') as generic_name,
+            COALESCE(drugs.unit, 'หน่วย') as unit,
+            COALESCE(drugs.stock_qty, stock_in_logs.balance_after, 0) as current_stock,
+            stock_in_logs.quantity,
+            stock_in_logs.notes,
+            stock_in_logs.created_at
+        FROM stock_in_logs
+        LEFT JOIN drugs ON stock_in_logs.drug_id = drugs.id
+        WHERE stock_in_logs.created_at >= ? AND stock_in_logs.created_at <= ?
+        ORDER BY stock_in_logs.id ASC
+    """
+    cursor.execute(query_stock_in, (start_ts, end_ts))
+    raw_stock_ins = [dict(r) for r in cursor.fetchall()]
+
+    # 2. Fetch Dispensing logs (ยอดจ่ายยาในวันนั้น)
     query_active = """
         SELECT 
             dispensing_logs.id,
@@ -1963,11 +1987,10 @@ def get_daily_requisition_data(date_str: str = None):
         ORDER BY dispensing_logs.id ASC
     """
     cursor.execute(query_active, (start_ts, end_ts))
-    raw_logs = [dict(r) for r in cursor.fetchall()]
+    raw_disp = [dict(r) for r in cursor.fetchall()]
 
-    # 2. Fallback: if no active logs exist for this date, query all logs for that date
-    # (so dates like 2026-10-14 that had testing/voided records will still display their items)
-    if not raw_logs:
+    # Fallback: if no active dispensing logs and no stock-in logs, check all dispensing logs
+    if not raw_disp and not raw_stock_ins:
         query_all = """
             SELECT 
                 dispensing_logs.id,
@@ -1988,13 +2011,41 @@ def get_daily_requisition_data(date_str: str = None):
             ORDER BY dispensing_logs.id ASC
         """
         cursor.execute(query_all, (start_ts, end_ts))
-        raw_logs = [dict(r) for r in cursor.fetchall()]
+        raw_disp = [dict(r) for r in cursor.fetchall()]
 
-    # Group by drug_id (or drug_name if drug_id is null)
     items_map = {}
-    for log in raw_logs:
+
+    # 3. Process Stock In (จำนวนเบิกเข้าคลัง)
+    for sin in raw_stock_ins:
+        name_cand = (sin.get("generic_name") or sin.get("drug_name") or "").strip()
+        if name_cand in ("22", "?", ""):
+            if sin.get("drug_name") and sin.get("drug_name") not in ("22", "?", ""):
+                name_cand = sin.get("drug_name")
+            else:
+                continue
+
+        key = sin["drug_id"] if sin["drug_id"] else name_cand
+        qty = sin.get("quantity") or 0
+        if key not in items_map:
+            display_name = sin["generic_name"] if sin["generic_name"] else sin["drug_name"]
+            items_map[key] = {
+                "drug_id": sin["drug_id"],
+                "name": display_name,
+                "unit": sin["unit"] or "หน่วย",
+                "qty_requested": qty,
+                "qty_dispensed": "",
+                "remaining_stock": sin["current_stock"],
+                "notes": ""
+            }
+        else:
+            if items_map[key]["qty_requested"] == "":
+                items_map[key]["qty_requested"] = qty
+            else:
+                items_map[key]["qty_requested"] += qty
+
+    # 4. Process Dispensing (จำนวนจ่ายยา)
+    for log in raw_disp:
         name_cand = (log.get("generic_name") or log.get("drug_name") or "").strip()
-        # Filter out invalid / garbage test entries
         if name_cand in ("22", "?", ""):
             if log.get("drug_name") and log.get("drug_name") not in ("22", "?", ""):
                 name_cand = log.get("drug_name")
@@ -2015,10 +2066,17 @@ def get_daily_requisition_data(date_str: str = None):
                 "notes": ""
             }
         else:
-            items_map[key]["qty_dispensed"] += qty
+            if items_map[key]["qty_dispensed"] == "":
+                items_map[key]["qty_dispensed"] = qty
+            else:
+                items_map[key]["qty_dispensed"] += qty
+            if log.get("current_stock") is not None:
+                items_map[key]["remaining_stock"] = log["current_stock"]
 
     items = list(items_map.values())
     conn.close()
+
+    total_dispensed = sum(int(it["qty_dispensed"]) for it in items if str(it["qty_dispensed"]).isdigit())
 
     return {
         "date": date_str,
@@ -2028,7 +2086,7 @@ def get_daily_requisition_data(date_str: str = None):
         "year_be": year_be,
         "items": items,
         "total_items": len(items),
-        "total_dispensed_qty": sum(it["qty_dispensed"] for it in items),
+        "total_dispensed_qty": total_dispensed,
         "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
         "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
         "requester_title": "พยาบาลวิชาชีพชำนาญการ",
