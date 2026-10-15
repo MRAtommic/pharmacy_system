@@ -607,6 +607,8 @@ class PharmacyGoogleService:
                 body={"values": [row]}
             ).execute()
             logger.info(f"✅ Appended dispensing log for {log_dict.get('drug_name')} at row {next_row}")
+            if log_dict.get("log_id"):
+                database.mark_dispensing_log_synced(log_dict["log_id"])
             return True, "Log appended"
         except Exception as e:
             logger.error(f"Error appending log to Google Sheet: {e}")

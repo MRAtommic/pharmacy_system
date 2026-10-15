@@ -6,13 +6,14 @@ Flask Application Entry Point
 import sys
 import os
 import json
+import sqlite3
 import logging
 import secrets
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template, send_from_directory, redirect, send_file, make_response
+from flask import Flask, request, jsonify, render_template, send_from_directory, redirect, send_file, make_response, session
 from io import BytesIO
 from config import Config
 import database
@@ -33,11 +34,53 @@ app = Flask(
     static_folder=str(Path(__file__).parent / "static")
 )
 app.config.from_object(Config)
+app.secret_key = Config.SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.jinja_env.auto_reload = True
 
 logger = logging.getLogger("pharmacy_app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# ─────────────────────────────────────────────────────────────
+# Auth: Login Required Decorator
+# ─────────────────────────────────────────────────────────────
+
+from functools import wraps
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user_email'):
+            if request.path.startswith('/api/') and '/requisition' not in request.path:
+                return jsonify({"ok": False, "error": "กรุณาล็อกอินก่อนใช้งาน", "login_required": True}), 401
+            return redirect(f'/login?next={request.path}')
+        return f(*args, **kwargs)
+    return decorated
+
+def current_user() -> dict:
+    """Return current session user info or empty dict."""
+    return {
+        "email": session.get('user_email', ''),
+        "name": session.get('user_name', ''),
+        "picture": session.get('user_picture', '')
+    }
+
+def audit(action: str, target_type: str = '', target_id='', target_name: str = '', detail: str = ''):
+    """Helper to write audit log with current user & request IP."""
+    u = current_user()
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '')
+    database.log_audit_action(
+        user_email=u['email'] or 'anonymous',
+        user_name=u['name'] or '',
+        action=action,
+        target_type=target_type,
+        target_id=str(target_id),
+        target_name=target_name,
+        detail=detail,
+        ip_address=ip
+    )
 
 @app.after_request
 def disable_cache_for_dev(response):
@@ -54,12 +97,32 @@ def disable_cache_for_dev(response):
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/")
+@login_required
 def index():
-    return render_template("index.html", base_url=Config.BASE_URL)
+    u = current_user()
+    return render_template("index.html", base_url=Config.BASE_URL, current_user=u)
 
 @app.route("/scanner")
+@login_required
 def mobile_scanner():
-    return render_template("index.html", initial_view="scanner", base_url=Config.BASE_URL)
+    u = current_user()
+    return render_template("index.html", initial_view="scanner", base_url=Config.BASE_URL, current_user=u)
+
+@app.route("/login")
+def login_page():
+    if session.get('user_email'):
+        return redirect('/')
+    error = request.args.get('error', '')
+    return render_template("login.html", error=error, base_url=Config.BASE_URL)
+
+@app.route("/logout")
+def logout():
+    u = current_user()
+    if u.get('email'):
+        audit('LOGOUT', detail='ออกจากระบบเรียบร้อย')
+    session.clear()
+    return redirect('/login')
+
 
 @app.route("/manifest.json")
 def manifest():
@@ -159,16 +222,26 @@ def trigger_bg_sheet_sync():
     threading.Thread(target=_run, daemon=True).start()
 
 @app.route("/api/drugs", methods=["POST"])
+@login_required
 def create_drug():
     data = request.json or {}
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "error": "กรุณาระบุชื่อยา"}), 400
 
-    new_drug = database.add_drug(data)
+    try:
+        new_drug = database.add_drug(data)
+    except sqlite3.IntegrityError:
+        return jsonify({"ok": False, "error": f"รหัสยา '{data.get('code')}' ซ้ำกับรายการยาที่มีอยู่แล้วในระบบ กรุณาใช้รหัสอื่นค่ะ"}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"ไม่สามารถเพิ่มข้อมูลยาได้: {str(e)}"}), 400
     trigger_bg_sheet_sync()
+    u = current_user()
+    actor_email = u.get('email', '')
+    actor_name = u.get('name', '')
+    audit('ADD_DRUG', 'drug', new_drug.get('id',''), new_drug.get('name',''),
+          f"รหัส: {new_drug.get('code','')} | หมวด: {new_drug.get('category','')} | สต็อก: {new_drug.get('stock_qty','')} {new_drug.get('unit','')}")
 
-    # LINE Bot New Drug Notification
     import threading
     def _bg_notify_new_drug(d):
         try:
@@ -176,23 +249,40 @@ def create_drug():
             line_bot.send_new_drug_notification(d)
         except Exception as err:
             logger.error(f"Error sending LINE new drug notification: {err}")
-    threading.Thread(target=_bg_notify_new_drug, args=(new_drug,), daemon=True).start()
+    d_notify = dict(new_drug)
+    d_notify['user_email'] = actor_email
+    d_notify['user_name'] = actor_name
+    threading.Thread(target=_bg_notify_new_drug, args=(d_notify,), daemon=True).start()
 
     return jsonify({"ok": True, "drug": new_drug, "message": "เพิ่มข้อมูลยาในคลังเรียบร้อยแล้ว"})
 
 @app.route("/api/drugs/<int:drug_id>", methods=["PUT"])
+@login_required
 def edit_drug(drug_id):
     data = request.json or {}
+    if "stock_qty" in data and data["stock_qty"] is not None:
+        try:
+            sq = int(data["stock_qty"])
+            if sq < 0:
+                return jsonify({"ok": False, "error": "จำนวนสต็อกต้องไม่ติดลบ"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"ok": False, "error": "จำนวนสต็อกต้องเป็นตัวเลขจำนวนเต็ม"}), 400
+
     updated = database.update_drug(drug_id, data)
     if not updated:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยาที่ต้องการแก้ไข"}), 404
-
+    audit('EDIT_DRUG', 'drug', drug_id, updated.get('name',''),
+          f"แก้ไขข้อมูลยา | สต็อก: {updated.get('stock_qty','')} {updated.get('unit','')}")
     trigger_bg_sheet_sync()
     return jsonify({"ok": True, "drug": updated, "message": "แก้ไขข้อมูลยาเรียบร้อยแล้ว"})
 
 @app.route("/api/drugs/<int:drug_id>", methods=["DELETE"])
+@login_required
 def remove_drug(drug_id):
+    drug = database.get_drug_by_id(drug_id)
+    drug_name = drug.get('name','') if drug else ''
     database.delete_drug(drug_id)
+    audit('DELETE_DRUG', 'drug', drug_id, drug_name, 'ลบรายการยาออกจากคลัง')
     trigger_bg_sheet_sync()
     return jsonify({"ok": True, "message": "ลบยาออกจากคลังเรียบร้อยแล้ว"})
 
@@ -200,7 +290,25 @@ def remove_drug(drug_id):
 # Stock Dispensing & Deduction API
 # ─────────────────────────────────────────────────────────────
 
+_recent_dispense_locks = {}
+
+def _check_and_set_dispense_lock(user_key, drug_id, qty, patient_name, ttl=2.0):
+    """Prevent accidental rapid double-clicking by locking duplicate dispense requests for 2 seconds."""
+    import time
+    now = time.time()
+    # Clean expired locks
+    stale = [k for k, exp in _recent_dispense_locks.items() if exp < now]
+    for k in stale:
+        _recent_dispense_locks.pop(k, None)
+
+    lock_key = f"{user_key}:{drug_id}:{qty}:{patient_name}"
+    if lock_key in _recent_dispense_locks and _recent_dispense_locks[lock_key] > now:
+        return False  # Duplicate / rapid double-click detected
+    _recent_dispense_locks[lock_key] = now + ttl
+    return True
+
 @app.route("/api/dispense", methods=["POST"])
+@login_required
 def dispense_stock():
     """
     Deduct stock via Web UI (Manual or QR Scan).
@@ -208,48 +316,179 @@ def dispense_stock():
     """
     data = request.json or {}
     drug_id = data.get("drug_id")
-    quantity = int(data.get("quantity") or 1)
+    try:
+        quantity = int(data.get("quantity") or 1)
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องเป็นตัวเลขจำนวนเต็มบวก"}), 400
+
+    if quantity <= 0:
+        return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องมากกว่า 0"}), 400
+
     channel = data.get("channel") or "WEB_MANUAL"
-    dispensed_by = data.get("dispensed_by") or "เภสัชกร/เจ้าหน้าที่"
+    # Auto-fill dispensed_by with logged-in user email/name if not provided
+    u = current_user()
+    actor_email = u.get('email', '')
+    actor_name = u.get('name', '')
+    default_dispenser = f"{actor_name} ({actor_email})" if actor_name and actor_name != actor_email else (actor_email or "เภสัชกร/เจ้าหน้าที่")
+    dispensed_by = data.get("dispensed_by") or default_dispenser
     patient_name = data.get("patient_name") or ""
     notes = data.get("notes") or ""
 
     if not drug_id:
         return jsonify({"ok": False, "error": "กรุณาระบุรหัสยาที่ต้องการตัดสต็อก"}), 400
 
+    # Anti double-click guard on backend
+    user_key = actor_email or request.remote_addr or "client"
+    if not _check_and_set_dispense_lock(user_key, drug_id, quantity, patient_name, ttl=2.0):
+        return jsonify({
+            "ok": False,
+            "error": "ระบบกำลังประมวลผลคำขอตัดสต็อกรายการนี้อยู่ กรุณาอย่ากดซ้ำค่ะ"
+        }), 429
+
     success, result = database.deduct_stock(
-        drug_id,
-        quantity,
+        drug_id, quantity,
+        channel=channel, dispensed_by=dispensed_by,
+        patient_name=patient_name, notes=notes
+    )
+
+    if not success:
+        return jsonify({"ok": False, "error": result}), 400
+
+    audit('DISPENSE', 'drug', drug_id, result.get('drug_name',''),
+          f"ตัดจ่าย {quantity} {result.get('unit','')} | คงเหลือ: {result.get('balance_after','')} | ผู้รับ: {patient_name}")
+
+    # Run Google Sheets sync & LINE notification in background thread
+    # so HTTP response to the browser is near instantaneous (<50ms), preventing user wait/double-clicks!
+    import threading
+    import time
+    def _bg_after_dispense(res, u_email, u_name, disp_by):
+        global _last_inventory_sheet_sync
+        try:
+            google_sync.append_dispensing_log(res)
+            # Throttle full inventory rewrite to prevent hitting Google API quotas
+            now = time.time()
+            if '_last_inventory_sheet_sync' not in globals() or now - _last_inventory_sheet_sync > 15.0:
+                _last_inventory_sheet_sync = now
+                google_sync.sync_all_drugs_to_sheet(database.get_all_drugs())
+        except Exception as e:
+            logger.error(f"Error syncing to sheet after dispense: {e}")
+
+        try:
+            from line_service import line_bot
+            res_notify = dict(res)
+            res_notify['user_email'] = u_email
+            res_notify['user_name'] = u_name
+            res_notify['dispensed_by'] = disp_by
+            line_bot.send_dispense_notification(res_notify)
+        except Exception as err:
+            logger.error(f"Error sending LINE dispense notification: {err}")
+
+    threading.Thread(target=_bg_after_dispense, args=(result, actor_email, actor_name, dispensed_by), daemon=True).start()
+
+    return jsonify({
+        "ok": True,
+        "result": result,
+        "message": f"ตัดสต็อก '{result['drug_name']}' สำเร็จ - คงเหลือ {result['balance_after']} {result['unit']}"
+    })
+
+
+@app.route("/api/dispense/batch", methods=["POST"])
+@login_required
+def batch_dispense():
+    """
+    Multi-Drug Rx Cart Batch Dispense:
+    Atomically deducts multiple drugs for a patient in a single prescription batch.
+    """
+    data = request.json or {}
+    items = data.get("items", [])
+    if not items or not isinstance(items, list):
+        return jsonify({"ok": False, "error": "กรุณาระบุรายการยาในใบสั่งยาอย่างน้อย 1 รายการ"}), 400
+
+    u = current_user()
+    actor_email = u.get('email', '')
+    actor_name = u.get('name', '')
+    dispensed_by = (data.get("dispensed_by") or (f"{actor_name}" if actor_name else "เภสัชกร/เจ้าหน้าที่")).strip()
+    patient_name = (data.get("patient_name") or "").strip()
+    requester_dept = (data.get("requester_dept") or "แผนกตรวจรักษา / หอผู้ป่วย").strip()
+    notes = (data.get("notes") or "").strip()
+    channel = data.get("channel") or "WEB_RX_CART"
+
+    success, result = database.deduct_stock_batch(
+        items=items,
         channel=channel,
         dispensed_by=dispensed_by,
         patient_name=patient_name,
+        requester_dept=requester_dept,
         notes=notes
     )
 
     if not success:
         return jsonify({"ok": False, "error": result}), 400
 
-    # Sync to Google Sheets
-    try:
-        google_sync.append_dispensing_log(result)
-        google_sync.sync_all_drugs_to_sheet(database.get_all_drugs())
-    except Exception as e:
-        logger.error(f"Error syncing to sheet after dispense: {e}")
+    audit('BATCH_DISPENSE', 'prescription', result.get('batch_id', ''),
+          f"ใบสั่งยา: {patient_name or 'ไม่ระบุผู้ป่วย'} ({result.get('total_items', 0)} รายการ)",
+          f"ยอดรวม: {result.get('total_price_formatted', '')} | จำนวนยารวม: {result.get('total_qty', 0)}")
 
-    # LINE Bot Stock Movement Notification
+    # Background sync to sheets and LINE notify
     import threading
-    def _bg_notify_dispense(res):
+    def _bg_after_batch(res, u_email, u_name, disp_by):
+        global _last_inventory_sheet_sync
+        try:
+            for item in res.get("items", []):
+                google_sync.append_dispensing_log(item)
+            # Sync full inventory table to sheet
+            google_sync.sync_all_drugs_to_sheet(database.get_all_drugs())
+        except Exception as e:
+            logger.error(f"Error syncing batch dispense to sheet: {e}")
+
         try:
             from line_service import line_bot
-            line_bot.send_dispense_notification(res)
+            res_notify = dict(res)
+            res_notify['user_email'] = u_email
+            res_notify['user_name'] = u_name
+            res_notify['dispensed_by'] = disp_by
+            line_bot.send_batch_dispense_notification(res_notify)
         except Exception as err:
-            logger.error(f"Error sending LINE dispense notification: {err}")
-    threading.Thread(target=_bg_notify_dispense, args=(result,), daemon=True).start()
+            logger.error(f"Error sending batch LINE notification: {err}")
+
+    threading.Thread(target=_bg_after_batch, args=(result, actor_email, actor_name, dispensed_by), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
-        "message": f"ตัดสต็อก '{result['drug_name']}' สำเร็จ - คงเหลือ {result['balance_after']} {result['unit']}"
+        "batch_id": result["batch_id"],
+        "requisition_url": f"/api/dispense/requisition/batch/{result['batch_id']}",
+        "message": f"ตัดสต็อกใบสั่งยา {result['batch_id']} สำเร็จ ({result['total_items']} รายการ, ยอดรวม {result['total_price_formatted']})"
+    })
+
+
+@app.route("/api/dispense/<int:log_id>/void", methods=["POST"])
+@login_required
+def void_dispense(log_id):
+    """
+    Cancel/void a dispensing log, restore drug stock, and record audit trail.
+    """
+    data = request.json or {}
+    reason = (data.get("reason") or "ยกเลิกรายการจ่ายโดยเจ้าหน้าที่").strip()
+
+    u = current_user()
+    actor_email = u.get('email', '')
+    actor_name = u.get('name', '')
+    voided_by = f"{actor_name} ({actor_email})" if actor_name and actor_name != actor_email else (actor_email or "เภสัชกร/เจ้าหน้าที่")
+
+    success, result = database.void_dispensing_log(log_id, reason=reason, voided_by=voided_by)
+    if not success:
+        return jsonify({"ok": False, "error": result}), 400
+
+    audit('VOID_DISPENSE', 'dispense_log', log_id, result.get('drug_name', ''),
+          f"ยกเลิกการจ่าย คืนยา {result.get('quantity_restored')} หน่วย | คงเหลือใหม่: {result.get('new_stock')} | เหตุผล: {reason}")
+
+    trigger_bg_sheet_sync()
+
+    return jsonify({
+        "ok": True,
+        "result": result,
+        "message": f"ยกเลิกรายการจ่ายและคืนสต็อกยา '{result['drug_name']}' จำนวน {result['quantity_restored']} หน่วย เรียบร้อยแล้ว (คงเหลือใหม่: {result['new_stock']})"
     })
 
 @app.route("/api/dispense/logs", methods=["GET"])
@@ -273,6 +512,7 @@ def list_logs():
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/stock-in", methods=["POST"])
+@login_required
 def stock_in_endpoint():
     data = request.json or {}
     drug_id = data.get("drug_id")
@@ -290,11 +530,16 @@ def stock_in_endpoint():
     if quantity <= 0:
         return jsonify({"ok": False, "error": "จำนวนรับเข้าต้องมากกว่า 0"}), 400
 
+    u = current_user()
+    actor_email = u.get('email', '')
+    actor_name = u.get('name', '')
+    default_receiver = f"{actor_name} ({actor_email})" if actor_name and actor_name != actor_email else (actor_email or "เภสัชกร/เจ้าหน้าที่")
+
     lot_number = (data.get("lot_number") or "").strip()
     cost_per_unit = data.get("cost_per_unit")
     expiry_date = (data.get("expiry_date") or "").strip()
     supplier = (data.get("supplier") or "องค์การเภสัชกรรม (GPO)").strip()
-    received_by = (data.get("received_by") or "เภสัชกร/เจ้าหน้าที่").strip()
+    received_by = (data.get("received_by") or default_receiver).strip()
     notes = (data.get("notes") or "").strip()
 
     success, result = database.stock_in(
@@ -311,6 +556,9 @@ def stock_in_endpoint():
     if not success:
         return jsonify({"ok": False, "error": result}), 400
 
+    audit('STOCK_IN', 'drug', result.get('drug_id',''), result.get('drug_name',''),
+          f"รับเข้า {quantity} {result.get('unit','')} | Lot: {lot_number} | Supplier: {supplier}")
+
     # Sync inventory to Google Sheets in background
     trigger_bg_sheet_sync()
 
@@ -322,7 +570,11 @@ def stock_in_endpoint():
             line_bot.send_stock_in_notification(res)
         except Exception as err:
             logger.error(f"Error sending LINE stock in notification: {err}")
-    threading.Thread(target=_bg_notify_stock_in, args=(result,), daemon=True).start()
+    res_notify = dict(result)
+    res_notify['user_email'] = actor_email
+    res_notify['user_name'] = actor_name
+    res_notify['received_by'] = received_by
+    threading.Thread(target=_bg_notify_stock_in, args=(res_notify,), daemon=True).start()
 
     return jsonify({
         "ok": True,
@@ -443,18 +695,151 @@ def google_oauth_login():
     auth_url = "https://accounts.google.com/o/oauth2/auth?" + urllib.parse.urlencode(params)
     return redirect(auth_url)
 
+# ─────────────────────────────────────────────────────────────
+# Google OAuth2 — USER LOGIN (session-based, for access control)
+# ─────────────────────────────────────────────────────────────
+
+def _determine_user_login_redirect_uri():
+    # Use the registered OAuth callback URI to prevent redirect_uri_mismatch
+    return _determine_redirect_uri()
+
+@app.route("/api/auth/google/user-login")
+def google_user_login():
+    """Initiate Google sign-in for user authentication (session login)."""
+    client_id = Config.GOOGLE_OAUTH2_CLIENT_ID
+    if not client_id:
+        return render_template("login.html", error="ยังไม่ได้ตั้งค่า Google OAuth2 Client ID", base_url=Config.BASE_URL)
+
+    redirect_uri = _determine_user_login_redirect_uri()
+    state_token  = secrets.token_urlsafe(32)
+    next_url     = request.args.get('next', '/')
+    database.set_app_setting(f"login_state_{state_token}", f"{redirect_uri}|||{next_url}")
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+        "access_type": "online",
+        "prompt": "select_account",
+        "state": state_token
+    }
+    auth_url = "https://accounts.google.com/o/oauth2/auth?" + urllib.parse.urlencode(params)
+    return redirect(auth_url)
+
+def _finish_user_login(code, redirect_uri, next_url):
+    """Exchange authorization code, extract user profile, establish session, and record audit log."""
+    try:
+        token_payload = urllib.parse.urlencode({
+            "code": code,
+            "client_id": Config.GOOGLE_OAUTH2_CLIENT_ID,
+            "client_secret": Config.GOOGLE_OAUTH2_CLIENT_SECRET,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code"
+        }).encode("utf-8")
+
+        req = urllib.request.Request("https://oauth2.googleapis.com/token", data=token_payload, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            token_res = json.loads(resp.read().decode("utf-8"))
+
+        access_token = token_res.get("access_token")
+        if not access_token:
+            return redirect("/login?error=token_failed")
+
+        userinfo_req = urllib.request.Request(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        with urllib.request.urlopen(userinfo_req) as resp:
+            user_info = json.loads(resp.read().decode("utf-8"))
+
+        email   = user_info.get("email", "").strip()
+        name    = user_info.get("name", email).strip()
+        picture = user_info.get("picture", "").strip()
+        sub     = user_info.get("id", "").strip()
+
+        if not email:
+            return redirect("/login?error=no_email")
+
+        # Upsert user record in SQLite
+        database.add_or_update_user(email, name, picture, sub)
+
+        # Set Flask session
+        session.permanent = True
+        session['user_email']   = email
+        session['user_name']    = name
+        session['user_picture'] = picture
+
+        # Write login audit log
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr or '')
+        database.log_audit_action(
+            user_email=email,
+            user_name=name,
+            action='LOGIN',
+            target_type='auth',
+            target_id=sub,
+            target_name=email,
+            detail=f'เข้าสู่ระบบผ่าน Google สำเร็จ | IP: {ip}',
+            ip_address=ip
+        )
+        logger.info(f"✅ User authenticated: {email} ({name}) from {ip}")
+
+        return redirect(next_url if (next_url and next_url.startswith('/')) else '/')
+
+    except Exception as e:
+        logger.error(f"Google user login callback error: {e}")
+        return redirect("/login?error=" + urllib.parse.quote(str(e)))
+
+# ─────────────────────────────────────────────────────────────
+# Audit Log API
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/api/audit/logs", methods=["GET"])
+@login_required
+def get_audit_logs_api():
+    limit       = int(request.args.get("limit", 200))
+    user_email  = request.args.get("user_email")
+    action      = request.args.get("action")
+    date_filter = request.args.get("date")
+    logs = database.get_audit_logs(limit=limit, user_email=user_email, action=action, date_filter=date_filter)
+    return jsonify({"ok": True, "logs": logs, "count": len(logs)})
+
+@app.route("/api/audit/users", methods=["GET"])
+@login_required
+def get_users_api():
+    users = database.get_all_users()
+    return jsonify({"ok": True, "users": users})
+
+@app.route("/api/auth/me", methods=["GET"])
+def get_me():
+    u = current_user()
+    if not u['email']:
+        return jsonify({"ok": False, "authenticated": False}), 401
+    return jsonify({"ok": True, "authenticated": True, "user": u})
+
+
 @app.route("/api/auth/google/callback")
+@app.route("/api/auth/google/user-callback")
 def google_oauth_callback():
-    """Exchange authorization code for tokens and auto-create Google Drive & Sheet."""
+    """Unified OAuth callback for both User Session Login and Google Drive/Sheets Setup."""
     error = request.args.get("error")
     if error:
-        return redirect("/?google_error=" + urllib.parse.quote(error))
+        return redirect("/login?error=" + urllib.parse.quote(error))
 
     code = request.args.get("code")
     state = request.args.get("state")
     if not code:
-        return redirect("/?google_error=no_code")
+        return redirect("/login?error=no_code")
 
+    # 1. Check if this is a user login authentication flow
+    saved_login = database.get_app_setting(f"login_state_{state}") if state else None
+    if saved_login or request.path.endswith("user-callback"):
+        parts = saved_login.split("|||", 1) if saved_login else ["", "/"]
+        redirect_uri = parts[0] if parts[0] else _determine_user_login_redirect_uri()
+        next_url = parts[1] if len(parts) > 1 else "/"
+        return _finish_user_login(code, redirect_uri, next_url)
+
+    # 2. Workspace Drive & Sheets setup
     saved_redirect_uri = database.get_app_setting(f"oauth_state_{state}") or _determine_redirect_uri()
 
     try:
@@ -792,7 +1177,425 @@ def export_logs_excel():
     return resp
 
 
+# ─────────────────────────────────────────────────────────────
+# Official Thai Requisition Slip / Voucher Routes
+# ─────────────────────────────────────────────────────────────
+
+THAI_MONTHS_FULL = [
+    '', 'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+]
+
+def format_thai_date_full(dt_str):
+    if not dt_str:
+        return "-"
+    try:
+        parts = dt_str.split(' ')[0].split('-')
+        y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        thai_year = y + 543
+        return f"{d} {THAI_MONTHS_FULL[m]} พ.ศ. {thai_year}"
+    except Exception:
+        return str(dt_str)
+
+def format_thai_date_short(dt_str):
+    if not dt_str:
+        return "-/-/----"
+    try:
+        parts = dt_str.split(' ')[0].split('-')
+        y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        thai_year = (y + 543) % 100
+        return f"{d:02d}/{m:02d}/{thai_year:02d}"
+    except Exception:
+        return str(dt_str)
+
+def number_to_thai_text(n):
+    units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
+    digits = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน']
+    try:
+        n_int = int(n)
+        if n_int == 0:
+            return 'ศูนย์'
+        s = str(n_int)
+        l = len(s)
+        res = []
+        for i, c in enumerate(s):
+            d = int(c)
+            p = l - i - 1
+            if d == 0:
+                continue
+            if p == 0 and d == 1 and l > 1 and s[-2] != '0':
+                res.append('เอ็ด')
+            elif p == 1 and d == 2:
+                res.append('ยี่สิบ')
+            elif p == 1 and d == 1:
+                res.append('สิบ')
+            else:
+                res.append(units[d] + digits[p])
+        return ''.join(res)
+    except Exception:
+        return str(n)
+
+def thai_baht_text(amount):
+    """Convert monetary amount to formal Thai Baht text (e.g. 150.50 -> หนึ่งร้อยห้าสิบบาทห้าสิบสตางค์)."""
+    try:
+        amount = float(amount)
+    except (ValueError, TypeError):
+        return 'ศูนย์บาทถ้วน'
+    if amount == 0:
+        return 'ศูนย์บาทถ้วน'
+    if amount < 0:
+        return 'ลบ' + thai_baht_text(-amount)
+
+    units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
+    digits = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน']
+
+    def convert_upto_million(n):
+        if n == 0: return ''
+        s = str(n)
+        l = len(s)
+        res = []
+        for i, c in enumerate(s):
+            d = int(c)
+            p = l - i - 1
+            if d == 0: continue
+            if p == 0 and d == 1 and l > 1:
+                res.append('เอ็ด')
+            elif p == 1 and d == 2:
+                res.append('ยี่สิบ')
+            elif p == 1 and d == 1:
+                res.append('สิบ')
+            else:
+                res.append(units[d] + digits[p])
+        return ''.join(res)
+
+    def convert_integer(n):
+        if n == 0: return ''
+        if n < 1000000:
+            return convert_upto_million(n)
+        millions = n // 1000000
+        remainder = n % 1000000
+        return convert_integer(millions) + 'ล้าน' + convert_upto_million(remainder)
+
+    baht = int(amount)
+    satang = int(round((amount - baht) * 100))
+    result = ''
+    if baht > 0:
+        result += convert_integer(baht) + 'บาท'
+    else:
+        result += 'ศูนย์บาท'
+    if satang == 0:
+        result += 'ถ้วน'
+    else:
+        result += convert_upto_million(satang) + 'สตางค์'
+    return result
+
+
+def sanitize_formal_signatory_name(name: str) -> str:
+    """
+    Filter out email addresses, informal Google account nicknames (e.g. 'FU TRUE'),
+    system defaults, and usernames so they don't appear in official Thai document signatures.
+    Returns clean formal name if valid, otherwise empty string '' to render dotted signature line.
+    """
+    if not name:
+        return ""
+    # Strip parenthesized email/notes e.g. "FU TRUE (mxmm2547@gmail.com)" -> "FU TRUE"
+    clean = name.split("(")[0].strip() if "(" in name else name.strip()
+    
+    # Check for emails or domain extensions
+    if "@" in clean or any(ext in clean.lower() for ext in [".com", ".co.th", ".net", ".org", "gmail", "hotmail", "yahoo"]):
+        return ""
+        
+    # Check for system/informal tokens
+    informal_tokens = {
+        "fu true", "fewit", "atommic", "mratommic", "mr.atommic", "admin", "administrator",
+        "user", "anonymous", "null", "none", "test", "tester", "automated tester", "automated",
+        "demo", "root", "staff", "guest", "bot", "system",
+        "เจ้าหน้าที่", "เจ้าหน้าที่คลังยา", "เภสัชกร/เจ้าหน้าที่", "เภสัชกร / เจ้าหน้าที่",
+        "เภสัชกร / เจ้าหน้าที่คลังยา", "line user"
+    }
+    if clean.lower() in informal_tokens or any(tok in clean.lower() for tok in ["test", "bot", "demo", "null", "none"]):
+        return ""
+        
+    # Check if string contains numbers (not a real person's formal Thai name)
+    import re
+    if re.search(r'\d', clean):
+        return ""
+        
+    # If purely Latin characters (no Thai characters), require a space and reject single nicknames
+    has_thai = any('\u0E00' <= ch <= '\u0E7F' for ch in clean)
+    if not has_thai:
+        if " " not in clean or clean.lower() in informal_tokens:
+            return ""
+            
+    return clean
+
+
+@app.route("/api/dispense/requisition/<int:log_id>", methods=["GET"])
+@login_required
+def view_single_requisition(log_id):
+    """View and export official Thai requisition slip for a single dispense log with drug price."""
+    log = database.get_dispensing_log_by_id(log_id)
+    if not log:
+        return "ไม่พบข้อมูลประวัติการตัดสต็อกสำหรับเลขที่นี้", 404
+
+    created_at = log.get("created_at", "")
+    time_str = created_at.split(" ")[1] if " " in created_at else ""
+    date_str = created_at.split(" ")[0] if " " in created_at else ""
+
+    clean_date = date_str.replace("-", "") or datetime.now().strftime("%Y%m%d")
+    requisition_no = f"REQ-{clean_date}-{log['id']:04d}"
+
+    channel_raw = log.get("channel", "WEB_MANUAL")
+    channel_map = {
+        "WEB_MANUAL": "ระบบคลังยาหน้าเคาน์เตอร์",
+        "QR_SCAN": "สแกน QR Code / บาร์โค้ด",
+        "BARCODE_SCAN": "สแกนเนอร์บาร์โค้ด",
+        "LINE_TEXT": "ระบบสั่งการผ่าน LINE Bot (ข้อความ)",
+        "LINE_OCR": "ระบบสั่งการผ่าน LINE Bot (รูปภาพ/OCR)",
+    }
+    channel_label = channel_map.get(str(channel_raw).upper(), str(channel_raw))
+
+    dispenser_query = request.args.get("dispenser", "").strip()
+    dispensed_by_raw = log.get("dispensed_by") or ""
+    formal_name = dispenser_query or sanitize_formal_signatory_name(dispensed_by_raw)
+
+    dispenser_formal_title = formal_name if formal_name else "เภสัชกร / เจ้าหน้าที่ประจำคลังยา"
+    dispenser_clean_name = formal_name
+
+    patient_raw = (log.get("patient_name") or "").strip()
+    patient_name = patient_raw if patient_raw and patient_raw != "-" else "-"
+    requester_dept = "หน่วยบริการตรวจรักษา / หอผู้ป่วย"
+
+    qty = int(log.get("quantity", 0))
+    unit = log.get("unit", "หน่วย")
+    qty_thai = number_to_thai_text(qty) + f" {unit}ถ้วน"
+
+    # Price calculations
+    price = float(log.get("price") or 0.0)
+    subtotal = qty * price
+    log["price_val"] = price
+    log["price_formatted"] = f"{price:,.2f}"
+    log["subtotal_val"] = subtotal
+    log["subtotal_formatted"] = f"{subtotal:,.2f}"
+
+    total_price = subtotal
+    total_price_formatted = f"{total_price:,.2f}"
+    total_price_thai = thai_baht_text(total_price)
+
+    print_datetime = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    ref_code = secrets.token_hex(4).upper()
+
+    return render_template(
+        "requisition_slip.html",
+        requisition_no=requisition_no,
+        thai_date=format_thai_date_full(created_at),
+        thai_date_short=format_thai_date_short(created_at),
+        time_str=time_str,
+        requester_dept=requester_dept,
+        patient_name=patient_name,
+        channel_label=channel_label,
+        purpose_text=log.get("notes") or "จ่ายยาตามใบสั่งแพทย์ / เบิกใช้เพื่อการรักษา",
+        dispenser_display=dispenser_formal_title,
+        dispenser_formal_title=dispenser_formal_title,
+        dispenser_clean_name=dispenser_clean_name,
+        requester_name=patient_name if patient_name != "-" else "",
+        requester_position="ผู้ขอเบิก / ผู้รับมอบ",
+        items=[log],
+        total_qty=qty,
+        primary_unit=unit,
+        total_qty_thai=qty_thai,
+        total_price=total_price,
+        total_price_formatted=total_price_formatted,
+        total_price_thai=total_price_thai,
+        print_datetime=print_datetime,
+        ref_code=ref_code,
+        is_voided=bool(log.get("is_voided")),
+        void_reason=log.get("void_reason", "")
+    )
+
+
+@app.route("/api/dispense/requisition-batch", methods=["GET"])
+@login_required
+def view_batch_requisition():
+    """View and export official Thai requisition slip for multiple logs (filtered by date or range) with prices."""
+    date_filter = request.args.get("date")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    channel_filter = request.args.get("channel")
+    requester_input = request.args.get("requester", "").strip()
+
+    logs = database.get_dispensing_logs(
+        limit=1000,
+        date_filter=date_filter,
+        channel_filter=channel_filter,
+        start_date=start_date,
+        end_date=end_date
+    )
+    logs = [l for l in logs if not l.get("is_voided")]
+
+    if not logs:
+        return "ไม่พบข้อมูลรายการเบิกจ่ายตามเงื่อนไขที่เลือก (หรือรายการทั้งหมดถูกยกเลิกแล้ว)", 404
+
+    if start_date and end_date:
+        thai_date = f"{format_thai_date_full(start_date)} ถึง {format_thai_date_full(end_date)}"
+        batch_code = f"{start_date.replace('-','')}_{end_date.replace('-','')}"
+    elif start_date:
+        thai_date = f"ตั้งแต่ {format_thai_date_full(start_date)}"
+        batch_code = f"from_{start_date.replace('-','')}"
+    elif end_date:
+        thai_date = f"ถึงวันที่ {format_thai_date_full(end_date)}"
+        batch_code = f"until_{end_date.replace('-','')}"
+    elif date_filter:
+        thai_date = format_thai_date_full(date_filter)
+        batch_code = date_filter.replace("-", "")
+    else:
+        today_s = datetime.now().strftime("%Y-%m-%d")
+        thai_date = format_thai_date_full(today_s)
+        batch_code = datetime.now().strftime("%Y%m%d")
+
+    requisition_no = f"REQ-BATCH-{batch_code}"
+
+    total_qty = sum(l.get("quantity", 0) for l in logs)
+    primary_unit = logs[0].get("unit", "หน่วย") if logs else "หน่วย"
+    qty_thai = number_to_thai_text(total_qty) + f" {primary_unit}ถ้วน"
+
+    # Price calculations
+    total_price = 0.0
+    for it in logs:
+        p = float(it.get("price") or 0.0)
+        q = int(it.get("quantity") or 0)
+        st = p * q
+        it["price_val"] = p
+        it["price_formatted"] = f"{p:,.2f}"
+        it["subtotal_val"] = st
+        it["subtotal_formatted"] = f"{st:,.2f}"
+        total_price += st
+
+    total_price_formatted = f"{total_price:,.2f}"
+    total_price_thai = thai_baht_text(total_price)
+
+    dispenser_query = request.args.get("dispenser", "").strip()
+    u = current_user()
+    current_actor = u.get("name") or u.get("email") or ""
+    formal_name = dispenser_query or sanitize_formal_signatory_name(current_actor)
+
+    dispenser_formal_title = formal_name if formal_name else "เภสัชกร / เจ้าหน้าที่ประจำคลังยา"
+    dispenser_clean_name = formal_name
+
+    print_datetime = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    ref_code = secrets.token_hex(4).upper()
+
+    return render_template(
+        "requisition_slip.html",
+        requisition_no=requisition_no,
+        thai_date=thai_date,
+        thai_date_short=format_thai_date_short(date_filter or start_date or datetime.now().strftime("%Y-%m-%d")),
+        time_str=datetime.now().strftime("%H:%M"),
+        requester_dept=requester_input or "แผนกตรวจรักษา / หอผู้ป่วยสามัญ",
+        patient_name="ตามบัญชีแนบท้าย",
+        channel_label="รายงานรวมตามงวดประจำวัน",
+        purpose_text="สรุปยอดการเบิกจ่ายยาและเวชภัณฑ์ประจำงวด",
+        dispenser_display=dispenser_formal_title,
+        dispenser_formal_title=dispenser_formal_title,
+        dispenser_clean_name=dispenser_clean_name,
+        requester_name="",
+        requester_position="หัวหน้างาน / ผู้รับมอบ",
+        items=logs,
+        total_qty=total_qty,
+        primary_unit=primary_unit,
+        total_qty_thai=qty_thai,
+        total_price=total_price,
+        total_price_formatted=total_price_formatted,
+        total_price_thai=total_price_thai,
+        print_datetime=print_datetime,
+        ref_code=ref_code
+    )
+
+
+@app.route("/api/dispense/requisition/batch/<batch_id>", methods=["GET"])
+@login_required
+def view_prescription_batch_requisition(batch_id):
+    """
+    View and export official Thai consolidated A4 requisition slip for a specific multi-drug Rx Cart batch.
+    Lists all medicines prescribed for this patient in a single formatted table.
+    """
+    logs = database.get_dispensing_logs_by_batch(batch_id)
+    if not logs:
+        return f"ไม่พบข้อมูลใบเบิกจ่ายยาสำหรับเลขที่ใบสั่งยา: {batch_id}", 404
+
+    first_log = logs[0]
+    created_at = first_log.get("created_at", "")
+    time_str = created_at.split(" ")[1] if " " in created_at else ""
+    date_str = created_at.split(" ")[0] if " " in created_at else ""
+
+    requisition_no = f"REQ-{batch_id}"
+
+    patient_raw = (first_log.get("patient_name") or "").strip()
+    patient_name = patient_raw if patient_raw and patient_raw != "-" else "-"
+    requester_dept = "แผนกตรวจรักษา / หอผู้ป่วยสามัญ"
+    channel_label = "ใบสั่งยาอิเล็กทรอนิกส์ (Rx Cart)"
+
+    total_qty = sum(int(l.get("quantity") or 0) for l in logs)
+    primary_unit = logs[0].get("unit", "หน่วย") if logs else "หน่วย"
+    qty_thai = number_to_thai_text(total_qty) + f" {primary_unit}ถ้วน"
+
+    total_price = 0.0
+    for it in logs:
+        p = float(it.get("price") or 0.0)
+        q = int(it.get("quantity") or 0)
+        st = p * q
+        it["price_val"] = p
+        it["price_formatted"] = f"{p:,.2f}"
+        it["subtotal_val"] = st
+        it["subtotal_formatted"] = f"{st:,.2f}"
+        total_price += st
+
+    total_price_formatted = f"{total_price:,.2f}"
+    total_price_thai = thai_baht_text(total_price)
+
+    dispenser_query = request.args.get("dispenser", "").strip()
+    dispensed_by_raw = first_log.get("dispensed_by") or ""
+    formal_name = dispenser_query or sanitize_formal_signatory_name(dispensed_by_raw)
+
+    dispenser_formal_title = formal_name if formal_name else "เภสัชกร / เจ้าหน้าที่ประจำคลังยา"
+    dispenser_clean_name = formal_name
+
+    print_datetime = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    ref_code = batch_id.split("-")[-1] if "-" in batch_id else secrets.token_hex(4).upper()
+
+    is_any_voided = any(bool(l.get("is_voided")) for l in logs)
+
+    return render_template(
+        "requisition_slip.html",
+        requisition_no=requisition_no,
+        thai_date=format_thai_date_full(created_at),
+        thai_date_short=format_thai_date_short(created_at),
+        time_str=time_str,
+        requester_dept=requester_dept,
+        patient_name=patient_name,
+        channel_label=channel_label,
+        purpose_text=first_log.get("notes") or f"ใบสั่งยาผู้ป่วย ({len(logs)} รายการ) / เบิกใช้เพื่อการรักษา",
+        dispenser_display=dispenser_formal_title,
+        dispenser_formal_title=dispenser_formal_title,
+        dispenser_clean_name=dispenser_clean_name,
+        requester_name=patient_name if patient_name != "-" else "",
+        requester_position="ผู้ขอเบิก / ผู้รับมอบยา",
+        items=logs,
+        total_qty=total_qty,
+        primary_unit=primary_unit,
+        total_qty_thai=qty_thai,
+        total_price=total_price,
+        total_price_formatted=total_price_formatted,
+        total_price_thai=total_price_thai,
+        print_datetime=print_datetime,
+        ref_code=ref_code,
+        is_voided=is_any_voided,
+        void_reason="มีรายการยาในใบสั่งนี้ถูกยกเลิก" if is_any_voided else ""
+    )
+
+
 @app.route("/api/export/stock-in", methods=["GET"])
+@login_required
 def export_stock_in_excel():
     """Export stock-in receiving logs to a styled Excel (.xlsx) file."""
     try:

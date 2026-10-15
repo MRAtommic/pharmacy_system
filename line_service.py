@@ -213,11 +213,45 @@ class PharmacyLineBot:
             self.reply_message(reply_token, flex)
             return
 
-        # 3. Deduction Pattern: [ชื่อยา/รหัสยา] [จำนวน] (e.g., 'พารา 2' หรือ 'Amox 1')
-        match = re.match(r"^(.+?)\s*([xX*+-]?)\s*(\d+)\s*(?:เม็ด|แคปซูล|ขวด|แผง|กล่อง|ซอง)?$", text)
+        # 6. Staff PIN Verification (Authorization for dispensing via LINE)
+        pin_match = re.match(r"^(?:รหัส|pin|staff|ลงทะเบียนเจ้าหน้าที่)\s*([0-9]{4,8})$", lower_text)
+        if pin_match:
+            entered_pin = pin_match.group(1).strip()
+            configured_pin = database.get_app_setting("pharmacy_staff_pin") or "1234"
+            if entered_pin == configured_pin:
+                if target_id and target_id != "unknown":
+                    database.add_or_update_line_subscriber(target_id, display_name=user_name)
+                    database.set_line_subscriber_staff(target_id, 1)
+                self.reply_message(reply_token, {
+                    "type": "text",
+                    "text": f"✅ ยืนยันสิทธิ์เจ้าหน้าที่เภสัชกรรมสำเร็จ! คุณ {user_name} ได้รับสิทธิ์ตัดสต็อกยาผ่าน LINE เรียบร้อยแล้วค่ะ 🏥✨"
+                })
+            else:
+                self.reply_message(reply_token, {
+                    "type": "text",
+                    "text": "❌ รหัส PIN ไม่ถูกต้องค่ะ กรุณาตรวจสอบรหัสเจ้าหน้าที่แล้วลองใหม่อีกครั้งนะคะ"
+                })
+            return
+
+        # Normalize Thai digits to Arabic digits (e.g. 'พารา ๒' -> 'พารา 2')
+        normalized_text = text.translate(str.maketrans('๐๑๒๓๔๕๖๗๘๙', '0123456789')).strip()
+
+        # 3. Deduction Pattern: [เบิก/ตัด] [ชื่อยา/รหัสยา] [จำนวน] [หน่วย]
+        dispense_pattern = r'^(?:เบิก|ตัด|จ่าย|ใช้)?\s*(.+?)(?:\s+[xX*]\s*|\s*[*]\s*|\s+)(\d+)\s*(?:เม็ด|แคปซูล|ขวด|แผง|กล่อง|ซอง|หลอด)?$'
+        match = re.match(dispense_pattern, normalized_text)
         if match:
+            # Authorization Guard: Verify user has staff privileges before deducting stock
+            if target_id and target_id != "unknown":
+                is_staff = database.is_line_subscriber_staff(target_id)
+                if not is_staff:
+                    self.reply_message(reply_token, {
+                        "type": "text",
+                        "text": "🔒 ฟังก์ชันตัดสต็อกยาผ่าน LINE จำกัดสิทธิ์เฉพาะเจ้าหน้าที่เภสัชกรรม/พยาบาลเท่านั้นค่ะ\n\nหากท่านเป็นเจ้าหน้าที่ กรุณาพิมพ์:\n👉 'รหัส [PIN]' (เช่น 'รหัส 1234')\nเพื่อยืนยันตัวตนก่อนทำรายการค่ะ 🏥"
+                    })
+                    return
+
             drug_query = match.group(1).strip()
-            qty = int(match.group(3))
+            qty = int(match.group(2))
 
             drug = database.find_drug_by_name_or_alias(drug_query)
             if not drug:
@@ -227,7 +261,29 @@ class PharmacyLineBot:
                 })
                 return
 
-            # Deduct stock
+            # Safety check: Detect if the number was actually the drug's strength (e.g. 'Amox 500', 'PARA 500', 'CPM 4')
+            has_explicit_verb = any(v in normalized_text for v in ["เบิก", "ตัด", "จ่าย", "ใช้", "ขอเบิก", "เอา"])
+            has_explicit_unit = any(u in normalized_text for u in ["เม็ด", "แคปซูล", "ขวด", "แผง", "กล่อง", "ซอง", "หลอด"])
+            has_multiply = any(m in normalized_text for m in [" x ", " * ", "X", " x", "*"])
+            
+            strength_str = str(drug.get("strength") or "")
+            name_str = str(drug.get("name") or "")
+            is_likely_dosage = (str(qty) in strength_str or str(qty) in name_str) and not (has_explicit_verb or has_explicit_unit or has_multiply)
+            is_suspiciously_large = qty > 50 and not (has_explicit_verb or has_explicit_unit or has_multiply)
+
+            if is_likely_dosage or is_suspiciously_large:
+                # Show drug card instead of blindly deducting hundreds of tablets!
+                flex = self._create_drug_card_flex(drug)
+                self.reply_message(reply_token, [
+                    flex,
+                    {
+                        "type": "text",
+                        "text": f"💡 พบข้อมูล '{drug['name']}' ในคลังยา (คงเหลือ {drug['stock_qty']} {drug['unit']})\n\nต้องการตัดสต็อกยา กรุณาระบุจำนวน เช่น:\n👉 'เบิก {drug_query} 1'\n👉 'ตัด {drug_query} {qty} {drug['unit']}'"
+                    }
+                ])
+                return
+
+            # Deduct stock safely
             success, result = database.deduct_stock(
                 drug["id"],
                 qty,
@@ -341,7 +397,7 @@ class PharmacyLineBot:
         drug_name = data.get("drug_name", "รายการยา")
         drug_code = data.get("drug_code", "-")
         category = data.get("category", "ยาสามัญ")
-        qty = data.get("quantity", 1)
+        qty = data.get("quantity") if data.get("quantity") is not None else data.get("qty", 1)
         unit = data.get("unit", "หน่วย")
         balance_after = data.get("balance_after", 0)
         location = data.get("location", "ตู้ยาคลินิก")
@@ -352,8 +408,20 @@ class PharmacyLineBot:
         if "LINE" in str(channel_raw).upper():
             channel_text = "LINE Bot"
 
-        dispensed_by = data.get("dispensed_by") or channel_text
-        patient_name = data.get("patient_name", "").strip()
+        user_email = (data.get("user_email") or "").strip()
+        user_name = (data.get("user_name") or "").strip()
+        dispensed_by = (data.get("dispensed_by") or "").strip()
+        patient_name = (data.get("patient_name") or "").strip()
+
+        # Build clean actor string prominently featuring email
+        if user_email and user_name and user_name != user_email:
+            operator_display = f"{user_name} ({user_email})"
+        elif user_email:
+            operator_display = user_email
+        elif dispensed_by and dispensed_by not in ("เจ้าหน้าที่", "เภสัชกร/เจ้าหน้าที่", channel_text):
+            operator_display = dispensed_by
+        else:
+            operator_display = "เจ้าหน้าที่คลังยา"
 
         # Status Badge (Soft Pill Style matching media_1790770187611.png)
         badge_bg = "#FEE2E2"
@@ -365,12 +433,6 @@ class PharmacyLineBot:
         sub_info = f"{drug_code} · {category}" if category and category != "-" else f"{drug_code} · {unit}"
         loc_str = f" (จัดเก็บ: {location})" if location and location != "-" else ""
         remaining_str = f"{balance_after} {unit}{loc_str}"
-
-        operator_str = channel_text
-        if patient_name:
-            operator_str += f" (คนไข้: {patient_name})"
-        elif dispensed_by and dispensed_by not in ("เจ้าหน้าที่", "เภสัชกร/เจ้าหน้าที่", channel_text):
-            operator_str += f" โดย {dispensed_by}"
 
         # 📸 Drug Photo integration
         img_box = self._format_flex_image(data.get("image_url"))
@@ -443,18 +505,42 @@ class PharmacyLineBot:
                     {"type": "text", "text": "คงเหลือในคลัง", "size": "xs", "color": "#64748B", "flex": 4},
                     {"type": "text", "text": remaining_str, "size": "xs", "color": "#0F172A", "weight": "bold", "flex": 8}
                 ]
-            },
-            # Line 4: ช่องทาง / ผู้ตัดจ่าย
-            {
+            }
+        ])
+
+        price_val = float(data.get("price") or 0.0)
+        if price_val > 0:
+            remaining_val = balance_after * price_val
+            card_contents.append({
                 "type": "box",
                 "layout": "baseline",
                 "margin": "xs",
                 "contents": [
-                    {"type": "text", "text": "การทำรายการ", "size": "xs", "color": "#64748B", "flex": 4},
-                    {"type": "text", "text": operator_str, "size": "xs", "color": "#334155", "flex": 8}
+                    {"type": "text", "text": "มูลค่าคงเหลือ", "size": "xs", "color": "#64748B", "flex": 4},
+                    {"type": "text", "text": f"฿{remaining_val:,.2f} บาท (@฿{price_val:,.2f})", "size": "xs", "color": "#059669", "weight": "bold", "flex": 8}
                 ]
-            }
-        ])
+            })
+
+        if patient_name:
+            card_contents.append({
+                "type": "box",
+                "layout": "baseline",
+                "margin": "xs",
+                "contents": [
+                    {"type": "text", "text": "คนไข้/ผู้รับ", "size": "xs", "color": "#64748B", "flex": 4},
+                    {"type": "text", "text": patient_name, "size": "xs", "color": "#334155", "flex": 8, "wrap": True}
+                ]
+            })
+
+        card_contents.append({
+            "type": "box",
+            "layout": "baseline",
+            "margin": "xs",
+            "contents": [
+                {"type": "text", "text": "ช่องทาง", "size": "xs", "color": "#64748B", "flex": 4},
+                {"type": "text", "text": channel_text, "size": "xs", "color": "#64748B", "flex": 8}
+            ]
+        })
 
         drug_card = {
             "type": "box",
@@ -492,7 +578,7 @@ class PharmacyLineBot:
                         "layout": "vertical",
                         "contents": [
                             {"type": "text", "text": "PharmaCore Inventory", "size": "xs", "color": "#111827", "weight": "bold"},
-                            {"type": "text", "text": "บันทึกตัดสต็อกเรียบร้อย", "size": "xxs", "color": "#9CA3AF"}
+                            {"type": "text", "text": f"ดำเนินการโดย {operator_display}", "size": "xxs", "color": "#9CA3AF", "wrap": True}
                         ],
                         "paddingStart": "10px"
                     }
@@ -589,7 +675,7 @@ class PharmacyLineBot:
 
         return {
             "type": "flex",
-            "altText": f"💊 ตัดสต็อก: {drug_name} (-{qty} {unit}) คงเหลือ {balance_after} {unit}",
+            "altText": f"💊 ตัดสต็อก: {drug_name} (-{qty} {unit}) โดย {operator_display} คงเหลือ {balance_after} {unit}",
             "contents": flex_contents
         }
 
@@ -629,13 +715,24 @@ class PharmacyLineBot:
         drug_name = data.get("drug_name", "รายการยา")
         drug_code = data.get("drug_code", "-")
         lot_number = data.get("lot_number", "").strip()
-        qty = data.get("quantity", 0)
+        qty = data.get("quantity") if data.get("quantity") is not None else data.get("qty", 0)
         unit = data.get("unit", "หน่วย")
         balance_before = data.get("balance_before", 0)
         balance_after = data.get("balance_after", 0)
         expiry_date = data.get("expiry_date", "").strip()
         supplier = data.get("supplier", "").strip()
-        received_by = data.get("received_by", "เจ้าหน้าที่").strip()
+        user_email = (data.get("user_email") or "").strip()
+        user_name = (data.get("user_name") or "").strip()
+        received_by = (data.get("received_by") or "").strip()
+
+        if user_email and user_name and user_name != user_email:
+            receiver_display = f"{user_name} ({user_email})"
+        elif user_email:
+            receiver_display = user_email
+        elif received_by and received_by not in ("เจ้าหน้าที่", "เภสัชกร/เจ้าหน้าที่"):
+            receiver_display = received_by
+        else:
+            receiver_display = "เจ้าหน้าที่คลังยา"
 
         img_box = self._format_flex_image(data.get("image_url"))
         if not img_box and data.get("drug_id"):
@@ -712,6 +809,17 @@ class PharmacyLineBot:
             }
         ])
 
+        if supplier and supplier != "-":
+            card_contents.append({
+                "type": "box",
+                "layout": "baseline",
+                "margin": "xs",
+                "contents": [
+                    {"type": "text", "text": "ผู้จัดจำหน่าย", "size": "xs", "color": "#64748B", "flex": 4},
+                    {"type": "text", "text": supplier, "size": "xs", "color": "#334155", "flex": 8, "wrap": True}
+                ]
+            })
+
         if expiry_date:
             card_contents.append({
                 "type": "box",
@@ -722,20 +830,6 @@ class PharmacyLineBot:
                     {"type": "text", "text": expiry_date, "size": "xs", "color": "#334155", "flex": 8}
                 ]
             })
-
-        supplier_str = f"โดย {received_by}"
-        if supplier and supplier != "-":
-            supplier_str += f" ({supplier})"
-
-        card_contents.append({
-            "type": "box",
-            "layout": "baseline",
-            "margin": "xs",
-            "contents": [
-                {"type": "text", "text": "ผู้ตรวจรับ", "size": "xs", "color": "#64748B", "flex": 4},
-                {"type": "text", "text": supplier_str, "size": "xs", "color": "#334155", "flex": 8}
-            ]
-        })
 
         drug_card = {
             "type": "box",
@@ -773,7 +867,7 @@ class PharmacyLineBot:
                         "layout": "vertical",
                         "contents": [
                             {"type": "text", "text": "PharmaCore Inventory", "size": "xs", "color": "#111827", "weight": "bold"},
-                            {"type": "text", "text": "บันทึกรับยาเข้าเรียบร้อย", "size": "xxs", "color": "#9CA3AF"}
+                            {"type": "text", "text": f"บันทึกรับเข้าโดย {receiver_display}", "size": "xxs", "color": "#9CA3AF", "wrap": True}
                         ],
                         "paddingStart": "10px"
                     }
@@ -854,7 +948,7 @@ class PharmacyLineBot:
 
         return {
             "type": "flex",
-            "altText": f"📥 รับยาเข้าสต็อก: {drug_name} (+{qty} {unit}) ยอดคงเหลือ {balance_after} {unit}",
+            "altText": f"📥 รับยาเข้าสต็อก: {drug_name} (+{qty} {unit}) โดย {receiver_display} ยอดคงเหลือ {balance_after} {unit}",
             "contents": flex_contents
         }
 
@@ -871,6 +965,19 @@ class PharmacyLineBot:
         unit = drug.get("unit", "หน่วย")
         location = drug.get("location", "ตู้ยาคลินิก")
         price = drug.get("price", 0)
+        user_email = (drug.get("user_email") or drug.get("created_by_email") or "").strip()
+        user_name = (drug.get("user_name") or drug.get("created_by_name") or "").strip()
+        created_by = (drug.get("created_by") or "").strip()
+
+        if user_email and user_name and user_name != user_email:
+            adder_display = f"{user_name} ({user_email})"
+        elif user_email:
+            adder_display = user_email
+        elif created_by and created_by not in ("เจ้าหน้าที่", "แอดมิน"):
+            adder_display = created_by
+        else:
+            adder_display = "เจ้าหน้าที่คลังยา"
+
         img_box = self._format_flex_image(drug.get("image_url"))
 
         card_contents = []
@@ -986,7 +1093,7 @@ class PharmacyLineBot:
                         "layout": "vertical",
                         "contents": [
                             {"type": "text", "text": "PharmaCore Inventory", "size": "xs", "color": "#111827", "weight": "bold"},
-                            {"type": "text", "text": "ลงทะเบียนยาใหม่เรียบร้อย", "size": "xxs", "color": "#9CA3AF"}
+                            {"type": "text", "text": f"ลงทะเบียนโดย {adder_display}", "size": "xxs", "color": "#9CA3AF", "wrap": True}
                         ],
                         "paddingStart": "10px"
                     }
@@ -1067,7 +1174,7 @@ class PharmacyLineBot:
 
         return {
             "type": "flex",
-            "altText": f"✨ เพิ่มยาใหม่: {drug_name} ({drug_code}) สต็อกเริ่มต้น {stock_qty} {unit}",
+            "altText": f"✨ เพิ่มยาใหม่: {drug_name} ({drug_code}) โดย {adder_display} สต็อกเริ่มต้น {stock_qty} {unit}",
             "contents": flex_contents
         }
 
@@ -1187,31 +1294,49 @@ class PharmacyLineBot:
 
 
     def _create_stock_summary_flex(self):
-        """Returns top 5 stock summary."""
+        """Returns stock summary with total monetary valuation and items."""
+        stats = database.get_dashboard_stats()
+        total_val_formatted = stats.get("total_inventory_value_formatted", "฿0.00")
+        total_units = stats.get("total_units", 0)
+        total_drugs = stats.get("total_drugs", 0)
+
         drugs = database.get_all_drugs()[:8]
         rows = []
         for d in drugs:
             is_low = d["stock_qty"] <= d["min_threshold"]
+            price_val = float(d.get("price") or 0.0)
+            item_val_text = f" (฿{d['stock_qty'] * price_val:,.0f})" if price_val > 0 else ""
             rows.append({
                 "type": "box",
                 "layout": "horizontal",
                 "contents": [
                     {"type": "text", "text": d["name"], "size": "xs", "weight": "bold", "color": "#1E293B", "flex": 3, "wrap": False},
-                    {"type": "text", "text": f"{d['stock_qty']} {d['unit']}", "size": "xs", "color": "#EF4444" if is_low else "#0F766E", "weight": "bold", "align": "end", "flex": 2}
+                    {"type": "text", "text": f"{d['stock_qty']} {d['unit']}{item_val_text}", "size": "xs", "color": "#EF4444" if is_low else "#0F766E", "weight": "bold", "align": "end", "flex": 3}
                 ]
             })
 
         return {
             "type": "flex",
-            "altText": "สรุปสต็อกยาคงเหลือ",
+            "altText": f"สรุปสต็อกยาคงเหลือ รวม {total_val_formatted}",
             "contents": {
                 "type": "bubble",
                 "header": {
                     "type": "box",
                     "layout": "vertical",
                     "backgroundColor": "#0F766E",
+                    "paddingAll": "14px",
                     "contents": [
-                        {"type": "text", "text": "📦 สรุปสต็อกยาคงเหลือ", "weight": "bold", "color": "#FFFFFF", "size": "md"}
+                        {"type": "text", "text": "📦 สรุปสต็อกและมูลค่ายาคงเหลือ", "weight": "bold", "color": "#FFFFFF", "size": "md"},
+                        {
+                            "type": "box",
+                            "layout": "horizontal",
+                            "margin": "sm",
+                            "contents": [
+                                {"type": "text", "text": "มูลค่ารวมในคลัง:", "size": "xs", "color": "#CCFBF1"},
+                                {"type": "text", "text": f"{total_val_formatted}", "size": "sm", "weight": "bold", "color": "#FEF08A", "align": "end"}
+                            ]
+                        },
+                        {"type": "text", "text": f"คงเหลือ {total_units:,} หน่วย ({total_drugs} ชนิดยา)", "size": "xxs", "color": "#A7F3D0", "margin": "xs"}
                     ]
                 },
                 "body": {
@@ -1224,7 +1349,7 @@ class PharmacyLineBot:
                     "type": "box",
                     "layout": "vertical",
                     "contents": [
-                        {"type": "button", "action": {"type": "uri", "label": "ดูคลังยาทั้งหมด", "uri": Config.BASE_URL}, "style": "primary", "color": "#0F766E"}
+                        {"type": "button", "action": {"type": "uri", "label": "เปิดดูระบบคลังยา", "uri": Config.BASE_URL}, "style": "primary", "color": "#0F766E"}
                     ]
                 }
             }
@@ -1648,6 +1773,258 @@ class PharmacyLineBot:
             "delivered_targets": sent_count,
             "method": delivery_method
         }
+
+    def _create_batch_dispense_flex(self, data):
+        """Rich Medical Flex Message for Multi-Drug Prescription (Rx Cart) Dispensing."""
+        primary_color = "#059669"  # Medical Emerald Green
+        batch_id = data.get("batch_id", "-")
+        patient_name = data.get("patient_name") or "ผู้ป่วยทั่วไป / ไม่ระบุชื่อ"
+        dept = data.get("requester_dept") or "แผนกตรวจรักษา / หอผู้ป่วย"
+        dispensed_by = data.get("dispensed_by") or "เภสัชกร / เจ้าหน้าที่"
+        items = data.get("items", [])
+        total_items = data.get("total_items", len(items))
+        total_qty = data.get("total_qty", sum(it.get("quantity", 0) for it in items))
+        total_price_formatted = data.get("total_price_formatted") or f"฿{data.get('total_price', 0):,.2f}"
+
+        base_url = Config.BASE_URL.rstrip('/')
+        requisition_url = f"{base_url}/api/dispense/requisition/batch/{batch_id}"
+
+        item_boxes = []
+        for idx, it in enumerate(items[:8], start=1):
+            name = it.get("drug_name", "รายการยา")
+            code = it.get("drug_code", "")
+            qty = it.get("quantity", 1)
+            unit = it.get("unit", "หน่วย")
+            bal = it.get("balance_after", 0)
+            subtotal = it.get("subtotal_formatted") or f"฿{it.get('subtotal', 0):,.2f}"
+
+            item_boxes.append({
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#F8FAFC",
+                "cornerRadius": "8px",
+                "paddingAll": "10px",
+                "margin": "xs",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"{idx}. {name}",
+                                "weight": "bold",
+                                "size": "xs",
+                                "color": "#0F172A",
+                                "flex": 8,
+                                "wrap": True
+                            },
+                            {
+                                "type": "text",
+                                "text": f"-{qty} {unit}",
+                                "weight": "bold",
+                                "size": "xs",
+                                "color": "#DC2626",
+                                "align": "end",
+                                "flex": 4
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "margin": "xs",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"รหัส: {code} · คงเหลือ: {bal} {unit}",
+                                "size": "xxs",
+                                "color": "#64748B",
+                                "flex": 8
+                            },
+                            {
+                                "type": "text",
+                                "text": subtotal,
+                                "size": "xxs",
+                                "color": "#059669",
+                                "weight": "bold",
+                                "align": "end",
+                                "flex": 4
+                            }
+                        ]
+                    }
+                ]
+            })
+
+        if len(items) > 8:
+            item_boxes.append({
+                "type": "text",
+                "text": f"... และอีก {len(items) - 8} รายการยาในใบสั่งนี้",
+                "size": "xxs",
+                "color": "#94A3B8",
+                "align": "center",
+                "margin": "xs"
+            })
+
+        body_contents = [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#ECFDF5",
+                "cornerRadius": "10px",
+                "paddingAll": "12px",
+                "borderColor": "#A7F3D0",
+                "borderWidth": "1px",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "contents": [
+                            {"type": "text", "text": "ผู้รับยา/คนไข้", "size": "xs", "color": "#065F46", "flex": 4},
+                            {"type": "text", "text": patient_name, "size": "xs", "color": "#064E3B", "weight": "bold", "flex": 8, "wrap": True}
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "margin": "xs",
+                        "contents": [
+                            {"type": "text", "text": "แผนก/หอผู้ป่วย", "size": "xs", "color": "#065F46", "flex": 4},
+                            {"type": "text", "text": dept, "size": "xs", "color": "#064E3B", "flex": 8, "wrap": True}
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "baseline",
+                        "margin": "xs",
+                        "contents": [
+                            {"type": "text", "text": "ผู้จ่ายยา", "size": "xs", "color": "#065F46", "flex": 4},
+                            {"type": "text", "text": dispensed_by, "size": "xs", "color": "#064E3B", "flex": 8, "wrap": True}
+                        ]
+                    }
+                ]
+            },
+            {"type": "separator", "margin": "md", "color": "#E5E7EB"},
+            {
+                "type": "box",
+                "layout": "horizontal",
+                "margin": "sm",
+                "contents": [
+                    {"type": "text", "text": "รายการยาในใบสั่งยา", "size": "xs", "color": "#475569", "weight": "bold", "flex": 8},
+                    {"type": "text", "text": f"{total_items} รายการ", "size": "xs", "color": "#059669", "weight": "bold", "align": "end", "flex": 4}
+                ]
+            },
+            *item_boxes,
+            {"type": "separator", "margin": "md", "color": "#E5E7EB"},
+            {
+                "type": "box",
+                "layout": "horizontal",
+                "margin": "sm",
+                "contents": [
+                    {"type": "text", "text": "ยอดรวมค่ายาทั้งหมด", "size": "sm", "weight": "bold", "color": "#0F172A", "flex": 6},
+                    {"type": "text", "text": total_price_formatted, "size": "sm", "weight": "bold", "color": "#059669", "align": "end", "flex": 6}
+                ]
+            }
+        ]
+
+        footer_buttons = [
+            {
+                "type": "button",
+                "action": {
+                    "type": "uri",
+                    "label": "📄 เปิดใบสั่งยา A4 ทางการ",
+                    "uri": requisition_url
+                },
+                "style": "primary",
+                "color": primary_color,
+                "height": "sm"
+            },
+            {
+                "type": "button",
+                "action": {
+                    "type": "uri",
+                    "label": "🏥 เปิดระบบจัดการคลังยา",
+                    "uri": Config.BASE_URL
+                },
+                "style": "secondary",
+                "height": "sm",
+                "margin": "xs"
+            }
+        ]
+
+        flex_contents = {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": primary_color,
+                "paddingAll": "16px",
+                "contents": [
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "contents": [
+                                    {"type": "text", "text": "📋", "size": "xl", "align": "center"}
+                                ],
+                                "width": "42px",
+                                "height": "42px",
+                                "backgroundColor": "#ffffff20",
+                                "cornerRadius": "12px",
+                                "justifyContent": "center",
+                                "alignItems": "center"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "contents": [
+                                    {"type": "text", "text": "ใบสั่งยาผู้ป่วย (Prescription)", "color": "#ffffff", "size": "md", "weight": "bold"},
+                                    {"type": "text", "text": f"เลขที่: {batch_id}", "color": "#ffffff95", "size": "xxs"}
+                                ],
+                                "paddingStart": "12px"
+                            }
+                        ],
+                        "alignItems": "center"
+                    }
+                ]
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#FFFFFF",
+                "paddingAll": "16px",
+                "spacing": "xs",
+                "contents": body_contents
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#F9FAFB",
+                "paddingAll": "12px",
+                "contents": footer_buttons
+            }
+        }
+
+        return {
+            "type": "flex",
+            "altText": f"📋 ใบสั่งยา: {patient_name} ({total_items} รายการ) เลขที่ {batch_id}",
+            "contents": flex_contents
+        }
+
+    def send_batch_dispense_notification(self, data, exclude_target=None):
+        """
+        Send multi-drug prescription dispensing alert to LINE subscribers.
+        """
+        try:
+            flex = self._create_batch_dispense_flex(data)
+            return self._broadcast_or_push(flex, exclude_target=exclude_target)
+        except Exception as e:
+            logger.error(f"Error building or sending batch dispense LINE alert: {e}", exc_info=True)
+            return {"ok": False, "error": str(e)}
 
     def send_dispense_notification(self, data, exclude_target=None):
         """

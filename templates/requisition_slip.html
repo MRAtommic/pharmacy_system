@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ใบเบิกจ่ายยาและเวชภัณฑ์ - {{ requisition_no }}</title>
+    <!-- Google Fonts: Sarabun (Official Thai Government & Medical Document Standard) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* ── Base Document Styles ── */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            color: #000000;
+        }
+
+        body {
+            font-family: 'Sarabun', 'TH Sarabun New', 'Angsana New', Tahoma, sans-serif;
+            background-color: #525659;
+            color: #000000;
+            margin: 0;
+            padding: 20px 0 40px 0;
+            font-size: 15px;
+            line-height: 1.45;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* ── Action Toolbar (Screen Only) ── */
+        .print-toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #1E293B;
+            z-index: 9999;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            border-bottom: 1px solid #334155;
+            padding: 8px 1.5rem;
+        }
+
+        .toolbar-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            width: 100%;
+        }
+
+        .toolbar-header-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toolbar-title {
+            color: #F8FAFC;
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .toolbar-title span {
+            color: #CBD5E1;
+            font-weight: 600;
+            font-size: 13.5px;
+        }
+
+        .toolbar-req-badge {
+            color: #94A3B8 !important;
+            font-weight: 500 !important;
+            font-size: 12px !important;
+            font-family: monospace;
+            background: rgba(255,255,255,0.08);
+            padding: 2px 7px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .toolbar-tip-row {
+            display: flex;
+            align-items: center;
+        }
+
+        .toolbar-tip-badge {
+            color: #38BDF8;
+            font-size: 11.5px;
+            background: rgba(56,189,248,0.12);
+            padding: 3px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(56,189,248,0.25);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .toolbar-actions-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s ease;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .btn-print {
+            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            color: #FFFFFF;
+            box-shadow: 0 2px 6px rgba(37,99,235,0.35);
+        }
+        .btn-print:hover {
+            background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+            transform: translateY(-1px);
+        }
+        .btn-print * { color: #FFFFFF; }
+
+        .btn-download {
+            background: #0F172A;
+            color: #E2E8F0;
+            border: 1px solid #475569;
+        }
+        .btn-download:hover {
+            background: #1E293B;
+            border-color: #64748B;
+        }
+        .btn-download * { color: #E2E8F0; }
+
+        .btn-close {
+            background: #334155;
+            color: #E2E8F0;
+        }
+        .btn-close:hover {
+            background: #475569;
+            color: #FFFFFF;
+        }
+        .btn-close * { color: #E2E8F0; }
+
+        /* 📱 Responsive Mobile Adjustments for Requisition Toolbar & Sheet */
+        @media (max-width: 768px) {
+            body {
+                padding: 0 !important;
+                background-color: #1e293b !important;
+            }
+
+            .print-toolbar {
+                padding: 10px 12px !important;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+            }
+
+            .toolbar-inner {
+                flex-direction: column !important;
+                gap: 8px !important;
+            }
+
+            .toolbar-header-row {
+                width: 100% !important;
+                justify-content: space-between !important;
+            }
+
+            .toolbar-title {
+                font-size: 13px !important;
+            }
+
+            .toolbar-actions-row {
+                width: 100% !important;
+                display: grid !important;
+                grid-template-columns: 1.4fr 1fr !important;
+                gap: 8px !important;
+            }
+
+            .toolbar-actions-row .btn-action {
+                width: 100% !important;
+                height: 42px !important;
+                font-size: 13px !important;
+                padding: 0 8px !important;
+                border-radius: 8px !important;
+            }
+
+            .toolbar-tip-row {
+                width: 100% !important;
+            }
+
+            .toolbar-tip-badge {
+                width: 100% !important;
+                justify-content: center !important;
+                font-size: 11px !important;
+                padding: 4px 8px !important;
+                text-align: center !important;
+            }
+
+            .page-container {
+                margin: 128px auto 30px auto !important;
+                width: calc(100% - 16px) !important;
+                max-width: 100% !important;
+                min-height: auto !important;
+                padding: 14px 12px !important;
+                border-radius: 12px !important;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+
+            .items-table {
+                min-width: 580px !important;
+            }
+
+            .meta-box {
+                flex-direction: column !important;
+                gap: 6px !important;
+            }
+
+            .meta-col.right {
+                text-align: left !important;
+            }
+        }
+
+        /* ── Standard A4 Paper Container ── */
+        .page-container {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 16mm 18mm 16mm 18mm;
+            margin: 54px auto 0 auto;
+            background: #FFFFFF;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            position: relative;
+        }
+
+        /* ── Official Header ── */
+        .doc-header {
+            text-align: center;
+            margin-bottom: 12px;
+            position: relative;
+        }
+
+        .garuda-logo {
+            width: 75px;
+            height: 75px;
+            margin: 0 auto 6px auto;
+            display: block;
+        }
+
+        .doc-title {
+            font-size: 21px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            line-height: 1.3;
+        }
+
+        .doc-subtitle {
+            font-size: 15px;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        .doc-hospital {
+            font-size: 14px;
+            color: #222222;
+        }
+
+        /* ── Metadata Header Box ── */
+        .meta-box {
+            display: flex;
+            justify-content: space-between;
+            margin: 14px 0 10px 0;
+            padding-bottom: 6px;
+            border-bottom: 1.5px solid #000000;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .meta-col {
+            flex: 1;
+        }
+
+        .meta-col.right {
+            text-align: right;
+        }
+
+        .meta-row {
+            margin-bottom: 2px;
+        }
+
+        .meta-label {
+            font-weight: 700;
+        }
+
+        .meta-dots {
+            border-bottom: 1px dotted #000000;
+            display: inline-block;
+            min-width: 120px;
+            padding: 0 4px;
+        }
+
+        /* ── Official Grid Table ── */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+
+        .items-table th,
+        .items-table td {
+            border: 1px solid #000000;
+            padding: 4px 5px;
+            vertical-align: middle;
+        }
+
+        .items-table th {
+            font-weight: 700;
+            text-align: center;
+            background-color: #F8F9FA;
+            font-size: 13px;
+        }
+
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+
+        .summary-row td {
+            font-weight: 700;
+            background-color: #F8F9FA;
+        }
+
+        /* ── Signatures Grid ── */
+        .signatures-section {
+            margin-top: 28px;
+            width: 100%;
+            page-break-inside: avoid;
+        }
+
+        .sig-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: none;
+        }
+
+        .sig-table td {
+            border: none;
+            padding: 10px 14px;
+            width: 50%;
+            vertical-align: top;
+            text-align: center;
+            font-size: 13.5px;
+            line-height: 1.6;
+        }
+
+        .sig-line {
+            display: inline-block;
+            width: 180px;
+            border-bottom: 1px dotted #000000;
+            margin: 0 4px;
+        }
+
+        /* ── Document Footer ── */
+        .doc-footer {
+            margin-top: 24px;
+            padding-top: 8px;
+            border-top: 1px solid #000000;
+            font-size: 11px;
+            color: #333333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ── Inline Editable Signature on Screen ── */
+        [contenteditable="true"] {
+            transition: background 0.15s ease, outline 0.15s ease;
+            border-radius: 3px;
+            padding: 1px 4px;
+        }
+        [contenteditable="true"]:hover {
+            outline: 1px dashed #2563EB;
+            background-color: #F8FAFC;
+        }
+        [contenteditable="true"]:focus {
+            outline: 1.5px solid #2563EB;
+            background-color: #EFF6FF;
+        }
+
+        /* ── Print Overrides ── */
+        @media print {
+            body {
+                background: #FFFFFF !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            .print-toolbar {
+                display: none !important;
+            }
+
+            .page-container {
+                width: 100% !important;
+                min-height: auto !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                box-shadow: none !important;
+            }
+
+            .items-table th {
+                background-color: #EEEEEE !important;
+            }
+
+            .summary-row td {
+                background-color: #EEEEEE !important;
+            }
+
+            [contenteditable="true"] {
+                outline: none !important;
+                background-color: transparent !important;
+                padding: 0 !important;
+            }
+
+            @page {
+                size: A4 portrait;
+                margin: 15mm 15mm 15mm 15mm;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ── Print & Download Control Bar (Screen View) ── -->
+    <div class="print-toolbar no-print">
+        <div class="toolbar-inner">
+            <div class="toolbar-header-row">
+                <div class="toolbar-title">
+                    <i class="fas fa-file-invoice" style="color: #38BDF8;"></i>
+                    <span>ใบเบิกจ่ายยาและเวชภัณฑ์</span>
+                    <span class="toolbar-req-badge">{{ requisition_no }}</span>
+                </div>
+                <button type="button" class="btn-action btn-close" onclick="window.close()" title="ปิดหน้านี้">
+                    <i class="fas fa-xmark"></i> <span>ปิด</span>
+                </button>
+            </div>
+            <div class="toolbar-actions-row">
+                <button type="button" class="btn-action btn-print" onclick="window.print()">
+                    <i class="fas fa-print"></i> <span>พิมพ์เอกสาร / บันทึก PDF</span>
+                </button>
+                <button type="button" class="btn-action btn-download" onclick="saveAsHtml()">
+                    <i class="fas fa-file-arrow-down"></i> <span>บันทึกไฟล์ HTML</span>
+                </button>
+            </div>
+            <div class="toolbar-tip-row">
+                <div class="toolbar-tip-badge">
+                    <i class="fas fa-pen-to-square"></i> แตะที่ช่องชื่อในส่วนลงนามเพื่อพิมพ์ชื่อจริงก่อนสั่งพิมพ์ได้
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── A4 Sheet Container ── -->
+    <div class="page-container" id="printableSheet">
+
+        <!-- ── Official Header with Garuda ── -->
+        <div class="doc-header">
+            <img src="/static/img/garuda.svg" alt="ตราครุฑ" class="garuda-logo">
+            <div class="doc-title">ใบเบิกจ่ายยาและเวชภัณฑ์</div>
+            <div class="doc-subtitle">งานเภสัชกรรมและคลังยา (Pharmacy & Medical Supply Division)</div>
+            <div class="doc-hospital">ระบบบริหารจัดการคลังยาอิเล็กทรอนิกส์ PharmaCore</div>
+        </div>
+
+        {% if is_voided %}
+        <div style="background: #FEE2E2; border: 2px dashed #DC2626; color: #DC2626; padding: 10px 16px; border-radius: 6px; text-align: center; margin-bottom: 16px; font-weight: 700; font-size: 16px;">
+            ⚠️ ใบเบิกจ่ายยานี้ถูกยกเลิกแล้ว (VOIDED) — คืนยาเข้าคลังเรียบร้อยแล้ว ห้ามนำไปจ่ายยาซ้ำ
+            {% if void_reason %}<div style="font-size: 13px; font-weight: 500; margin-top: 3px; color: #B91C1C;">เหตุผลในการยกเลิก: {{ void_reason }}</div>{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- ── Meta Details ── -->
+        <div class="meta-box">
+            <div class="meta-col">
+                <div class="meta-row">
+                    <span class="meta-label">หน่วยงาน/ผู้ขอเบิก:</span> 
+                    <span class="meta-dots">{{ requester_dept }}</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">ชื่อผู้รับมอบยา / คนไข้:</span> 
+                    <span class="meta-dots">{{ patient_name }}</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">ช่องทางการขอเบิก:</span> 
+                    <span>{{ channel_label }}</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">วัตถุประสงค์การใช้:</span> 
+                    <span>{{ purpose_text }}</span>
+                </div>
+            </div>
+
+            <div class="meta-col right">
+                <div class="meta-row">
+                    <span class="meta-label">เลขที่ใบเบิก:</span> 
+                    <strong>{{ requisition_no }}</strong>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">วันที่เบิกจ่าย:</span> 
+                    <span>{{ thai_date }}</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">เวลาที่ดำเนินการ:</span> 
+                    <span>{{ time_str }} น.</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-label">ผู้บันทึกจ่าย:</span> 
+                    <span>{{ dispenser_formal_title or dispenser_display or 'เภสัชกร / เจ้าหน้าที่ประจำคลังยา' }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Items Table ── -->
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th style="width: 32px;">ลำดับ</th>
+                    <th style="width: 76px;">รหัสยา</th>
+                    <th>รายการยา / ขนาดความแรง / ชื่อสามัญ</th>
+                    <th style="width: 78px;">หมวดหมู่</th>
+                    <th style="width: 50px;">จำนวน</th>
+                    <th style="width: 48px;">หน่วย</th>
+                    <th style="width: 70px;">ราคา/หน่วย</th>
+                    <th style="width: 80px;">จำนวนเงิน</th>
+                    <th style="width: 50px;">คงเหลือ</th>
+                    <th style="width: 88px;">หมายเหตุ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td class="text-center">{{ loop.index }}</td>
+                    <td class="text-center" style="font-family: monospace; font-weight: 600;">{{ item.drug_code or '-' }}</td>
+                    <td>
+                        <strong>{{ item.drug_name }}</strong>
+                        {% if item.generic_name %}
+                        <div style="font-size: 11.5px; color: #222;">({{ item.generic_name }})</div>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">{{ item.category or 'ทั่วไป' }}</td>
+                    <td class="text-center" style="font-weight: 700;">{{ item.quantity }}</td>
+                    <td class="text-center">{{ item.unit or 'หน่วย' }}</td>
+                    <td class="text-right">{{ item.price_formatted }}</td>
+                    <td class="text-right" style="font-weight: 700;">{{ item.subtotal_formatted }}</td>
+                    <td class="text-center">{{ item.balance_after }}</td>
+                    <td style="font-size: 12px;">{{ item.notes or '-' }}</td>
+                </tr>
+                {% endfor %}
+
+                <!-- Empty Filler Rows for Clean Print appearance if few items -->
+                {% if items|length < 3 %}
+                {% for i in range(3 - items|length) %}
+                <tr style="height: 28px;">
+                    <td class="text-center">&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+
+                <!-- Summary Row 1: Quantity -->
+                <tr class="summary-row">
+                    <td colspan="4" class="text-right">รวมรายการเบิกจ่ายทั้งสิ้น {{ items|length }} รายการ:</td>
+                    <td class="text-center" style="font-size: 14px; font-weight: 700;">{{ total_qty }}</td>
+                    <td class="text-center">{{ primary_unit }}</td>
+                    <td colspan="4" class="text-left" style="font-size: 12px;">( {{ total_qty_thai }} )</td>
+                </tr>
+
+                <!-- Summary Row 2: Grand Total Amount in Baht -->
+                <tr class="summary-row" style="border-top: 1.5px solid #000000; border-bottom: 3px double #000000;">
+                    <td colspan="6" class="text-right" style="padding-top: 6px; padding-bottom: 6px;">
+                        <span style="font-size: 13.5px; font-weight: 700;">รวมมูลค่าการเบิกจ่ายทั้งสิ้น:</span>
+                        <span style="font-size: 12px; font-weight: 600; margin-left: 6px;">( {{ total_price_thai }} )</span>
+                    </td>
+                    <td colspan="2" class="text-right" style="font-size: 14.5px; font-weight: 800; padding-top: 6px; padding-bottom: 6px;">
+                        ฿{{ total_price_formatted }}
+                    </td>
+                    <td colspan="2" class="text-left" style="font-size: 12px; font-weight: 700; padding-top: 6px; padding-bottom: 6px;">
+                        บาท
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ── Official Signatures Section (4-Party Grid) ── -->
+        <div class="signatures-section">
+            <table class="sig-table">
+                <tr>
+                    <!-- 1. ผู้ขอเบิก / ผู้รับมอบ -->
+                    <td>
+                        <div>(ลงชื่อ).................................................................... ผู้ขอเบิก/ผู้รับ</div>
+                        <div style="margin-top: 4px;">( <span id="sigRequester" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อผู้ขอเบิกก่อนสั่งพิมพ์เอกสารได้" style="min-width: 150px; display: inline-block; cursor: text;">{{ requester_name or '....................................................................' }}</span> )</div>
+                        <div>ตำแหน่ง <span id="sigRequesterPos" contenteditable="true" title="คลิกเพื่อแก้ไขตำแหน่ง" style="min-width: 130px; display: inline-block; cursor: text;">{{ requester_position or 'หัวหน้างาน / ผู้รับมอบ' }}</span></div>
+                        <div>วันที่............/............/............</div>
+                    </td>
+
+                    <!-- 2. ผู้จ่ายยา / เภสัชกร -->
+                    <td>
+                        <div>(ลงชื่อ).................................................................... ผู้จ่ายยา/เภสัชกร</div>
+                        <div style="margin-top: 4px;">( <span id="sigDispenser" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อเภสัชกรก่อนสั่งพิมพ์เอกสารได้" style="min-width: 150px; display: inline-block; cursor: text;">{{ dispenser_clean_name or '....................................................................' }}</span> )</div>
+                        <div>ตำแหน่ง <span id="sigDispenserPos" contenteditable="true" title="คลิกเพื่อแก้ไขตำแหน่ง" style="min-width: 130px; display: inline-block; cursor: text;">เภสัชกร / เจ้าหน้าที่คลังยา</span></div>
+                        <div>วันที่ {{ thai_date_short }}</div>
+                    </td>
+                </tr>
+
+                <tr>
+                    <!-- 3. ผู้ตรวจสอบคลังยา -->
+                    <td style="padding-top: 20px;">
+                        <div>(ลงชื่อ).................................................................... ผู้ตรวจนับพัสดุ</div>
+                        <div style="margin-top: 4px;">( <span id="sigChecker" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อผู้ตรวจนับก่อนสั่งพิมพ์เอกสารได้" style="min-width: 150px; display: inline-block; cursor: text;">....................................................................</span> )</div>
+                        <div>ตำแหน่ง <span id="sigCheckerPos" contenteditable="true" title="คลิกเพื่อแก้ไขตำแหน่ง" style="min-width: 130px; display: inline-block; cursor: text;">เจ้าหน้าที่ตรวจสอบคลังยา</span></div>
+                        <div>วันที่............/............/............</div>
+                    </td>
+
+                    <!-- 4. ผู้อนุมัติจ่าย -->
+                    <td style="padding-top: 20px;">
+                        <div>(ลงชื่อ).................................................................... ผู้อนุมัติจ่าย</div>
+                        <div style="margin-top: 4px;">( <span id="sigApprover" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อผู้อนุมัติก่อนสั่งพิมพ์เอกสารได้" style="min-width: 150px; display: inline-block; cursor: text;">....................................................................</span> )</div>
+                        <div>ตำแหน่ง <span id="sigApproverPos" contenteditable="true" title="คลิกเพื่อแก้ไขตำแหน่ง" style="min-width: 130px; display: inline-block; cursor: text;">หัวหน้าฝ่ายเภสัชกรรม / ผู้มีอำนาจ</span></div>
+                        <div>วันที่............/............/............</div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- ── Document Footer ── -->
+        <div class="doc-footer">
+            <div>
+                เอกสารราชการออกโดยระบบคลังยา PharmaCore • วันที่ออกเอกสาร: {{ print_datetime }} น.
+            </div>
+            <div>
+                รหัสตรวจสอบ: <span style="font-family: monospace;">{{ ref_code }}</span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function saveAsHtml() {
+            const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ใบเบิกจ่ายยา_${ '{{ requisition_no }}' }.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

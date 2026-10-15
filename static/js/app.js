@@ -19,9 +19,149 @@ if (PHARMACY_BASE && typeof window !== 'undefined' && window.fetch) {
 }
 
 let allDrugs = [];
+let allDispenseLogs = [];
 let currentTab = 'inventory';
 let html5QrScanner = null;
 let selectedDrugForDispense = null;
+
+// Universal Pagination Engine (Tabs 1 2 3... & Controls)
+const paginationState = {
+    drugs: { currentPage: 1, pageSize: 10 },
+    logs: { currentPage: 1, pageSize: 10 },
+    stockIn: { currentPage: 1, pageSize: 10 }
+};
+
+function changePage(targetKey, page) {
+    if (!paginationState[targetKey]) return;
+    paginationState[targetKey].currentPage = page;
+    if (targetKey === 'drugs') {
+        renderDrugsTable(allDrugs);
+    } else if (targetKey === 'logs') {
+        renderLogsTable(allDispenseLogs);
+    } else if (targetKey === 'stockIn') {
+        renderStockInTable(stockInLogsList);
+    }
+
+    const isMobile = window.innerWidth <= 768;
+    const desktopMap = {
+        drugs: '#view-inventory .table-wrapper',
+        logs: '#view-logs .table-wrapper',
+        stockIn: '#view-stockin .table-wrapper'
+    };
+    const mobileMap = {
+        drugs: '#drugsMobileCards',
+        logs: '#logsMobileCards',
+        stockIn: '#stockInMobileCards'
+    };
+    const selector = isMobile ? (mobileMap[targetKey] || '#drugsMobileCards') : (desktopMap[targetKey] || '.table-wrapper');
+    const el = document.querySelector(selector);
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function changePageSize(targetKey, size) {
+    if (!paginationState[targetKey]) return;
+    const newSize = parseInt(size, 10) || 10;
+    paginationState[targetKey].pageSize = newSize;
+    paginationState[targetKey].currentPage = 1;
+    if (targetKey === 'drugs') {
+        renderDrugsTable(allDrugs);
+    } else if (targetKey === 'logs') {
+        renderLogsTable(allDispenseLogs);
+    } else if (targetKey === 'stockIn') {
+        renderStockInTable(stockInLogsList);
+    }
+}
+
+function renderPaginationBar(containerId, targetKey, totalItems) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!totalItems || totalItems <= 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const state = paginationState[targetKey];
+    const pageSize = state.pageSize || 10;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+    if (state.currentPage < 1) state.currentPage = 1;
+    const curPage = state.currentPage;
+
+    const startItem = (curPage - 1) * pageSize + 1;
+    const endItem = Math.min(totalItems, curPage * pageSize);
+
+    // Smart windowing: 1, 2, 3 ... totalPages
+    const pageButtons = [];
+    if (totalPages <= 7) {
+        for (let i = 1; i <= totalPages; i++) pageButtons.push(i);
+    } else {
+        pageButtons.push(1);
+        if (curPage > 3) {
+            pageButtons.push('...');
+        }
+        const startMid = Math.max(2, curPage - 1);
+        const endMid = Math.min(totalPages - 1, curPage + 1);
+        for (let i = startMid; i <= endMid; i++) {
+            if (!pageButtons.includes(i)) pageButtons.push(i);
+        }
+        if (curPage < totalPages - 2) {
+            pageButtons.push('...');
+        }
+        if (!pageButtons.includes(totalPages)) {
+            pageButtons.push(totalPages);
+        }
+    }
+
+    const buttonsHtml = pageButtons.map(p => {
+        if (p === '...') {
+            return `<span class="page-dots">…</span>`;
+        }
+        const isActive = p === curPage ? 'active' : '';
+        return `<button type="button" class="page-btn ${isActive}" onclick="changePage('${targetKey}', ${p})">${p}</button>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="pharmacy-pagination">
+            <div class="pagination-header-row">
+                <div class="pagination-status-pill">
+                    <span class="pagination-page-pill"><i class="fas fa-layer-group"></i> หน้า <strong>${curPage}</strong>/${totalPages}</span>
+                    <span class="pagination-count-text">แสดง <strong>${startItem} - ${endItem}</strong> จาก <strong>${totalItems}</strong> รายการ</span>
+                </div>
+                <div class="pagination-size-wrapper">
+                    <label class="pagination-size-label">แสดงหน้าละ:</label>
+                    <select class="form-select pagination-size-select" onchange="changePageSize('${targetKey}', this.value)" aria-label="จำนวนรายการต่อหน้า">
+                        <option value="10" ${pageSize === 10 ? 'selected' : ''}>10</option>
+                        <option value="25" ${pageSize === 25 ? 'selected' : ''}>25</option>
+                        <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+                        <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="pagination-nav-row">
+                <div class="pagination-buttons">
+                    <button type="button" class="page-btn page-nav page-nav-edge" title="หน้าแรก" onclick="changePage('${targetKey}', 1)" ${curPage === 1 ? 'disabled' : ''}>
+                        <i class="fas fa-angles-left"></i>
+                    </button>
+                    <button type="button" class="page-btn page-nav" title="หน้าก่อนหน้า" onclick="changePage('${targetKey}', ${curPage - 1})" ${curPage === 1 ? 'disabled' : ''}>
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    ${buttonsHtml}
+                    <button type="button" class="page-btn page-nav" title="หน้าถัดไป" onclick="changePage('${targetKey}', ${curPage + 1})" ${curPage === totalPages ? 'disabled' : ''}>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button type="button" class="page-btn page-nav page-nav-edge" title="หน้าสุดท้าย" onclick="changePage('${targetKey}', ${totalPages})" ${curPage === totalPages ? 'disabled' : ''}>
+                        <i class="fas fa-angles-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
@@ -147,24 +287,96 @@ async function loadDashboardStats() {
         const data = await res.json();
         if (data.ok) {
             const s = data.stats;
-            document.getElementById('statTotalDrugs').innerText = s.total_drugs || 0;
-            document.getElementById('statTotalUnits').innerText = (s.total_units || 0).toLocaleString();
-            document.getElementById('statLowStock').innerText = s.low_stock_count || 0;
-            document.getElementById('statTodayDispensed').innerText = s.today_units_dispensed || 0;
+            
+            // Total Catalog Drugs (Blue)
+            const drugsEl = document.getElementById('statTotalDrugs');
+            if (drugsEl) {
+                drugsEl.innerText = s.total_drugs || 0;
+                drugsEl.className = 'kpi-value';
+            }
+            
+            // Total Inventory Value (Emerald Hero)
+            const totalVal = Number(s.total_inventory_value || 0);
+            const valEl = document.getElementById('statTotalValue');
+            if (valEl) {
+                valEl.innerText = '฿' + totalVal.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                valEl.className = 'kpi-value text-emerald';
+            }
+            const valSub = document.getElementById('statTotalValueSub');
+            if (valSub) {
+                if (s.total_inventory_cost !== undefined && Number(s.total_inventory_cost) > 0) {
+                    valSub.innerText = `ต้นทุนรวม: ฿${Number(s.total_inventory_cost).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                } else {
+                    valSub.innerText = 'ยอดรวมมูลค่าคงคลังทั้งหมด';
+                }
+            }
 
+            // Total Inventory Units (Teal)
+            const unitsEl = document.getElementById('statTotalUnits');
+            if (unitsEl) {
+                unitsEl.innerText = (s.total_units || 0).toLocaleString();
+                unitsEl.className = 'kpi-value';
+            }
+            const unitsSub = document.getElementById('statTotalUnitsSub');
+            if (unitsSub) {
+                unitsSub.innerText = `หน่วยคงคลัง (${s.total_drugs || 0} รายการ)`;
+            }
+
+            // Low Stock Reorder Warning (Rose if alerts, Emerald if safe)
+            const lowCount = Number(s.low_stock_count || 0);
+            const lowEl = document.getElementById('statLowStock');
+            const lowBadge = document.getElementById('statLowStockBadge');
+            if (lowEl) {
+                lowEl.innerText = lowCount;
+                lowEl.className = lowCount > 0 ? 'kpi-value text-rose' : 'kpi-value';
+            }
+            if (lowBadge) {
+                if (lowCount > 0) {
+                    lowBadge.className = 'kpi-micro-badge rose';
+                    lowBadge.innerHTML = '<i class="fas fa-triangle-exclamation"></i> เตือนเติม';
+                } else {
+                    lowBadge.className = 'kpi-micro-badge safe';
+                    lowBadge.innerHTML = '<i class="fas fa-check"></i> ปกติ';
+                }
+            }
+
+            // Today Dispensed (Indigo)
+            const todayEl = document.getElementById('statTodayDispensed');
+            if (todayEl) {
+                todayEl.innerText = (s.today_units_dispensed || 0).toLocaleString();
+                todayEl.className = 'kpi-value';
+            }
+            const todaySub = document.getElementById('statTodayDispensedSub');
+            if (todaySub && s.today_dispensed_value !== undefined && Number(s.today_dispensed_value) > 0) {
+                todaySub.innerText = `มูลค่าจ่าย: ฿${Number(s.today_dispensed_value).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+
+            // Expiring Soon (Amber if alerts, Emerald if safe)
+            const expCount = Number(s.expiring_soon_count || 0);
             const expSoonEl = document.getElementById('statExpiringSoon');
+            const expBadge = document.getElementById('statExpiringBadge');
             if (expSoonEl) {
-                expSoonEl.innerText = s.expiring_soon_count || 0;
+                expSoonEl.innerText = expCount;
+                expSoonEl.className = expCount > 0 ? 'kpi-value text-amber' : 'kpi-value';
+            }
+            if (expBadge) {
+                if (expCount > 0) {
+                    expBadge.className = 'kpi-micro-badge amber';
+                    expBadge.innerHTML = '<i class="fas fa-hourglass-half"></i> เตือน';
+                } else {
+                    expBadge.className = 'kpi-micro-badge safe';
+                    expBadge.innerHTML = '<i class="fas fa-check"></i> สดใหม่';
+                }
             }
 
             const lowCard = document.getElementById('kpiCardLowStock');
             if (lowCard) {
-                lowCard.classList.toggle('has-alerts', (s.low_stock_count || 0) > 0);
+                lowCard.classList.toggle('has-alerts', lowCount > 0);
             }
 
             const expCard = document.getElementById('kpiCardExpiring');
             if (expCard) {
-                expCard.classList.toggle('has-alerts', (s.expiring_soon_count || 0) > 0);
+                expCard.classList.toggle('has-alerts', expCount > 0);
             }
 
             const dot = document.getElementById('sheetStatusDot');
@@ -238,6 +450,7 @@ async function loadDrugs() {
 function renderDrugsTable(drugs) {
     const tbody = document.getElementById('drugsTableBody');
     const cardsContainer = document.getElementById('drugsMobileCards');
+    const paginationWrapper = document.getElementById('drugsPaginationWrapper');
 
     if (!drugs || drugs.length === 0) {
         if (tbody) {
@@ -258,82 +471,116 @@ function renderDrugsTable(drugs) {
                 </div>
             `;
         }
+        if (paginationWrapper) paginationWrapper.innerHTML = '';
         return;
     }
 
+    const state = paginationState.drugs;
+    const totalItems = drugs.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / state.pageSize));
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+    if (state.currentPage < 1) state.currentPage = 1;
+
+    const startIdx = (state.currentPage - 1) * state.pageSize;
+    const pagedDrugs = drugs.slice(startIdx, startIdx + state.pageSize);
+
     if (tbody) {
-        tbody.innerHTML = drugs.map(d => {
+        tbody.innerHTML = pagedDrugs.map(d => {
             const isLow = d.stock_qty <= d.min_threshold;
             const isExpiringSoon = d.is_expiring_soon || (d.days_left !== null && d.days_left !== undefined && d.days_left <= 60);
             const isExpired = d.is_expired;
 
-            let rowClass = '';
-            if (isExpired) rowClass = 'class="row-low-stock" style="background-color: rgba(239, 68, 68, 0.05);"';
-            else if (isLow) rowClass = 'class="row-low-stock"';
-            else if (isExpiringSoon) rowClass = 'style="background-color: rgba(245, 158, 11, 0.04);"';
+            let rowClass = 'class="clinical-row"';
+            if (isExpired) rowClass = 'class="clinical-row row-expired"';
+            else if (isLow) rowClass = 'class="clinical-row row-low-stock"';
+            else if (isExpiringSoon) rowClass = 'class="clinical-row row-expiring"';
 
-            const stockBadge = isLow
-                ? `<span class="badge badge-danger" style="font-weight: 700; padding: 0.25rem 0.65rem;"><i class="fas fa-circle-exclamation"></i> ใกล้หมด (${d.stock_qty} ${d.unit})</span>`
-                : `<span class="badge badge-success" style="font-weight: 700; padding: 0.25rem 0.65rem;"><i class="fas fa-check-circle"></i> ${d.stock_qty} ${d.unit}</span>`;
+            const valText = (d.price && Number(d.price) > 0)
+                ? `<div class="stock-sub-val">฿${(d.stock_qty * Number(d.price)).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>`
+                : '';
 
-            let expiryBadge = `<span style="font-size: 0.85rem; color: var(--text-muted);">-</span>`;
+            let stockHtml = '';
+            if (d.stock_qty <= 0) {
+                stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill out-of-stock"><i class="fas fa-circle-xmark"></i> หมดสต็อก</span></div>`;
+            } else if (isLow) {
+                stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill low-stock" title="ต่ำกว่าจุดเตือน ${d.min_threshold} ${d.unit}"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${d.stock_qty} ${d.unit})</span>${valText}</div>`;
+            } else {
+                stockHtml = `<div class="stock-normal-cell"><div class="stock-num-line"><span class="stock-qty-number">${d.stock_qty.toLocaleString()}</span> <span class="stock-qty-unit">${escapeHtml(d.unit)}</span></div>${valText}</div>`;
+            }
+
+            let expiryHtml = `<span class="expiry-empty">-</span>`;
             if (isExpired) {
-                expiryBadge = `<span class="badge badge-danger" style="font-weight: 700; padding: 0.25rem 0.55rem; font-size: 0.775rem;" title="หมดอายุแล้ว"><i class="fas fa-triangle-exclamation"></i> หมดอายุ (${escapeHtml(d.expiry_date)})</span>`;
+                expiryHtml = `<span class="expiry-alert-pill expired" title="หมดอายุแล้ว"><i class="fas fa-ban"></i> หมดอายุ (${escapeHtml(d.expiry_date)})</span>`;
             } else if (isExpiringSoon) {
-                expiryBadge = `<span class="badge badge-warning" style="font-weight: 700; padding: 0.25rem 0.55rem; font-size: 0.775rem; background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A;" title="ใกล้หมดอายุใน 60 วัน"><i class="fas fa-hourglass-half"></i> อีก ${d.days_left} วัน (${escapeHtml(d.expiry_date)})</span>`;
+                expiryHtml = `<span class="expiry-alert-pill expiring" title="ใกล้หมดอายุใน 60 วัน"><i class="fas fa-hourglass-half"></i> อีก ${d.days_left} วัน</span>`;
             } else if (d.expiry_date) {
-                expiryBadge = `<span style="font-size: 0.85rem; color: var(--text-secondary);"><i class="far fa-calendar-check" style="color: var(--text-muted); margin-right: 4px;"></i>${escapeHtml(d.expiry_date)}</span>`;
+                expiryHtml = `<span class="expiry-normal"><i class="far fa-calendar-check"></i> ${escapeHtml(d.expiry_date)}</span>`;
             }
 
             const thumbHtml = d.image_url
-                ? `<div class="drug-table-thumb" onclick="openImageLightbox('${escapeHtml(d.image_url)}', '${escapeHtml(d.name)}', '${escapeHtml(d.code)}')" title="คลิกดูภาพขยาย" style="width: 42px; height: 42px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; border-radius: 8px; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-subtle); border: 1px solid var(--border-default); cursor: pointer; margin: 0 auto;">
-                     <img src="${escapeHtml(d.image_url)}" alt="${escapeHtml(d.name)}" loading="lazy" style="width: 42px; height: 42px; max-width: 42px; max-height: 42px; object-fit: cover; display: block; border-radius: 7px;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'drug-table-thumb-fallback\\' style=\\'width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:var(--bg-subtle);border:1px solid var(--border-subtle);color:var(--text-subtle);\\'><i class=\\'fas fa-pills\\'></i></div>';">
+                ? `<div class="drug-table-thumb" onclick="openImageLightbox('${escapeHtml(d.image_url)}', '${escapeHtml(d.name)}', '${escapeHtml(d.code)}')" title="คลิกดูภาพขยาย">
+                     <img src="${escapeHtml(d.image_url)}" alt="${escapeHtml(d.name)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'drug-table-thumb-fallback\\'><i class=\\'fas fa-pills\\'></i></div>';">
                    </div>`
-                : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา" style="width: 42px; height: 42px; min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--bg-subtle); border: 1px solid var(--border-subtle); color: var(--text-subtle); margin: 0 auto;">
-                     <i class="fas fa-pills"></i>
-                   </div>`;
+                : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
+
+            const inCart = (typeof isInRxCart === 'function' && isInRxCart(d.id));
 
             return `
                 <tr ${rowClass}>
-                    <td class="col-thumb" style="width: 56px; min-width: 56px; max-width: 56px; text-align: center; vertical-align: middle; padding: 6px 4px; box-sizing: border-box;">
+                    <td class="col-thumb">
                         ${thumbHtml}
                     </td>
                     <td>
-                        <span class="code-pill">${escapeHtml(d.code)}</span>
+                        <span class="drug-code-label">${escapeHtml(d.code)}</span>
                     </td>
                     <td>
-                        <div style="font-weight: 600; color: var(--text-primary); font-size: 0.95rem; line-height: 1.4;">${escapeHtml(d.name)}</div>
-                        ${d.generic_name ? `<div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.35; margin-top: 0.2rem;">${escapeHtml(d.generic_name)}</div>` : ''}
+                        <div class="drug-name-cell">
+                            <span class="drug-trade-name">${escapeHtml(d.name)}</span>
+                            ${d.generic_name ? `<span class="drug-generic-name">${escapeHtml(d.generic_name)}</span>` : ''}
+                        </div>
                     </td>
                     <td>
-                        <span class="badge badge-teal">${escapeHtml(d.category)}</span>
+                        <span class="drug-category-tag">${escapeHtml(d.category)}</span>
                     </td>
                     <td>
-                        ${stockBadge}
+                        ${stockHtml}
                     </td>
                     <td>
-                        ${expiryBadge}
+                        ${expiryHtml}
                     </td>
                     <td>
-                        <span style="font-size: 0.85rem; color: var(--text-muted);">${escapeHtml(d.location || '-')}</span>
+                        <span class="drug-location-text">${escapeHtml(d.location || '-')}</span>
                     </td>
-                    <td style="text-align: right;">
-                        <div style="display: inline-flex; gap: 0.4rem; align-items: center;">
-                            <button class="btn btn-outline" title="รับยาเข้าสต็อก (Stock In)" onclick="openStockInModal(${d.id})" style="height: 34px; padding: 0 0.55rem; font-size: 0.8rem; border-radius: 6px; color: #059669; border-color: #6ee7b7; font-weight: 600;">
-                                <i class="fas fa-plus"></i> รับเข้า
+                    <td style="text-align: right; padding-right: 0.85rem;">
+                        <div class="table-actions-cluster">
+                            <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" title="${inCart ? 'อยู่ในใบสั่งยาแล้ว' : 'เพิ่มลงในใบสั่งยา (Rx Cart)'}" onclick="addToRxCart(${d.id}); event.stopPropagation();">
+                                <i class="fas ${inCart ? 'fa-check' : 'fa-clipboard-plus'}"></i>
+                                <span>${inCart ? 'ในใบสั่งยา' : '+ สั่งยา'}</span>
                             </button>
-                            <button class="btn-dispense-action" title="ตัดจ่ายยานี้" onclick="openDispenseModalForDrug(${d.id})">
-                                <i class="fas fa-minus-circle"></i> ตัดสต็อก
+                            <button type="button" class="btn-action-dispense" title="ตัดจ่ายยานี้เดี่ยวๆ" onclick="openDispenseModalForDrug(${d.id})">
+                                <i class="fas fa-arrow-right"></i>
+                                <span>ตัดสต็อก</span>
                             </button>
-                            <button class="btn btn-outline btn-icon" title="พิมพ์ QR Code" onclick="openQrModal(${d.id})" style="height: 34px; width: 34px; font-size: 0.85rem; border-radius: 6px;">
-                                <i class="fas fa-qrcode"></i>
-                            </button>
-                            <button class="btn btn-outline btn-icon" title="แก้ไขข้อมูลยา" onclick="openEditDrugModal(${d.id})" style="height: 34px; width: 34px; font-size: 0.85rem; border-radius: 6px;">
-                                <i class="fas fa-pen"></i>
-                            </button>
-                            <button class="btn btn-outline btn-icon" title="ลบยา" onclick="confirmDeleteDrug(${d.id})" style="height: 34px; width: 34px; font-size: 0.85rem; border-radius: 6px; color: var(--text-subtle);">
-                                <i class="fas fa-trash-can"></i>
-                            </button>
+                            <div class="row-action-dropdown" id="dropdown-${d.id}">
+                                <button type="button" class="dropdown-toggle" title="การจัดการอื่นๆ" onclick="toggleRowDropdown(${d.id}, event)">
+                                    <i class="fas fa-ellipsis-vertical"></i>
+                                </button>
+                                <div class="dropdown-menu" id="dropdown-menu-${d.id}">
+                                    <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">
+                                        <i class="fas fa-plus" style="color: #059669; width:14px;"></i> รับยาเข้าคลัง
+                                    </button>
+                                    <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">
+                                        <i class="fas fa-qrcode" style="color: #6366F1; width:14px;"></i> พิมพ์ QR Code
+                                    </button>
+                                    <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">
+                                        <i class="fas fa-pen" style="color: var(--brand-500); width:14px;"></i> แก้ไขข้อมูลยา
+                                    </button>
+                                    <div class="dropdown-divider"></div>
+                                    <button type="button" class="dropdown-item danger" onclick="confirmDeleteDrug(${d.id}); closeAllDropdowns();">
+                                        <i class="fas fa-trash-can" style="width:14px;"></i> ลบรายการยา
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </td>
                 </tr>
@@ -342,85 +589,85 @@ function renderDrugsTable(drugs) {
     }
 
     if (cardsContainer) {
-        cardsContainer.innerHTML = drugs.map(d => {
+        cardsContainer.innerHTML = pagedDrugs.map(d => {
             const isLow = d.stock_qty <= d.min_threshold;
             const isExpiringSoon = d.is_expiring_soon || (d.days_left !== null && d.days_left !== undefined && d.days_left <= 60);
             const isExpired = d.is_expired;
 
-            let cardBorder = '';
-            if (isExpired) {
-                cardBorder = 'border-color: #FDA4AF; background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(239, 68, 68, 0.06) 100%);';
-            } else if (isLow) {
-                cardBorder = 'border-color: #FDA4AF; background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(225, 29, 72, 0.04) 100%);';
-            } else if (isExpiringSoon) {
-                cardBorder = 'border-color: #FDE68A; background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(245, 158, 11, 0.04) 100%);';
-            }
-
-            const stockBadge = isLow
-                ? `<span class="badge badge-danger" style="font-weight: 600; padding: 0.3rem 0.65rem; font-size: 0.775rem;"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${d.stock_qty} ${d.unit})</span>`
-                : `<span class="badge badge-success" style="font-weight: 600; padding: 0.3rem 0.65rem; font-size: 0.775rem;"><i class="fas fa-circle-check"></i> ${d.stock_qty} ${d.unit}</span>`;
-
-            let expiryTag = '';
-            if (isExpired) {
-                expiryTag = `<div style="margin-top: 0.35rem;"><span class="badge badge-danger" style="font-size: 0.725rem;"><i class="fas fa-triangle-exclamation"></i> หมดอายุแล้ว (${escapeHtml(d.expiry_date)})</span></div>`;
-            } else if (isExpiringSoon) {
-                expiryTag = `<div style="margin-top: 0.35rem;"><span class="badge badge-warning" style="font-size: 0.725rem; background: #FEF3C7; color: #D97706; border: 1px solid #FDE68A;"><i class="fas fa-hourglass-half"></i> ใกล้หมดอายุ: อีก ${d.days_left} วัน (${escapeHtml(d.expiry_date)})</span></div>`;
-            } else if (d.expiry_date) {
-                expiryTag = `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem;"><i class="far fa-calendar"></i> วันหมดอายุ: ${escapeHtml(d.expiry_date)}</div>`;
-            }
-
             const mobileThumbHtml = d.image_url
-                ? `<div class="drug-card-thumb" onclick="openImageLightbox('${escapeHtml(d.image_url)}', '${escapeHtml(d.name)}', '${escapeHtml(d.code)}')" title="คลิกดูภาพขยาย" style="width: 44px; height: 44px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg-subtle); border: 1px solid var(--border-default); cursor: pointer; flex-shrink: 0;">
-                     <img src="${escapeHtml(d.image_url)}" alt="${escapeHtml(d.name)}" loading="lazy" style="width: 44px; height: 44px; max-width: 44px; max-height: 44px; object-fit: cover; display: block; border-radius: 7px;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'drug-card-thumb-fallback\\' style=\\'width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--bg-subtle);border:1px solid var(--border-subtle);color:var(--text-subtle);\\'><i class=\\'fas fa-pills\\'></i></div>';">
+                ? `<div class="drug-card-thumb" onclick="openImageLightbox('${escapeHtml(d.image_url)}', '${escapeHtml(d.name)}', '${escapeHtml(d.code)}')" title="คลิกดูภาพขยาย">
+                     <img src="${escapeHtml(d.image_url)}" alt="${escapeHtml(d.name)}" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'drug-card-thumb-fallback\\'><i class=\\'fas fa-pills\\'></i></div>';">
                    </div>`
-                : `<div class="drug-card-thumb-fallback" title="ยังไม่มีภาพยา" style="width: 44px; height: 44px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-subtle); border: 1px solid var(--border-subtle); color: var(--text-subtle); flex-shrink: 0;">
-                     <i class="fas fa-pills"></i>
-                   </div>`;
+                : `<div class="drug-card-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
+
+            const inCart = (typeof isInRxCart === 'function' && isInRxCart(d.id));
 
             return `
-                <div class="drug-mobile-card" style="${cardBorder}">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <span class="code-pill" style="font-size: 0.75rem;">${escapeHtml(d.code)}</span>
-                        ${stockBadge}
-                    </div>
-
-                    <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.65rem;">
-                        ${mobileThumbHtml}
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 700; font-size: 1.05rem; line-height: 1.4; color: var(--text-primary);">${escapeHtml(d.name)}</div>
-                            ${d.generic_name ? `<div style="font-size: 0.8125rem; color: var(--text-muted); line-height: 1.35; margin-top: 0.2rem;">${escapeHtml(d.generic_name)}</div>` : ''}
-                            ${expiryTag}
+                <div class="drug-mobile-card ${isExpired ? 'card-expired' : isLow ? 'card-low-stock' : isExpiringSoon ? 'card-expiring' : ''}">
+                    <div class="mobile-card-header">
+                        <div class="mobile-card-code">
+                            <span class="drug-code-label">${escapeHtml(d.code)}</span>
+                            <span class="drug-category-tag">${escapeHtml(d.category)}</span>
+                        </div>
+                        <div class="mobile-card-status">
+                            ${isExpired ? `<span class="expiry-alert-pill expired"><i class="fas fa-ban"></i> หมดอายุ</span>` :
+                              isLow ? `<span class="stock-alert-pill low-stock"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${d.stock_qty})</span>` :
+                              isExpiringSoon ? `<span class="expiry-alert-pill expiring"><i class="fas fa-hourglass-half"></i> อีก ${d.days_left} วัน</span>` :
+                              `<span class="stock-normal-pill"><strong>${d.stock_qty.toLocaleString()}</strong> <small>${escapeHtml(d.unit)}</small></span>`
+                            }
                         </div>
                     </div>
-                    
-                    <div style="display: flex; gap: 0.45rem; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap;">
-                        <span class="badge badge-teal" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;">${escapeHtml(d.category)}</span>
-                        <span style="font-size: 0.775rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 0.25rem 0.55rem; border-radius: 6px; border: 1px solid var(--border-subtle);">${escapeHtml(d.dosage_form || 'เม็ด')}</span>
-                        ${d.location ? `<span style="font-size: 0.775rem; color: var(--text-secondary); background: var(--bg-subtle); padding: 0.25rem 0.55rem; border-radius: 6px; border: 1px solid var(--border-subtle);"><i class="fas fa-location-dot" style="color: var(--text-muted); margin-right: 0.2rem;"></i> ${escapeHtml(d.location)}</span>` : ''}
-                        ${d.price ? `<span style="font-size: 0.8125rem; color: var(--brand-600); font-weight: 700; margin-left: auto;">฿${d.price} / ${escapeHtml(d.unit)}</span>` : ''}
+
+                    <div class="mobile-card-body">
+                        ${mobileThumbHtml}
+                        <div class="mobile-card-info">
+                            <div class="mobile-drug-name">${escapeHtml(d.name)}</div>
+                            ${d.generic_name ? `<div class="mobile-drug-generic">${escapeHtml(d.generic_name)}</div>` : ''}
+                            <div class="mobile-card-meta">
+                                ${d.dosage_form ? `<span class="meta-tag"><i class="fas fa-capsules"></i> ${escapeHtml(d.dosage_form)}</span>` : ''}
+                                ${d.location ? `<span class="meta-tag"><i class="fas fa-location-dot"></i> ${escapeHtml(d.location)}</span>` : ''}
+                                ${d.expiry_date ? `<span class="meta-tag"><i class="far fa-calendar"></i> ${escapeHtml(d.expiry_date)}</span>` : ''}
+                                ${d.price && Number(d.price) > 0 ? `<span class="meta-price">฿${Number(d.price).toFixed(2)}/${escapeHtml(d.unit)}</span>` : ''}
+                            </div>
+                        </div>
                     </div>
 
-                    <div style="display: flex; gap: 0.45rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); align-items: center;">
-                        <button class="btn btn-outline" title="รับเข้า" onclick="openStockInModal(${d.id})" style="height: 38px; padding: 0 0.65rem; font-size: 0.8rem; border-radius: 8px; color: #059669; border-color: #6ee7b7; font-weight: 600;">
-                            <i class="fas fa-plus"></i> รับเข้า
+                    <div class="mobile-card-actions">
+                        <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" onclick="addToRxCart(${d.id})">
+                            <i class="fas ${inCart ? 'fa-check' : 'fa-clipboard-plus'}"></i>
+                            <span>${inCart ? 'ในใบสั่งยา' : '+ ใบสั่งยา'}</span>
                         </button>
-                        <button class="btn-dispense-action" onclick="openDispenseModalForDrug(${d.id})" style="flex: 1; height: 38px; justify-content: center; font-size: 0.875rem; border-radius: 8px;">
-                            <i class="fas fa-minus-circle"></i> ตัดสต็อก
+                        <button type="button" class="btn-action-dispense" onclick="openDispenseModalForDrug(${d.id})">
+                            <i class="fas fa-arrow-right"></i>
+                            <span>ตัดสต็อก</span>
                         </button>
-                        <button class="btn btn-outline btn-icon" title="QR Code" onclick="openQrModal(${d.id})" style="height: 38px; width: 38px; border-radius: 8px;">
-                            <i class="fas fa-qrcode"></i>
-                        </button>
-                        <button class="btn btn-outline btn-icon" title="แก้ไข" onclick="openEditDrugModal(${d.id})" style="height: 38px; width: 38px; border-radius: 8px;">
-                            <i class="fas fa-pen"></i>
-                        </button>
-                        <button class="btn btn-outline btn-icon" title="ลบ" onclick="confirmDeleteDrug(${d.id})" style="height: 38px; width: 38px; border-radius: 8px; color: var(--text-subtle);">
-                            <i class="fas fa-trash-can"></i>
-                        </button>
+                        <div class="row-action-dropdown" id="dropdown-m-${d.id}">
+                            <button type="button" class="dropdown-toggle" title="เมนูเพิ่มเติม" onclick="toggleRowDropdown('m-${d.id}', event)">
+                                <i class="fas fa-ellipsis-vertical"></i>
+                            </button>
+                            <div class="dropdown-menu" id="dropdown-menu-m-${d.id}">
+                                <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">
+                                    <i class="fas fa-plus" style="color: #059669; width: 14px;"></i> รับยาเข้าคลัง
+                                </button>
+                                <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">
+                                    <i class="fas fa-qrcode" style="color: #6366F1; width: 14px;"></i> พิมพ์ QR Code
+                                </button>
+                                <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">
+                                    <i class="fas fa-pen" style="color: var(--brand-500); width: 14px;"></i> แก้ไขข้อมูลยา
+                                </button>
+                                <div class="dropdown-divider"></div>
+                                <button type="button" class="dropdown-item danger" onclick="confirmDeleteDrug(${d.id}); closeAllDropdowns();">
+                                    <i class="fas fa-trash-can" style="width: 14px;"></i> ลบรายการยา
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
         }).join('');
     }
+
+    renderPaginationBar('drugsPaginationWrapper', 'drugs', totalItems);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -681,6 +928,45 @@ async function confirmDeleteDrug(id) {
 // ─────────────────────────────────────────────────────────────
 
 let currentDispenseChannel = 'WEB_MANUAL';
+let isDispensing = false;
+let pendingDispensePayload = null;
+
+function onDispenseQtyChange() {
+    if (!selectedDrugForDispense) return;
+    const drug = selectedDrugForDispense;
+    const qty = parseInt(document.getElementById('dispenseQtyInput')?.value) || 0;
+    const currentStock = Number(drug.stock_qty) || 0;
+    const alertEl = document.getElementById('dispenseHighQtyAlert');
+    const alertText = document.getElementById('dispenseHighQtyAlertText');
+    const submitBtn = document.getElementById('btnSubmitDispense');
+
+    if (qty > currentStock) {
+        if (alertEl) alertEl.style.display = 'block';
+        if (alertText) {
+            alertText.innerHTML = `<strong style="color: #E11D48;"><i class="fas fa-ban"></i> จำนวนเกินสต็อก:</strong> ในคลังมียาเพียง <strong>${currentStock} ${drug.unit}</strong>`;
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    if (submitBtn) submitBtn.disabled = false;
+
+    // High quantity threshold: >= 100 units OR >= 50% of current stock
+    const isHigh = (qty >= 100) || (currentStock > 0 && qty >= currentStock * 0.5);
+    if (isHigh && qty > 0) {
+        const percent = currentStock > 0 ? Math.round((qty / currentStock) * 100) : 0;
+        let reasons = [];
+        if (qty >= 100) reasons.push(`ตัดจ่ายตั้งแต่ 100 ${drug.unit} ขึ้นไป`);
+        if (currentStock > 0 && qty >= currentStock * 0.5) reasons.push(`คิดเป็น ${percent}% ของยาทั้งคลัง`);
+
+        if (alertEl) alertEl.style.display = 'block';
+        if (alertText) {
+            alertText.innerHTML = `<strong>⚠️ ตรวจสอบจำนวน:</strong> ${reasons.join(' และ ')} โปรดระวังการพิมพ์เลข 0 เกิน`;
+        }
+    } else {
+        if (alertEl) alertEl.style.display = 'none';
+    }
+}
 
 function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
     let drug = null;
@@ -696,11 +982,19 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
     selectedDrugForDispense = drug;
     document.getElementById('dispenseDrugName').innerText = drug.name;
     document.getElementById('dispenseDrugCode').innerText = `รหัส: ${drug.code} • คงเหลือ: ${drug.stock_qty} ${drug.unit}`;
-    document.getElementById('dispenseQtyInput').value = 1;
-    document.getElementById('dispenseQtyInput').max = drug.stock_qty;
+    
+    const qtyInput = document.getElementById('dispenseQtyInput');
+    if (qtyInput) {
+        qtyInput.value = 1;
+        qtyInput.max = drug.stock_qty;
+    }
     document.getElementById('dispenseUnitLabel').innerText = drug.unit;
     document.getElementById('dispensePatientInput').value = '';
     document.getElementById('dispenseNoteInput').value = '';
+
+    // Hide any previous high quantity alert
+    const alertEl = document.getElementById('dispenseHighQtyAlert');
+    if (alertEl) alertEl.style.display = 'none';
 
     // Show image or fallback icon
     const imgEl = document.getElementById('dispenseDrugImg');
@@ -719,32 +1013,140 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
         if (iconEl) iconEl.style.display = 'block';
     }
 
+    // Reset submit button state
+    const submitBtn = document.getElementById('btnSubmitDispense');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+    }
+    isDispensing = false;
+
     document.getElementById('dispenseModal').classList.add('active');
 }
 
 function closeDispenseModal() {
-    document.getElementById('dispenseModal').classList.remove('active');
+    const modal = document.getElementById('dispenseModal');
+    if (modal) modal.classList.remove('active');
     selectedDrugForDispense = null;
     currentDispenseChannel = 'WEB_MANUAL';
+    isDispensing = false;
+    const submitBtn = document.getElementById('btnSubmitDispense');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+    }
+}
+
+function openHighQtyConfirmModal(drug, qty, currentStock) {
+    const modal = document.getElementById('highQtyConfirmModal');
+    if (!modal) return;
+
+    document.getElementById('confirmDrugName').innerText = `${drug.name} (${drug.code})`;
+    document.getElementById('confirmDispenseQty').innerText = `-${qty.toLocaleString()} ${drug.unit}`;
+    document.getElementById('confirmCurrentStock').innerText = `${currentStock.toLocaleString()} ${drug.unit}`;
+    
+    const ratioNotice = document.getElementById('confirmStockRatioNotice');
+    if (ratioNotice) {
+        const percent = currentStock > 0 ? Math.round((qty / currentStock) * 100) : 0;
+        let reasons = [];
+        if (qty >= 100) reasons.push(`ตัดจ่ายตั้งแต่ ${qty.toLocaleString()} ${drug.unit} ขึ้นไป`);
+        if (percent >= 50) reasons.push(`สูงถึง ${percent}% ของยาทั้งคลัง`);
+        ratioNotice.innerHTML = `⚠️ ${reasons.join(' • ')}`;
+    }
+
+    modal.classList.add('active');
+}
+
+function closeHighQtyConfirmModal() {
+    const modal = document.getElementById('highQtyConfirmModal');
+    if (modal) modal.classList.remove('active');
+    pendingDispensePayload = null;
+    
+    // Focus back on quantity input in the underlying modal
+    const input = document.getElementById('dispenseQtyInput');
+    if (input) {
+        input.focus();
+        input.select();
+    }
+}
+
+function executeDispenseAfterConfirmation() {
+    if (!pendingDispensePayload) return;
+    const p = pendingDispensePayload;
+    closeHighQtyConfirmModal();
+    executeDispense(p.drug, p.quantity, p.channel, p.dispensed_by, p.patient_name, p.notes);
+    pendingDispensePayload = null;
 }
 
 async function submitDispense(e) {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (isDispensing) return;
     if (!selectedDrugForDispense) return;
 
-    const qty = parseInt(document.getElementById('dispenseQtyInput').value) || 1;
-    const patient = document.getElementById('dispensePatientInput').value.trim();
-    const notes = document.getElementById('dispenseNoteInput').value.trim();
+    const drug = selectedDrugForDispense;
+    const qty = parseInt(document.getElementById('dispenseQtyInput')?.value) || 1;
+    const currentStock = Number(drug.stock_qty) || 0;
+
+    // 1. Hard check: cannot dispense more than stock
+    if (qty > currentStock) {
+        showToast(`❌ ยาคงเหลือไม่พอตัดจ่าย (คงเหลือ ${currentStock} ${drug.unit})`, 'error');
+        return;
+    }
+
+    if (qty <= 0) {
+        showToast('กรุณาระบุจำนวนตัดจ่ายอย่างน้อย 1 หน่วย', 'warning');
+        return;
+    }
+
+    const patient = (document.getElementById('dispensePatientInput')?.value || '').trim();
+    const notes = (document.getElementById('dispenseNoteInput')?.value || '').trim();
     const dispenser = document.getElementById('dispenserNameInput')?.value || 'เภสัชกร/เจ้าหน้าที่';
+    const channel = currentDispenseChannel || 'WEB_MANUAL';
+
+    // 2. High Quantity Check: >= 100 OR >= 50% of current stock
+    const isHighQty = (qty >= 100) || (currentStock > 0 && qty >= currentStock * 0.5);
+    if (isHighQty) {
+        pendingDispensePayload = {
+            drug: drug,
+            quantity: qty,
+            channel: channel,
+            dispensed_by: dispenser,
+            patient_name: patient,
+            notes: notes
+        };
+        openHighQtyConfirmModal(drug, qty, currentStock);
+        return;
+    }
+
+    // Normal quantity: execute directly
+    executeDispense(drug, qty, channel, dispenser, patient, notes);
+}
+
+async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
+    if (isDispensing) return;
+
+    // 1. Lock immediately so the button cannot be clicked again
+    isDispensing = true;
+    const submitBtn = document.getElementById('btnSubmitDispense');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังตัดสต็อก...';
+    }
+
+    // 2. Instantly dismiss/close the pop-up modal so the user cannot click twice
+    closeDispenseModal();
+
+    // 3. Show immediate feedback toast so the user knows the action was received instantly
+    showToast(`⏳ กำลังตัดสต็อก ${drug.name} (-${qty} ${drug.unit})...`, 'info');
 
     try {
         const res = await fetch('/api/dispense', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                drug_id: selectedDrugForDispense.id,
+                drug_id: drug.id,
                 quantity: qty,
-                channel: currentDispenseChannel || 'WEB_MANUAL',
+                channel: channel,
                 dispensed_by: dispenser,
                 patient_name: patient,
                 notes: notes
@@ -752,17 +1154,23 @@ async function submitDispense(e) {
         });
         const data = await res.json();
         if (data.ok) {
-            closeDispenseModal();
             loadDrugs();
             loadDashboardStats();
             loadDispensingLogs();
             showToast(`✅ ${data.message}`, 'success');
         } else {
-            alert('ไม่สามารถตัดสต็อกได้: ' + (data.error || 'Unknown error'));
+            showToast('⚠️ ไม่สามารถตัดสต็อกได้: ' + (data.error || 'Unknown error'), 'error');
+            loadDrugs();
         }
-    } catch (e) {
-        console.error('Dispense error:', e);
-        alert('เกิดข้อผิดพลาดในการตัดสต็อก');
+    } catch (err) {
+        console.error('Dispense error:', err);
+        showToast('❌ เกิดข้อผิดพลาดในการตัดสต็อก กรุณาตรวจสอบการเชื่อมต่อ', 'error');
+    } finally {
+        isDispensing = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+        }
     }
 }
 
@@ -772,7 +1180,8 @@ async function submitDispense(e) {
 
 async function loadDispensingLogs() {
     const date = document.getElementById('logDateFilter')?.value || '';
-    const channel = document.getElementById('logChannelFilter')?.value || 'all';
+    let channel = document.getElementById('logChannelFilter')?.value || 'all';
+    if (channel === 'QR') channel = 'QR_SCAN';
 
     const url = `/api/dispense/logs?date=${encodeURIComponent(date)}&channel=${encodeURIComponent(channel)}`;
     try {
@@ -787,8 +1196,10 @@ async function loadDispensingLogs() {
 }
 
 function renderLogsTable(logs) {
+    allDispenseLogs = logs || [];
     const tbody = document.getElementById('logsTableBody');
     const cardsContainer = document.getElementById('logsMobileCards');
+    const paginationWrapper = document.getElementById('logsPaginationWrapper');
 
     if (!logs || logs.length === 0) {
         if (tbody) {
@@ -809,13 +1220,25 @@ function renderLogsTable(logs) {
                 </div>
             `;
         }
+        if (paginationWrapper) paginationWrapper.innerHTML = '';
         return;
     }
 
+    const state = paginationState.logs;
+    const totalItems = logs.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / state.pageSize));
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+    if (state.currentPage < 1) state.currentPage = 1;
+
+    const startIdx = (state.currentPage - 1) * state.pageSize;
+    const pagedLogs = logs.slice(startIdx, startIdx + state.pageSize);
+
     if (tbody) {
-        tbody.innerHTML = logs.map(l => {
+        tbody.innerHTML = pagedLogs.map(l => {
             let channelBadge = '<span class="badge badge-teal">Web Counter</span>';
-            if (l.channel.includes('LINE')) {
+            if (l.channel === 'WEB_RX_CART') {
+                channelBadge = '<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #047857; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 600;"><i class="fas fa-clipboard-list"></i> ใบสั่งยา</span>';
+            } else if (l.channel.includes('LINE')) {
                 channelBadge = '<span class="badge badge-success"><i class="fab fa-line"></i> LINE Bot</span>';
             } else if (l.channel.includes('QR')) {
                 channelBadge = '<span class="badge badge-warning"><i class="fas fa-barcode"></i> Scanner</span>';
@@ -845,10 +1268,15 @@ function renderLogsTable(logs) {
                         <div style="display: flex; gap: 0.35rem; align-items: center; margin-top: 3px; flex-wrap: wrap;">
                             ${l.drug_code ? `<span class="code-pill">${escapeHtml(l.drug_code)}</span>` : ''}
                             ${l.generic_name ? `<span style="font-size: 0.775rem; color: var(--text-muted);">(${escapeHtml(l.generic_name)})</span>` : ''}
+                            ${l.batch_id ? `<a href="/api/dispense/requisition/batch/${escapeHtml(l.batch_id)}" target="_blank" class="code-pill" style="background: rgba(99, 102, 241, 0.08); color: #4338CA; border-color: rgba(99, 102, 241, 0.25); text-decoration: none; font-size: 0.675rem; font-weight: 600;" title="คลิกเพื่อเปิดใบสั่งยาทางการ (A4) รวมทั้งชุด"><i class="fas fa-clipboard-list"></i> ${escapeHtml(l.batch_id)}</a>` : ''}
                         </div>
                     </td>
                     <td>
-                        <span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.875rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>
+                        ${l.is_voided
+                            ? `<span style="font-weight: 600; color: var(--text-muted); text-decoration: line-through; font-family: var(--font-mono); font-size: 0.85rem;">-${l.quantity}</span><div style="margin-top: 3px;"><span class="badge" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; font-size:0.675rem; padding:1px 5px;"><i class="fas fa-ban"></i> ยกเลิกแล้ว</span></div>`
+                            : `<span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.875rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>
+                               ${l.price && Number(l.price) > 0 ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 3px; font-weight: 500;">฿${(Number(l.price) * l.quantity).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="font-size: 0.65rem;">(@${Number(l.price).toFixed(2)})</span></div>` : ''}`
+                        }
                     </td>
                     <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">
                         ${l.balance_before} <i class="fas fa-arrow-right" style="font-size: 0.7rem; color: var(--text-muted); margin: 0 3px;"></i> <strong style="color: var(--emerald-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
@@ -858,6 +1286,22 @@ function renderLogsTable(logs) {
                         <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 600;">${escapeHtml(l.dispensed_by || '-')}</span>
                         ${l.patient_name ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-user" style="font-size: 0.65rem; color: var(--brand-500);"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
                         ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
+                        ${l.is_voided && l.void_reason ? `<div style="font-size: 0.7rem; color: #DC2626; margin-top: 2px;"><i class="fas fa-info-circle"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})</div>` : ''}
+                    </td>
+                    <td style="text-align: center;">
+                        <div style="display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                            ${l.batch_id ? `
+                                <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; font-weight: 600; padding: 0.2rem 0.5rem; font-size: 0.725rem;" title="พิมพ์ใบสั่งยา / ใบเบิกจ่ายทางการ A4 รวมทุกรายการในใบสั่งยานี้">
+                                    <i class="fas fa-file-medical"></i> ใบสั่งยา A4
+                                </button>
+                                <button class="btn-requisition btn-requisition-outline" style="${l.is_voided ? 'opacity: 0.6;' : ''} padding: 0.2rem 0.45rem; font-size: 0.7rem;" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกเฉพาะรายการนี้">
+                                    <i class="fas fa-file-invoice"></i> ใบย่อย
+                                </button>
+                            ` : `
+                                <button class="btn-requisition" style="${l.is_voided ? 'opacity: 0.6;' : ''}" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยาทางการ (A4)"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
+                            `}
+                            ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก" style="padding: 0.2rem 0.5rem; font-size: 0.725rem; height: 26px; color: var(--rose-600); border-color: var(--rose-200);"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
+                        </div>
                     </td>
                     <td style="text-align: right;">${driveBtn}</td>
                 </tr>
@@ -866,9 +1310,11 @@ function renderLogsTable(logs) {
     }
 
     if (cardsContainer) {
-        cardsContainer.innerHTML = logs.map(l => {
+        cardsContainer.innerHTML = pagedLogs.map(l => {
             let channelBadge = '<span class="badge badge-teal" style="font-size: 0.7rem;">Web</span>';
-            if (l.channel.includes('LINE')) {
+            if (l.channel === 'WEB_RX_CART') {
+                channelBadge = '<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #047857; font-size: 0.7rem; font-weight: 600;"><i class="fas fa-clipboard-list"></i> ใบสั่งยา</span>';
+            } else if (l.channel.includes('LINE')) {
                 channelBadge = '<span class="badge badge-success" style="font-size: 0.7rem;"><i class="fab fa-line"></i> LINE</span>';
             } else if (l.channel.includes('QR')) {
                 channelBadge = '<span class="badge badge-warning" style="font-size: 0.7rem;"><i class="fas fa-barcode"></i> Barcode</span>';
@@ -888,13 +1334,22 @@ function renderLogsTable(logs) {
                    </div>`;
 
             return `
-                <div class="log-mobile-card">
+                <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.7; background: #FFF5F5;' : ''}">
                     <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.5rem;">
                         ${mobileThumbHtml}
                         <div style="flex: 1; min-width: 0;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
-                                <span class="code-pill">${escapeHtml(l.drug_code || '')}</span>
-                                <span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.95rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>
+                                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                                    <span class="code-pill">${escapeHtml(l.drug_code || '')}</span>
+                                    ${l.batch_id ? `<span class="code-pill" style="background: rgba(99, 102, 241, 0.08); color: #4338CA; border-color: rgba(99, 102, 241, 0.25); font-size: 0.65rem;"><i class="fas fa-clipboard-list"></i> ${escapeHtml(l.batch_id)}</span>` : ''}
+                                </div>
+                                <div style="text-align: right;">
+                                    ${l.is_voided 
+                                        ? `<span style="text-decoration: line-through; color: var(--text-muted); font-weight:700;">-${l.quantity}</span> <span class="badge" style="background:#FEE2E2; color:#DC2626; font-size:0.65rem;">ยกเลิก</span>`
+                                        : `<span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.95rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>`
+                                    }
+                                    ${l.price && Number(l.price) > 0 ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px; font-weight: 500;">฿${(Number(l.price) * l.quantity).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>` : ''}
+                                </div>
                             </div>
                             <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
                             ${l.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(l.generic_name)}</div>` : ''}
@@ -904,7 +1359,14 @@ function renderLogsTable(logs) {
                         <div>
                             <span>คงเหลือ: ${l.balance_before} ➔ </span><strong style="color: var(--emerald-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
                         </div>
-                        <div style="display: flex; gap: 0.4rem; align-items: center;">
+                        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                            ${l.batch_id ? `
+                                <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; padding: 0.15rem 0.45rem; font-size: 0.7rem;" title="พิมพ์ใบสั่งยา A4 รวม"><i class="fas fa-file-medical"></i> ใบสั่งยา A4</button>
+                                <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" style="padding: 0.15rem 0.4rem; font-size: 0.7rem;" title="พิมพ์ใบเบิกย่อย"><i class="fas fa-file-invoice"></i> ใบย่อย</button>
+                            ` : `
+                                <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยาทางการ"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
+                            `}
+                            ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่าย" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; color: var(--rose-600); border-color: var(--rose-200);"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
                             ${channelBadge}
                             ${driveBtn}
                         </div>
@@ -916,6 +1378,33 @@ function renderLogsTable(logs) {
                 </div>
             `;
         }).join('');
+    }
+
+    renderPaginationBar('logsPaginationWrapper', 'logs', totalItems);
+}
+
+async function voidDispense(logId, drugName, qty) {
+    const reason = prompt(`ต้องการยกเลิกรายการจ่ายยา "${drugName}" จำนวน ${qty} หน่วย ใช่หรือไม่?\n\nกรุณาระบุเหตุผลในการยกเลิก (เช่น สแกนยาผิดตัว, คนไข้เปลี่ยนยา):`, 'ยกเลิกรายการจ่ายยาโดยเจ้าหน้าที่');
+    if (!reason) return;
+
+    try {
+        const res = await fetch(`/api/dispense/${logId}/void`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message || 'ยกเลิกรายการและคืนยาเข้าสต็อกเรียบร้อยแล้ว', 'success');
+            loadDispensingLogs();
+            loadDrugs();
+            loadDashboardStats();
+        } else {
+            alert('ไม่สามารถยกเลิกได้: ' + (data.error || 'เกิดข้อผิดพลาด'));
+        }
+    } catch (e) {
+        console.error('Error voiding dispense:', e);
+        alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
     }
 }
 
@@ -1951,16 +2440,34 @@ async function syncWithGoogleSheet() {
 
 function setupEventListeners() {
     const searchInput = document.getElementById('drugSearchInput');
+    const clearBtn = document.getElementById('searchClearBtn');
+    const hint = document.getElementById('searchShortcutHint');
     if (searchInput) {
         let debounceTimer;
         searchInput.addEventListener('input', () => {
+            if (clearBtn) clearBtn.style.display = searchInput.value ? 'flex' : 'none';
+            if (hint) hint.style.display = searchInput.value ? 'none' : 'block';
             clearTimeout(debounceTimer);
+            if (paginationState.drugs) paginationState.drugs.currentPage = 1;
             debounceTimer = setTimeout(loadDrugs, 300);
+        });
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(debounceTimer);
+                if (paginationState.drugs) paginationState.drugs.currentPage = 1;
+                loadDrugs();
+            } else if (e.key === 'Escape') {
+                clearDrugSearch();
+            }
         });
     }
 
     const catFilter = document.getElementById('categoryFilter');
-    if (catFilter) catFilter.addEventListener('change', loadDrugs);
+    if (catFilter) catFilter.addEventListener('change', () => {
+        if (paginationState.drugs) paginationState.drugs.currentPage = 1;
+        loadDrugs();
+    });
 
     const updateFilterChipStates = () => {
         const lowCheck = document.getElementById('lowStockCheckbox');
@@ -1975,6 +2482,7 @@ function setupEventListeners() {
     if (lowStockCheck) {
         lowStockCheck.addEventListener('change', () => {
             updateFilterChipStates();
+            if (paginationState.drugs) paginationState.drugs.currentPage = 1;
             loadDrugs();
         });
     }
@@ -1983,27 +2491,46 @@ function setupEventListeners() {
     if (expiringCheck) {
         expiringCheck.addEventListener('change', () => {
             updateFilterChipStates();
+            if (paginationState.drugs) paginationState.drugs.currentPage = 1;
             loadDrugs();
         });
     }
 
     const logDate = document.getElementById('logDateFilter');
-    if (logDate) logDate.addEventListener('change', loadDispensingLogs);
+    if (logDate) logDate.addEventListener('change', () => {
+        if (paginationState.logs) paginationState.logs.currentPage = 1;
+        loadDispensingLogs();
+    });
 
     const logChannel = document.getElementById('logChannelFilter');
-    if (logChannel) logChannel.addEventListener('change', loadDispensingLogs);
+    if (logChannel) logChannel.addEventListener('change', () => {
+        if (paginationState.logs) paginationState.logs.currentPage = 1;
+        loadDispensingLogs();
+    });
 
     const stockInSearch = document.getElementById('stockInSearchInput');
     if (stockInSearch) {
         let debounceTimer;
         stockInSearch.addEventListener('input', () => {
             clearTimeout(debounceTimer);
+            if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
             debounceTimer = setTimeout(() => renderStockInTable(stockInLogsList), 250);
+        });
+        stockInSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(debounceTimer);
+                if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
+                renderStockInTable(stockInLogsList);
+            }
         });
     }
 
     const stockInDate = document.getElementById('stockInDateFilter');
-    if (stockInDate) stockInDate.addEventListener('change', loadStockInLogs);
+    if (stockInDate) stockInDate.addEventListener('change', () => {
+        if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
+        loadStockInLogs();
+    });
 
     // Global Keyboard Shortcuts (Linear-grade Pro UX)
     document.addEventListener('keydown', (e) => {
@@ -2029,6 +2556,33 @@ function setupEventListeners() {
             }
         }
     });
+}
+
+function clearDrugSearch() {
+    const searchInput = document.getElementById('drugSearchInput');
+    const catFilter = document.getElementById('categoryFilter');
+    const lowStockCheck = document.getElementById('lowStockCheckbox');
+    const expCheck = document.getElementById('expiringCheckbox');
+    const clearBtn = document.getElementById('searchClearBtn');
+    const hint = document.getElementById('searchShortcutHint');
+    if (searchInput) searchInput.value = '';
+    if (catFilter) catFilter.value = 'all';
+    if (lowStockCheck) lowStockCheck.checked = false;
+    if (expCheck) expCheck.checked = false;
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (hint) hint.style.display = 'block';
+    const chipLow = document.getElementById('chipLowStock');
+    const chipExp = document.getElementById('chipExpiring');
+    if (chipLow) chipLow.classList.remove('active');
+    if (chipExp) chipExp.classList.remove('active');
+    if (paginationState.drugs) paginationState.drugs.currentPage = 1;
+    loadDrugs();
+    if (searchInput) searchInput.focus();
+}
+
+function searchStockInLogs() {
+    if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
+    renderStockInTable(stockInLogsList);
 }
 
 function showToast(message, type = 'info') {
@@ -2079,6 +2633,66 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+// ─────────────────────────────────────────────────────────────
+// Row Action Dropdown (⋯ More Menu)
+// ─────────────────────────────────────────────────────────────
+
+function toggleRowDropdown(drugId, event) {
+    event.stopPropagation();
+    const menu = document.getElementById(`dropdown-menu-${drugId}`);
+    if (!menu) return;
+    const isOpen = menu.classList.contains('open');
+    closeAllDropdowns();
+    if (!isOpen) {
+        // Smart Dropup: Check distance to bottom of viewport and table wrapper
+        const toggleBtn = event.currentTarget;
+        const rect = toggleBtn.getBoundingClientRect();
+        const spaceBelowViewport = window.innerHeight - rect.bottom;
+
+        // Check distance to bottom of the table wrapper
+        const tableWrapper = toggleBtn.closest('.table-wrapper') || toggleBtn.closest('.desktop-table-wrapper');
+        let spaceBelowTable = 999;
+        if (tableWrapper) {
+            const tableRect = tableWrapper.getBoundingClientRect();
+            spaceBelowTable = tableRect.bottom - rect.bottom;
+        }
+
+        // If less than 185px below (menu needs ~170px), flip upwards!
+        if (spaceBelowViewport < 185 || spaceBelowTable < 185) {
+            menu.classList.add('dropup');
+        } else {
+            menu.classList.remove('dropup');
+        }
+
+        menu.classList.add('open');
+    }
+}
+
+function toggleToolsDropdown(event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const menu = document.getElementById('toolsDropdownMenu');
+    if (!menu) return;
+    const isOpen = menu.classList.contains('open');
+    closeAllDropdowns();
+    if (!isOpen) {
+        menu.classList.add('open');
+    }
+}
+
+function closeAllDropdowns() {
+    document.querySelectorAll('.row-action-dropdown .dropdown-menu.open').forEach(m => m.classList.remove('open'));
+    const toolsMenu = document.getElementById('toolsDropdownMenu');
+    if (toolsMenu) toolsMenu.classList.remove('open');
+}
+
+// Close dropdowns when clicking anywhere outside
+document.addEventListener('click', function() {
+    closeAllDropdowns();
+});
 
 // ─────────────────────────────────────────────────────────────
 // Google Drive & Sheets Connection Settings
@@ -2276,7 +2890,8 @@ function exportInventoryExcel() {
 function exportLogsExcel() {
     // Pick up active filters from UI
     const dateVal    = document.getElementById('logDateFilter')?.value || '';
-    const channelVal = document.getElementById('logChannelFilter')?.value || 'all';
+    let channelVal = document.getElementById('logChannelFilter')?.value || 'all';
+    if (channelVal === 'QR') channelVal = 'QR_SCAN';
     const params = new URLSearchParams();
     if (dateVal)              params.set('date',    dateVal);
     if (channelVal && channelVal !== 'all') params.set('channel', channelVal);
@@ -2288,6 +2903,143 @@ function exportLogsExcel() {
     link.click();
     document.body.removeChild(link);
     showToast('📥 กำลังดาวน์โหลด Excel ประวัติการตัดสต็อก…', 'success');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Official Thai Requisition Forms Export (Single & Batch)
+// ─────────────────────────────────────────────────────────────
+
+let currentReqDateMode = 'today';
+
+function openSingleRequisition(logId) {
+    if (!logId) return;
+    const savedDispenser = localStorage.getItem('pharmacy_formal_dispenser') || '';
+    const params = new URLSearchParams();
+    if (savedDispenser) {
+        params.set('dispenser', savedDispenser);
+    }
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const url = `/api/dispense/requisition/${logId}${queryString}`;
+    window.open(url, '_blank');
+}
+
+function openBatchPrescriptionRequisition(batchId) {
+    if (!batchId) return;
+    const savedDispenser = localStorage.getItem('pharmacy_formal_dispenser') || '';
+    const params = new URLSearchParams();
+    if (savedDispenser) {
+        params.set('dispenser', savedDispenser);
+    }
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const url = `/api/dispense/requisition/batch/${batchId}${queryString}`;
+    window.open(url, '_blank');
+}
+
+function openBatchRequisitionModal() {
+    const modal = document.getElementById('batchRequisitionModal');
+    if (!modal) return;
+
+    // Pick active date filter from table if any
+    const activeDate = document.getElementById('logDateFilter')?.value || '';
+    const activeChannel = document.getElementById('logChannelFilter')?.value || 'all';
+
+    if (activeDate) {
+        setRequisitionDateMode('specific');
+        const specInput = document.getElementById('reqSpecificDate');
+        if (specInput) specInput.value = activeDate;
+    } else {
+        setRequisitionDateMode('today');
+    }
+
+    const channelSelect = document.getElementById('reqChannelFilter');
+    if (channelSelect) channelSelect.value = activeChannel;
+
+    // Restore previously used formal name from localStorage if present
+    const dispInput = document.getElementById('reqDispenserName');
+    if (dispInput) {
+        dispInput.value = localStorage.getItem('pharmacy_formal_dispenser') || '';
+    }
+
+    modal.classList.add('active');
+}
+
+function closeBatchRequisitionModal() {
+    const modal = document.getElementById('batchRequisitionModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function setRequisitionDateMode(mode) {
+    currentReqDateMode = mode;
+    const btnToday = document.getElementById('btnReqToday');
+    const btnSpecific = document.getElementById('btnReqSpecific');
+    const btnRange = document.getElementById('btnReqRange');
+    const boxSpecific = document.getElementById('reqSpecificDateBox');
+    const boxRange = document.getElementById('reqRangeDateBox');
+
+    if (btnToday) btnToday.classList.toggle('active', mode === 'today');
+    if (btnSpecific) btnSpecific.classList.toggle('active', mode === 'specific');
+    if (btnRange) btnRange.classList.toggle('active', mode === 'range');
+
+    if (boxSpecific) boxSpecific.style.display = mode === 'specific' ? 'block' : 'none';
+    if (boxRange) boxRange.style.display = mode === 'range' ? 'block' : 'none';
+
+    // Set defaults if empty
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (mode === 'specific') {
+        const specInput = document.getElementById('reqSpecificDate');
+        if (specInput && !specInput.value) specInput.value = todayStr;
+    } else if (mode === 'range') {
+        const startInput = document.getElementById('reqStartDate');
+        const endInput = document.getElementById('reqEndDate');
+        if (startInput && !startInput.value) startInput.value = todayStr;
+        if (endInput && !endInput.value) endInput.value = todayStr;
+    }
+}
+
+function submitGenerateBatchRequisition() {
+    let channel = document.getElementById('reqChannelFilter')?.value || 'all';
+    if (channel === 'QR') channel = 'QR_SCAN';
+    const dept = document.getElementById('reqDeptName')?.value || '';
+    const dispenser = document.getElementById('reqDispenserName')?.value?.trim() || '';
+    const params = new URLSearchParams();
+
+    if (currentReqDateMode === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        params.set('date', todayStr);
+    } else if (currentReqDateMode === 'specific') {
+        const dateVal = document.getElementById('reqSpecificDate')?.value;
+        if (!dateVal) {
+            showToast('กรุณาระบุวันที่ต้องการออกใบเบิก', 'warning');
+            return;
+        }
+        params.set('date', dateVal);
+    } else if (currentReqDateMode === 'range') {
+        const startVal = document.getElementById('reqStartDate')?.value;
+        const endVal = document.getElementById('reqEndDate')?.value;
+        if (!startVal || !endVal) {
+            showToast('กรุณาระบุช่วงวันที่เริ่มต้นและสิ้นสุด', 'warning');
+            return;
+        }
+        params.set('start_date', startVal);
+        params.set('end_date', endVal);
+    }
+
+    if (channel && channel !== 'all') {
+        params.set('channel', channel);
+    }
+    if (dept) {
+        params.set('requester', dept);
+    }
+    if (dispenser) {
+        localStorage.setItem('pharmacy_formal_dispenser', dispenser);
+        params.set('dispenser', dispenser);
+    } else {
+        localStorage.removeItem('pharmacy_formal_dispenser');
+    }
+
+    closeBatchRequisitionModal();
+    const url = `/api/dispense/requisition-batch?${params.toString()}`;
+    window.open(url, '_blank');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2644,11 +3396,13 @@ async function loadStockInLogs() {
 }
 
 function renderStockInTable(logs) {
+    stockInLogsList = logs || [];
     const tbody = document.getElementById('stockInTableBody');
     const cards = document.getElementById('stockInMobileCards');
+    const paginationWrapper = document.getElementById('stockInPaginationWrapper');
     const searchVal = (document.getElementById('stockInSearchInput')?.value || '').trim().toLowerCase();
 
-    const filtered = logs.filter(l => {
+    const filtered = (logs || []).filter(l => {
         if (!searchVal) return true;
         return (
             (l.drug_name && l.drug_name.toLowerCase().includes(searchVal)) ||
@@ -2659,11 +3413,28 @@ function renderStockInTable(logs) {
         );
     });
 
-    if (tbody) {
-        if (filtered.length === 0) {
+    if (filtered.length === 0) {
+        if (tbody) {
             tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--text-muted); padding: 2.5rem;"><i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; opacity: 0.4;"></i>ยังไม่มีประวัติการรับยาเข้าสต็อก</td></tr>`;
-        } else {
-            tbody.innerHTML = filtered.map(l => {
+        }
+        if (cards) {
+            cards.innerHTML = `<div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: 12px; border: 1px dashed var(--border-default);"><i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; opacity: 0.4;"></i>ยังไม่มีประวัติรับยาเข้า</div>`;
+        }
+        if (paginationWrapper) paginationWrapper.innerHTML = '';
+        return;
+    }
+
+    const state = paginationState.stockIn;
+    const totalItems = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / state.pageSize));
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+    if (state.currentPage < 1) state.currentPage = 1;
+
+    const startIdx = (state.currentPage - 1) * state.pageSize;
+    const pagedStockIn = filtered.slice(startIdx, startIdx + state.pageSize);
+
+    if (tbody) {
+        tbody.innerHTML = pagedStockIn.map(l => {
                 const drugImg = l.image_url || (typeof allDrugs !== 'undefined' && allDrugs.find(d => Number(d.id) === Number(l.drug_id) || (d.code && l.drug_code && d.code.trim().toUpperCase() === l.drug_code.trim().toUpperCase()))?.image_url);
                 const thumbHtml = drugImg
                     ? `<div class="drug-table-thumb" onclick="openImageLightbox('${escapeHtml(drugImg)}', '${escapeHtml(l.drug_name)}', '${escapeHtml(l.drug_code || '')}')" title="คลิกดูภาพขยาย">
@@ -2715,13 +3486,12 @@ function renderStockInTable(logs) {
                 `;
             }).join('');
         }
-    }
 
     if (cards) {
         if (filtered.length === 0) {
             cards.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 2rem;">ยังไม่มีรายการรับยาเข้า</div>`;
         } else {
-            cards.innerHTML = filtered.map(l => {
+            cards.innerHTML = pagedStockIn.map(l => {
                 const drugImg = l.image_url || (typeof allDrugs !== 'undefined' && allDrugs.find(d => Number(d.id) === Number(l.drug_id) || (d.code && l.drug_code && d.code.trim().toUpperCase() === l.drug_code.trim().toUpperCase()))?.image_url);
                 const mobileThumbHtml = drugImg
                     ? `<div class="drug-card-thumb" onclick="openImageLightbox('${escapeHtml(drugImg)}', '${escapeHtml(l.drug_name)}', '${escapeHtml(l.drug_code || '')}')" title="คลิกดูภาพขยาย" style="width: 44px; height: 44px; min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg-subtle); border: 1px solid var(--border-default); cursor: pointer; flex-shrink: 0;">
@@ -2758,6 +3528,8 @@ function renderStockInTable(logs) {
             }).join('');
         }
     }
+
+    renderPaginationBar('stockInPaginationWrapper', 'stockIn', totalItems);
 }
 
 function clearStockInFilters() {
@@ -2765,6 +3537,7 @@ function clearStockInFilters() {
     if (dateInput) dateInput.value = '';
     const searchInput = document.getElementById('stockInSearchInput');
     if (searchInput) searchInput.value = '';
+    if (paginationState.stockIn) paginationState.stockIn.currentPage = 1;
     loadStockInLogs();
 }
 
@@ -3101,6 +3874,46 @@ function closeApkInstallModal() {
     if (modal) modal.classList.remove('active');
 }
 
+function openMobileUserMenu() {
+    const modal = document.getElementById('mobileUserMenuModal');
+    if (!modal) return;
+
+    // Sync live connection badges in mobile menu
+    const lineBadge = document.getElementById('mobileMenuLineStatus');
+    const sheetBadge = document.getElementById('mobileMenuSheetStatus');
+    const avatarDot = document.getElementById('mobileAvatarStatusDot');
+
+    // Check line status from desktop badge if available
+    const lineDot = document.getElementById('lineStatusDot');
+    const isLineActive = lineDot && lineDot.classList.contains('active');
+    if (lineBadge) {
+        lineBadge.className = isLineActive ? 'badge badge-success' : 'badge badge-danger';
+        lineBadge.innerHTML = isLineActive ? '🟢 พร้อมใช้' : '🔴 ไม่พร้อม';
+    }
+
+    const sheetDot = document.getElementById('sheetStatusDot');
+    const isSheetActive = sheetDot && sheetDot.classList.contains('active');
+    if (sheetBadge) {
+        sheetBadge.className = isSheetActive ? 'badge badge-success' : 'badge badge-danger';
+        sheetBadge.innerHTML = isSheetActive ? '🟢 ซิงค์แล้ว' : '🔴 ไม่ได้ซิงค์';
+    }
+
+    if (avatarDot) {
+        avatarDot.style.backgroundColor = (isLineActive && isSheetActive) ? 'var(--emerald-500)' : 'var(--amber-500)';
+    }
+
+    modal.classList.add('active');
+}
+
+function closeMobileUserMenu() {
+    const modal = document.getElementById('mobileUserMenuModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function handleUserProfileClick(e) {
+    openMobileUserMenu();
+}
+
 function triggerPwaInstall() {
     if (deferredInstallPrompt) {
         deferredInstallPrompt.prompt();
@@ -3141,5 +3954,567 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(openApkInstallModal, 600);
     }
 });
+
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOGS & USER ACTIVITY TRAIL
+// ─────────────────────────────────────────────────────────────
+
+let auditSearchTimeout = null;
+
+function debounceAuditSearch() {
+    clearTimeout(auditSearchTimeout);
+    auditSearchTimeout = setTimeout(() => {
+        loadAuditLogs();
+    }, 350);
+}
+
+function openAuditLogModal() {
+    const modal = document.getElementById('auditLogModal');
+    if (modal) {
+        modal.classList.add('active');
+        loadAuditLogs();
+    }
+}
+
+function closeAuditLogModal() {
+    const modal = document.getElementById('auditLogModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+function escapeAuditHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+async function loadAuditLogs() {
+    const tableBody = document.getElementById('auditLogsTableBody');
+    const mobileCardsContainer = document.getElementById('auditLogsMobileCards');
+    const refreshIcon = document.getElementById('auditRefreshIcon');
+    const actionFilter = document.getElementById('auditActionFilter')?.value || '';
+    const searchFilter = document.getElementById('auditSearchInput')?.value?.trim() || '';
+    const countBadge = document.getElementById('auditCountBadge');
+
+    if (refreshIcon) refreshIcon.classList.add('fa-spin');
+    const loadingHtml = `
+        <tr>
+            <td colspan="5" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                <i class="fas fa-circle-notch fa-spin"></i> กำลังโหลดประวัติกิจกรรม...
+            </td>
+        </tr>
+    `;
+    if (tableBody) tableBody.innerHTML = loadingHtml;
+    if (mobileCardsContainer) {
+        mobileCardsContainer.innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">
+                <i class="fas fa-circle-notch fa-spin"></i> กำลังโหลดประวัติกิจกรรม...
+            </div>
+        `;
+    }
+
+    try {
+        const queryParams = new URLSearchParams({ limit: '200' });
+        if (actionFilter) queryParams.set('action', actionFilter);
+        if (searchFilter) queryParams.set('user_email', searchFilter);
+
+        const resp = await fetch(`/api/audit/logs?${queryParams.toString()}`);
+        const data = await resp.json();
+
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+
+        if (!data.ok) {
+            const errHtml = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 2rem; color: #ef4444;">
+                        <i class="fas fa-circle-exclamation"></i> ไม่สามารถโหลดประวัติกิจกรรมได้: ${escapeAuditHtml(data.error || 'Unauthorized')}
+                    </td>
+                </tr>
+            `;
+            if (tableBody) tableBody.innerHTML = errHtml;
+            if (mobileCardsContainer) {
+                mobileCardsContainer.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: #ef4444;"><i class="fas fa-circle-exclamation"></i> ไม่สามารถโหลดได้</div>`;
+            }
+            return;
+        }
+
+        const logs = data.logs || [];
+        if (countBadge) countBadge.textContent = `${logs.length} รายการ`;
+
+        if (logs.length === 0) {
+            const emptyHtml = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+                        <i class="fas fa-inbox" style="font-size: 1.5rem; margin-bottom: 0.5rem; opacity: 0.5; display: block;"></i>
+                        ยังไม่มีบันทึกประวัติกิจกรรมตามเงื่อนไขที่เลือก
+                    </td>
+                </tr>
+            `;
+            if (tableBody) tableBody.innerHTML = emptyHtml;
+            if (mobileCardsContainer) {
+                mobileCardsContainer.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.825rem;">
+                        <i class="fas fa-inbox" style="font-size: 1.3rem; margin-bottom: 0.4rem; opacity: 0.5; display: block;"></i>
+                        ยังไม่มีบันทึกประวัติกิจกรรม
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        const actionBadges = {
+            'LOGIN': { label: 'เข้าสู่ระบบ', bg: 'rgba(99, 102, 241, 0.15)', text: '#6366F1', icon: 'fa-right-to-bracket' },
+            'LOGOUT': { label: 'ออกจากระบบ', bg: 'rgba(100, 116, 139, 0.15)', text: '#64748B', icon: 'fa-right-from-bracket' },
+            'ADD_DRUG': { label: 'เพิ่มยาใหม่', bg: 'rgba(16, 185, 129, 0.15)', text: '#10B981', icon: 'fa-plus' },
+            'EDIT_DRUG': { label: 'แก้ไขยา', bg: 'rgba(245, 158, 11, 0.15)', text: '#F59E0B', icon: 'fa-pen' },
+            'DELETE_DRUG': { label: 'ลบรายการยา', bg: 'rgba(239, 68, 68, 0.15)', text: '#EF4444', icon: 'fa-trash' },
+            'DISPENSE': { label: 'ตัดจ่ายสต็อก', bg: 'rgba(37, 99, 235, 0.15)', text: '#2563EB', icon: 'fa-prescription-bottle-medical' },
+            'STOCK_IN': { label: 'รับเข้าสต็อก', bg: 'rgba(5, 150, 105, 0.15)', text: '#059669', icon: 'fa-boxes-packing' }
+        };
+
+        const rowsHtml = logs.map(l => {
+            const act = actionBadges[l.action] || { label: l.action, bg: 'rgba(100, 116, 139, 0.12)', text: 'var(--text-secondary)', icon: 'fa-circle-info' };
+            const safeEmail = escapeAuditHtml(l.user_email || 'anonymous');
+            const safeName = escapeAuditHtml(l.user_name || safeEmail);
+            const safeDetail = escapeAuditHtml(l.detail || l.target_name || '-');
+            const safeIp = escapeAuditHtml(l.ip_address || '-');
+            const safeTime = escapeAuditHtml(l.created_at || '-');
+
+            return `
+                <tr style="border-bottom: 1px solid var(--border-default); transition: background 0.15s ease;">
+                    <td style="padding: 0.65rem 0.85rem; font-family: var(--font-mono); font-size: 0.775rem; color: var(--text-muted); white-space: nowrap;">
+                        ${safeTime}
+                    </td>
+                    <td style="padding: 0.65rem 0.85rem; white-space: nowrap;">
+                        <div style="display: flex; align-items: center; gap: 0.45rem;">
+                            <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--bg-subtle); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: var(--text-secondary); flex-shrink: 0; border: 1px solid var(--border-subtle);">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div style="min-width: 0; line-height: 1.25;">
+                                <div style="font-weight: 600; font-size: 0.8125rem; color: var(--text-primary); max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${safeName}">${safeName}</div>
+                                <div style="font-size: 0.72rem; color: var(--text-muted); max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${safeEmail}">${safeEmail}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding: 0.65rem 0.85rem; white-space: nowrap;">
+                        <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.73rem; font-weight: 600; background: ${act.bg}; color: ${act.text};">
+                            <i class="fas ${act.icon}" style="font-size: 0.7rem;"></i>
+                            <span>${act.label}</span>
+                        </span>
+                    </td>
+                    <td style="padding: 0.65rem 0.85rem; color: var(--text-secondary); line-height: 1.5; min-width: 300px; word-break: normal; overflow-wrap: break-word;">
+                        ${l.target_name ? `<span style="font-weight: 700; color: var(--brand-600); margin-right: 0.35rem;">[${escapeAuditHtml(l.target_name)}]</span>` : ''}
+                        <span>${safeDetail}</span>
+                    </td>
+                    <td style="padding: 0.65rem 0.85rem; text-align: right; white-space: nowrap;">
+                        <span style="font-family: var(--font-mono); font-size: 0.725rem; color: var(--text-muted); background: var(--bg-subtle); border: 1px solid var(--border-default); padding: 0.15rem 0.45rem; border-radius: 4px; display: inline-block;">${safeIp}</span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        if (tableBody) tableBody.innerHTML = rowsHtml;
+
+        if (mobileCardsContainer) {
+            mobileCardsContainer.innerHTML = logs.map(l => {
+                const act = actionBadges[l.action] || { label: l.action, bg: 'rgba(100, 116, 139, 0.12)', text: 'var(--text-secondary)', icon: 'fa-circle-info' };
+                const safeEmail = escapeAuditHtml(l.user_email || 'anonymous');
+                const safeName = escapeAuditHtml(l.user_name || safeEmail);
+                const safeDetail = escapeAuditHtml(l.detail || l.target_name || '-');
+                const safeIp = escapeAuditHtml(l.ip_address || '-');
+                const safeTime = escapeAuditHtml(l.created_at || '-');
+
+                return `
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0.85rem; margin-bottom: 0.65rem; box-shadow: var(--shadow-xs);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 0.5rem;">
+                            <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.725rem; font-weight: 700; background: ${act.bg}; color: ${act.text};">
+                                <i class="fas ${act.icon}" style="font-size: 0.7rem;"></i>
+                                <span>${act.label}</span>
+                            </span>
+                            <span style="font-family: var(--font-mono); font-size: 0.725rem; color: var(--text-muted); white-space: nowrap;"><i class="far fa-clock" style="margin-right: 3px;"></i>${safeTime}</span>
+                        </div>
+                        <div style="font-size: 0.825rem; color: var(--text-primary); line-height: 1.5; margin-bottom: 0.5rem;">
+                            ${l.target_name ? `<span style="font-weight: 700; color: var(--brand-600); margin-right: 0.35rem;">[${escapeAuditHtml(l.target_name)}]</span>` : ''}
+                            <span style="color: var(--text-secondary);">${safeDetail}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.725rem; color: var(--text-secondary); border-top: 1px dashed var(--border-subtle); padding-top: 0.45rem; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.35rem; min-width: 0; overflow: hidden;">
+                                <i class="fas fa-user-circle" style="color: var(--text-muted); flex-shrink: 0;"></i>
+                                <span style="font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 160px;" title="${safeName}">${safeName}</span>
+                            </div>
+                            <span style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.675rem; background: var(--bg-subtle); border: 1px solid var(--border-default); padding: 0.1rem 0.35rem; border-radius: 4px; flex-shrink: 0;">${safeIp}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+    } catch (err) {
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+        const failHtml = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 2rem; color: #ef4444;">
+                    <i class="fas fa-triangle-exclamation"></i> เกิดข้อผิดพลาดในการโหลด: ${escapeAuditHtml(err.message)}
+                </td>
+            </tr>
+        `;
+        if (tableBody) tableBody.innerHTML = failHtml;
+        if (mobileCardsContainer) {
+            mobileCardsContainer.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: #ef4444;"><i class="fas fa-triangle-exclamation"></i> โหลดข้อมูลไม่สำเร็จ</div>`;
+        }
+    }
+}
+
+// ==========================================================================
+// 🛒 MULTI-DRUG RX CART & BATCH DISPENSING CONTROLLER
+// ==========================================================================
+
+let rxCart = []; // [{ drug: {...}, quantity: 1, notes: '' }]
+
+function isInRxCart(drugId) {
+    return rxCart.some(item => Number(item.drug.id) === Number(drugId));
+}
+
+function addToRxCart(drugId) {
+    const drug = allDrugs.find(d => Number(d.id) === Number(drugId));
+    if (!drug) {
+        showToast('ไม่พบข้อมูลยาในระบบ', 'error');
+        return;
+    }
+    const curStock = Number(drug.stock_qty || 0);
+    if (curStock <= 0) {
+        showToast(`ยา "${drug.name}" สินค้าหมดสต็อก ไม่สามารถจ่ายได้`, 'warning');
+        return;
+    }
+
+    const existingIndex = rxCart.findIndex(item => Number(item.drug.id) === Number(drugId));
+    if (existingIndex >= 0) {
+        const item = rxCart[existingIndex];
+        if (item.quantity + 1 > curStock) {
+            showToast(`จำนวนยาในใบสั่ง (${item.quantity + 1}) เกินสต็อกที่มี (${curStock} ${drug.unit})`, 'warning');
+            return;
+        }
+        item.quantity += 1;
+        showToast(`เพิ่มจำนวน "${drug.name}" เป็น ${item.quantity} ${drug.unit} ในใบสั่งยาแล้ว`, 'success');
+    } else {
+        rxCart.push({
+            drug: drug,
+            quantity: 1,
+            notes: ''
+        });
+        showToast(`🛒 เพิ่ม "${drug.name}" ลงในใบสั่งยาแล้ว`, 'success');
+    }
+
+    updateRxCartBadges();
+    renderRxCartModal();
+    renderDrugsTable(allDrugs);
+}
+
+function removeFromRxCart(drugId) {
+    rxCart = rxCart.filter(item => Number(item.drug.id) !== Number(drugId));
+    updateRxCartBadges();
+    renderRxCartModal();
+    renderDrugsTable(allDrugs);
+    showToast('ลบรายการยาออกจากใบสั่งยาแล้ว', 'info');
+}
+
+function updateRxCartQty(drugId, newQty) {
+    const item = rxCart.find(it => Number(it.drug.id) === Number(drugId));
+    if (!item) return;
+
+    let qty = parseInt(newQty, 10);
+    if (isNaN(qty) || qty <= 0) qty = 1;
+
+    const curStock = Number(item.drug.stock_qty || 0);
+    if (qty > curStock) {
+        showToast(`จำนวน ${qty} เกินสต็อกที่มี (${curStock} ${item.drug.unit}) ปรับเป็น ${curStock}`, 'warning');
+        qty = curStock;
+    }
+
+    item.quantity = qty;
+    updateRxCartBadges();
+    renderRxCartModal();
+}
+
+function updateRxCartItemNote(drugId, note) {
+    const item = rxCart.find(it => Number(it.drug.id) === Number(drugId));
+    if (item) {
+        item.notes = String(note || '').trim();
+    }
+}
+
+function clearRxCart() {
+    if (rxCart.length === 0) return;
+    if (confirm('คุณต้องการล้างรายการยาทั้งหมดในใบสั่งยานี้ใช่หรือไม่?')) {
+        rxCart = [];
+        updateRxCartBadges();
+        renderRxCartModal();
+        renderDrugsTable(allDrugs);
+        showToast('ล้างใบสั่งยาเรียบร้อยแล้ว', 'info');
+    }
+}
+
+function updateRxCartBadges() {
+    const count = rxCart.length;
+    const totalQty = rxCart.reduce((sum, it) => sum + it.quantity, 0);
+    const totalPrice = rxCart.reduce((sum, it) => sum + (it.quantity * Number(it.drug.price || 0)), 0);
+
+    // Header badge
+    const headerBadge = document.getElementById('rxCartBadge');
+    if (headerBadge) {
+        headerBadge.textContent = count;
+        headerBadge.style.display = count > 0 ? 'inline-flex' : 'none';
+    }
+
+    // Toolbar button badge
+    const toolbarCount = document.getElementById('btnRxCartCount');
+    if (toolbarCount) {
+        toolbarCount.textContent = count;
+    }
+
+    // Floating bar
+    const floatingBar = document.getElementById('floatingRxCartBar');
+    const floatingCount = document.getElementById('floatingCartCount');
+    const floatingItemsText = document.getElementById('floatingCartItemsText');
+    const floatingSubtitle = document.getElementById('floatingCartSubtitle');
+
+    if (floatingBar) {
+        if (count > 0) {
+            floatingBar.style.display = 'flex';
+            if (floatingCount) floatingCount.textContent = count;
+            if (floatingItemsText) floatingItemsText.textContent = `${count} รายการ (${totalQty} ชิ้น)`;
+            if (floatingSubtitle) floatingSubtitle.textContent = `ยอดรวม ฿${totalPrice.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        } else {
+            floatingBar.style.display = 'none';
+        }
+    }
+}
+
+function renderRxCartModal() {
+    const container = document.getElementById('rxCartItemsContainer');
+    const countEl = document.getElementById('rxCartItemsCount');
+    const kindsEl = document.getElementById('rxSummaryKinds');
+    const totalQtyEl = document.getElementById('rxSummaryTotalQty');
+    const totalPriceEl = document.getElementById('rxSummaryTotalPrice');
+    const submitBtn = document.getElementById('btnSubmitRxBatch');
+
+    if (!container) return;
+
+    const count = rxCart.length;
+    const totalQty = rxCart.reduce((sum, it) => sum + it.quantity, 0);
+    const totalPrice = rxCart.reduce((sum, it) => sum + (it.quantity * Number(it.drug.price || 0)), 0);
+
+    if (countEl) countEl.textContent = count;
+    if (kindsEl) kindsEl.textContent = `${count} รายการ`;
+    if (totalQtyEl) totalQtyEl.textContent = `${totalQty} หน่วย`;
+    if (totalPriceEl) totalPriceEl.textContent = `฿${totalPrice.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+    if (submitBtn) {
+        submitBtn.disabled = count === 0;
+    }
+
+    if (count === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 2.5rem 1.5rem; color: var(--text-muted);">
+                <div style="font-size: 2.25rem; margin-bottom: 0.65rem; color: var(--border-default);">
+                    <i class="fas fa-clipboard"></i>
+                </div>
+                <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+                    ยังไม่มีรายการยาในใบสั่งยา
+                </div>
+                <div style="font-size: 0.8125rem;">
+                    คลิกปุ่ม <strong>"+ใบสั่งยา"</strong> ที่รายการยาในตาราง เพื่อเพิ่มยาลงในใบสั่งยานี้
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = rxCart.map((it, idx) => {
+        const d = it.drug;
+        const curStock = Number(d.stock_qty || 0);
+        const price = Number(d.price || 0);
+        const subtotal = it.quantity * price;
+        const isHighQty = (it.quantity >= 100) || (curStock > 0 && it.quantity >= curStock * 0.5);
+
+        return `
+            <div class="rx-cart-item-row" id="rx-cart-row-${d.id}">
+                <div class="rx-col-index" style="text-align: center; font-weight: 700; color: var(--text-muted); font-size: 0.85rem;">
+                    ${idx + 1}
+                </div>
+                <div class="rx-col-info" style="min-width: 0;">
+                    <div class="rx-item-name" style="font-weight: 700; font-size: 0.9rem; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        ${escapeHtml(d.name)}
+                    </div>
+                    <div class="rx-item-meta" style="display: flex; gap: 0.5rem; align-items: center; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                        <span class="rx-item-code" style="font-family: var(--font-mono);">${escapeHtml(d.code)}</span>
+                        <span>•</span>
+                        <span>คงเหลือ: <strong style="color: #059669;">${curStock} ${escapeHtml(d.unit)}</strong></span>
+                        <span>•</span>
+                        <span>฿${price.toFixed(2)}/${escapeHtml(d.unit)}</span>
+                    </div>
+                    ${isHighQty ? `
+                        <div class="rx-item-warning" style="margin-top: 4px; font-size: 0.7rem; color: #D97706; font-weight: 600; display: flex; align-items: center; gap: 0.3rem;">
+                            <i class="fas fa-triangle-exclamation"></i> จำนวนจ่ายค่อนข้างสูง (≥50% สต็อก)
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="rx-col-stepper">
+                    <div class="rx-qty-stepper">
+                        <button type="button" class="rx-qty-btn" onclick="updateRxCartQty(${d.id}, ${it.quantity - 1})" title="ลดจำนวน">
+                            <i class="fas fa-minus" style="font-size: 0.7rem;"></i>
+                        </button>
+                        <input type="number" class="rx-qty-input" value="${it.quantity}" min="1" max="${curStock}" onchange="updateRxCartQty(${d.id}, this.value)">
+                        <button type="button" class="rx-qty-btn" onclick="updateRxCartQty(${d.id}, ${it.quantity + 1})" title="เพิ่มจำนวน">
+                            <i class="fas fa-plus" style="font-size: 0.7rem;"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="rx-col-subtotal" style="text-align: right;">
+                    <div class="rx-item-subtotal-val" style="font-family: var(--font-mono); font-weight: 800; font-size: 0.95rem; color: #059669;">
+                        ฿${subtotal.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </div>
+                </div>
+                <div class="rx-col-del" style="text-align: center;">
+                    <button type="button" class="btn btn-icon btn-subtle text-danger" onclick="removeFromRxCart(${d.id})" title="ลบยานี้ออกจากใบสั่ง" style="width: 32px; height: 32px; border-radius: 6px;">
+                        <i class="fas fa-trash-can" style="font-size: 0.85rem;"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function openRxCartModal() {
+    renderRxCartModal();
+    const modal = document.getElementById('rxCartModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        const patientInput = document.getElementById('rxCartPatientName');
+        if (patientInput && !patientInput.value) {
+            setTimeout(() => patientInput.focus(), 150);
+        }
+    }
+}
+
+function closeRxCartModal() {
+    const modal = document.getElementById('rxCartModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+}
+
+async function submitRxBatchDispense() {
+    if (rxCart.length === 0) {
+        showToast('กรุณาเลือกรายการยาในใบสั่งยาอย่างน้อย 1 รายการ', 'warning');
+        return;
+    }
+
+    const patientName = (document.getElementById('rxCartPatientName')?.value || '').trim();
+    if (!patientName) {
+        showToast('กรุณากรอกชื่อผู้รับมอบยา / คนไข้ ก่อนยืนยัน', 'warning');
+        document.getElementById('rxCartPatientName')?.focus();
+        return;
+    }
+
+    const dept = (document.getElementById('rxCartDepartment')?.value || 'แผนกตรวจรักษา / หอผู้ป่วยสามัญ').trim();
+    const dispenser = (document.getElementById('rxCartDispenserName')?.value || 'เภสัชกร / เจ้าหน้าที่ประจำคลังยา').trim();
+    const notes = (document.getElementById('rxCartNotes')?.value || '').trim();
+
+    const submitBtn = document.getElementById('btnSubmitRxBatch');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังตัดสต็อกใบสั่งยา...';
+    }
+
+    try {
+        const payload = {
+            items: rxCart.map(it => ({
+                drug_id: it.drug.id,
+                quantity: it.quantity,
+                notes: it.notes
+            })),
+            patient_name: patientName,
+            requester_dept: dept,
+            dispensed_by: dispenser,
+            notes: notes,
+            channel: 'WEB_RX_CART'
+        };
+
+        const res = await fetch('/api/dispense/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            const result = data.result;
+            // Clear cart
+            rxCart = [];
+            updateRxCartBadges();
+            closeRxCartModal();
+
+            // Refresh data
+            loadDrugs();
+            loadDashboardStats();
+            loadDispensingLogs();
+
+            // Open success modal
+            openRxBatchSuccessModal(result);
+        } else {
+            showToast(data.error || 'เกิดข้อผิดพลาดในการตัดสต็อก', 'error');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-check-double"></i> ยืนยันตัดจ่ายยาทั้งหมด';
+            }
+        }
+    } catch (err) {
+        showToast('การเชื่อมต่อล้มเหลว: ' + err.message, 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-check-double"></i> ยืนยันตัดจ่ายยาทั้งหมด';
+        }
+    }
+}
+
+function openRxBatchSuccessModal(result) {
+    const modal = document.getElementById('rxBatchSuccessModal');
+    if (!modal) return;
+
+    const batchIdEl = document.getElementById('rxSuccessBatchId');
+    const patientEl = document.getElementById('rxSuccessPatient');
+    const totalItemsEl = document.getElementById('rxSuccessTotalItems');
+    const totalPriceEl = document.getElementById('rxSuccessTotalPrice');
+    const printBtn = document.getElementById('rxSuccessPrintBtn');
+
+    if (batchIdEl) batchIdEl.textContent = result.batch_id || '-';
+    if (patientEl) patientEl.textContent = result.patient_name || '-';
+    if (totalItemsEl) totalItemsEl.textContent = `${result.total_items} รายการ (${result.total_qty} หน่วย)`;
+    if (totalPriceEl) totalPriceEl.textContent = result.total_price_formatted || '-';
+
+    if (printBtn) {
+        printBtn.href = result.requisition_url || `/api/dispense/requisition/batch/${result.batch_id}`;
+    }
+
+    modal.style.display = 'flex';
+    modal.classList.add('active');
+}
+
+function closeRxBatchSuccessModal() {
+    const modal = document.getElementById('rxBatchSuccessModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+}
+
 
 

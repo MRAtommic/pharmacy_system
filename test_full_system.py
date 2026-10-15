@@ -150,6 +150,10 @@ class PharmaCoreSystemTestSuite(unittest.TestCase):
         print("\n[3/6] 🌐 Testing REST API Routes & Web Endpoints...")
 
         # 3.1 Web UI Homepage
+        with self.client.session_transaction() as sess:
+            sess['user_email'] = 'tester@hospital.go.th'
+            sess['user_name'] = 'Automated Tester'
+
         res = self.client.get("/")
         self.assertEqual(res.status_code, 200)
         self.assertIn(b"PharmaCore", res.data)
