@@ -22,7 +22,7 @@
             font-family: 'Sarabun', 'TH Sarabun New', sans-serif;
             background-color: #525659;
             margin: 0;
-            padding: 70px 0 40px 0;
+            padding: 0 0 40px 0;
             font-size: 14px;
             line-height: 1.35;
             -webkit-print-color-adjust: exact;
@@ -31,7 +31,7 @@
 
         /* ── Screen-Only Interactive Control Toolbar ── */
         .print-toolbar {
-            position: fixed;
+            position: sticky;
             top: 0;
             left: 0;
             right: 0;
@@ -41,6 +41,7 @@
             border-bottom: 1px solid #1E293B;
             padding: 10px 1.5rem;
             color: #FFFFFF;
+            margin-bottom: 24px;
         }
 
         .toolbar-inner {
@@ -233,6 +234,7 @@
             border: 1.5px solid #000000;
             table-layout: fixed;
             background: #FFFFFF;
+            transition: opacity 0.15s ease;
         }
 
         .ledger-table th, 
@@ -377,12 +379,12 @@
     <div class="print-toolbar">
         <div class="toolbar-inner">
             <div class="toolbar-group">
-                <a href="/" class="btn-tool btn-outline-tool" title="กลับหน้าแดชบอร์ดหลัก">
+                <a href="/{% if request.args.get('code') %}?code={{ request.args.get('code') }}{% endif %}" class="btn-tool btn-outline-tool" title="กลับหน้าแดชบอร์ดหลัก">
                     <i class="fas fa-arrow-left"></i> กลับคลังยา
                 </a>
 
                 <label class="toolbar-label" for="selectDrug">เลือกยา:</label>
-                <select id="selectDrug" class="toolbar-select" onchange="onDrugChange()" style="min-width: 260px;">
+                <select id="selectDrug" class="toolbar-select" onchange="refreshStockCardData()" oninput="refreshStockCardData()" style="min-width: 260px;">
                     {% for d in drugs %}
                     <option value="{{ d.id }}" {% if selected_drug and selected_drug.id == d.id %}selected{% endif %}>
                         {{ d.name }} (คงเหลือ: {{ d.stock_qty }} {{ d.unit }})
@@ -391,10 +393,10 @@
                 </select>
 
                 <label class="toolbar-label" for="inputStartDate">ตั้งแต่วันที่:</label>
-                <input type="date" id="inputStartDate" class="toolbar-input" value="{{ start_date }}" onchange="refreshStockCardData()">
+                <input type="date" id="inputStartDate" class="toolbar-input" value="{{ start_date }}" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
 
                 <label class="toolbar-label" for="inputEndDate">ถึงวันที่:</label>
-                <input type="date" id="inputEndDate" class="toolbar-input" value="{{ end_date }}" onchange="refreshStockCardData()">
+                <input type="date" id="inputEndDate" class="toolbar-input" value="{{ end_date }}" onchange="refreshStockCardData()" oninput="refreshStockCardData()">
 
                 <div class="quick-presets">
                     <button type="button" class="btn-preset" onclick="setPreset('this_month')">เดือนนี้</button>
@@ -513,10 +515,6 @@
     <script>
         const TOTAL_PAGE_ROWS = 24;
 
-        function onDrugChange() {
-            refreshStockCardData();
-        }
-
         function setPreset(preset) {
             const now = new Date();
             const y = now.getFullYear();
@@ -538,7 +536,8 @@
                 // Thai fiscal year starts on Oct 1
                 const fiscalStartYear = (now.getMonth() >= 9) ? y : y - 1;
                 startInput.value = `${fiscalStartYear}-10-01`;
-                document.getElementById('textFiscalYear').innerText = String(fiscalStartYear + 544);
+                const fyEl = document.getElementById('textFiscalYear');
+                if (fyEl) fyEl.innerText = String(fiscalStartYear + 544);
             } else if (preset === 'all') {
                 startInput.value = '';
                 endInput.value = '';
@@ -547,23 +546,53 @@
         }
 
         function refreshStockCardData() {
-            const drugId = document.getElementById('selectDrug').value;
+            const drugSelect = document.getElementById('selectDrug');
+            const drugId = drugSelect ? drugSelect.value : '';
             const startDate = document.getElementById('inputStartDate').value;
             const endDate = document.getElementById('inputEndDate').value;
 
             if (!drugId) return;
 
-            fetch(`/api/stock-card/data?drug_id=${drugId}&start_date=${startDate}&end_date=${endDate}`)
-                .then(res => res.json())
+            const table = document.getElementById('ledgerTable');
+            if (table) table.style.opacity = '0.35';
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code') || '';
+            let apiUrl = `/api/stock-card/data?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+            if (code) {
+                apiUrl += `&code=${encodeURIComponent(code)}`;
+            }
+
+            fetch(apiUrl)
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    return res.json();
+                })
                 .then(data => {
                     if (!data || !data.ok) {
                         alert(data ? data.error : 'ไม่สามารถโหลดข้อมูลได้');
                         return;
                     }
                     renderStockCard(data.data);
+
+                    // Sync URL so refreshing (F5) keeps the selected drug and date filter
+                    try {
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.set('drug_id', drugId);
+                        if (startDate) newUrl.searchParams.set('start_date', startDate); else newUrl.searchParams.delete('start_date');
+                        if (endDate) newUrl.searchParams.set('end_date', endDate); else newUrl.searchParams.delete('end_date');
+                        window.history.replaceState({}, '', newUrl.toString());
+                    } catch (e) {
+                        // Ignore state sync error on older browsers
+                    }
                 })
                 .catch(err => {
                     console.error('Fetch stock card error:', err);
+                })
+                .finally(() => {
+                    if (table) table.style.opacity = '1';
                 });
         }
 
@@ -582,28 +611,45 @@
         }
 
         function renderStockCard(d) {
+            if (!d) return;
             const drug = d.drug || {};
-            // Update header fields
-            document.getElementById('metaGenericName').innerText = drug.generic_name || drug.name || '';
-            document.getElementById('metaDosageForm').innerText = drug.dosage_form || 'tablet';
-            
-            // Format opening balance row
-            document.getElementById('cellOpeningBalance').innerText = d.opening_balance ?? 0;
-            document.getElementById('cellOpeningPrice').innerText = drug.cost ? Math.round(drug.cost) : (drug.price ? Math.round(drug.price) : '480');
+
+            // 1. Update header fields
+            const genericEl = document.getElementById('metaGenericName');
+            if (genericEl) genericEl.innerText = drug.generic_name || drug.name || '-';
+
+            const pkgEl = document.getElementById('metaPackaging');
+            if (pkgEl) {
+                const packagingStr = ((drug.strength || '') + ' ' + (drug.unit || '')).trim() || "1*500 's";
+                pkgEl.innerText = packagingStr;
+            }
+
+            const dosageEl = document.getElementById('metaDosageForm');
+            if (dosageEl) dosageEl.innerText = drug.dosage_form || '-';
+
+            // 2. Preserve fiscal year if edited
+            const fyEl = document.getElementById('textFiscalYear');
+            const currentFiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : '2568';
             
             const tbody = document.getElementById('ledgerTableBody');
-            
-            // Build Opening Balance Row
+            if (!tbody) return;
+
+            const openingPriceFormatted = (drug.cost != null && drug.cost > 0) 
+                ? Math.round(drug.cost).toLocaleString('en-US') 
+                : ((drug.price != null && drug.price > 0) ? Math.round(drug.price).toLocaleString('en-US') : '480');
+            const openingBalFormatted = (d.opening_balance != null) ? d.opening_balance.toLocaleString('en-US') : '0';
+
+            // 3. Build Opening Balance Row
             let html = `
                 <tr class="row-opening-balance">
                     <td class="col-date">&nbsp;</td>
                     <td class="col-particulars">
-                        ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">2568</span>
+                        ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">${currentFiscalYear}</span>
                     </td>
                     <td class="col-qty-in">-</td>
                     <td class="col-qty-out">-</td>
-                    <td class="col-balance">${d.opening_balance}</td>
-                    <td class="col-price">${drug.cost ? Math.round(drug.cost) : (drug.price ? Math.round(drug.price) : '480')}</td>
+                    <td class="col-balance">${openingBalFormatted}</td>
+                    <td class="col-price">${openingPriceFormatted}</td>
                     <td class="col-lot-exp">-</td>
                     <td class="col-sign"></td>
                 </tr>
@@ -635,15 +681,20 @@
                     lotExp = '-';
                 }
 
-                const priceDisplay = tx.total_price ? Math.round(tx.total_price) : (tx.price ? Math.round(tx.price) : '-');
+                const priceDisplay = (tx.total_price != null && tx.total_price > 0) 
+                    ? Math.round(tx.total_price).toLocaleString('en-US') 
+                    : ((tx.price != null && tx.price > 0) ? Math.round(tx.price).toLocaleString('en-US') : '-');
+                const balDisplay = (tx.balance != null) ? tx.balance.toLocaleString('en-US') : '-';
+                const qtyInDisplay = (tx.type === 'RECEIVE' && tx.qty_in != null) ? tx.qty_in.toLocaleString('en-US') : '-';
+                const qtyOutDisplay = (tx.type === 'DISPENSE' && tx.qty_out != null) ? tx.qty_out.toLocaleString('en-US') : '-';
 
                 html += `
                     <tr>
                         <td class="col-date">${dateShort}</td>
                         <td class="col-particulars">${particulars}</td>
-                        <td class="col-qty-in">${tx.type === 'RECEIVE' ? tx.qty_in : '-'}</td>
-                        <td class="col-qty-out">${tx.type === 'DISPENSE' ? tx.qty_out : '-'}</td>
-                        <td class="col-balance">${tx.balance}</td>
+                        <td class="col-qty-in">${qtyInDisplay}</td>
+                        <td class="col-qty-out">${qtyOutDisplay}</td>
+                        <td class="col-balance">${balDisplay}</td>
                         <td class="col-price">${priceDisplay}</td>
                         <td class="col-lot-exp">${lotExp}</td>
                         <td class="col-sign"></td>
@@ -689,7 +740,12 @@
             const drugId = document.getElementById('selectDrug').value;
             const startDate = document.getElementById('inputStartDate').value;
             const endDate = document.getElementById('inputEndDate').value;
-            window.location.href = `/api/stock-card/export-excel?drug_id=${drugId}&start_date=${startDate}&end_date=${endDate}`;
+            const code = new URLSearchParams(window.location.search).get('code') || '';
+            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+            if (code) {
+                exportUrl += `&code=${encodeURIComponent(code)}`;
+            }
+            window.location.href = exportUrl;
         }
     </script>
 </body>
