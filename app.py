@@ -573,7 +573,26 @@ def login_page():
         audit('LOGIN', 'AUTH', 'passcode', 'Admin', 'เข้าสู่ระบบด้วย Passcode')
         return redirect(next_url)
     error = request.args.get('error', '')
-    return render_template("login.html", error=error, base_url=Config.BASE_URL)
+    liff_id = database.get_app_setting("line_liff_id") or Config.LINE_LIFF_ID or ""
+    return render_template("login.html", error=error, base_url=Config.BASE_URL, liff_id=liff_id)
+
+@app.route("/api/auth/liff-login", methods=["POST"])
+def liff_login():
+    data = request.get_json(silent=True) or {}
+    user_id = (data.get("userId") or "").strip()
+    display_name = (data.get("displayName") or "LINE User").strip()
+    picture_url = (data.get("pictureUrl") or "/static/uploads/drugs/app_icon_192.png").strip()
+
+    if not user_id:
+        return jsonify({"ok": False, "error": "Missing LINE user ID"}), 400
+
+    session["user_email"] = f"{user_id}@line.user"
+    session["user_name"] = display_name
+    session["user_picture"] = picture_url
+    session["line_user_id"] = user_id
+    session.permanent = True
+    audit("LOGIN", "AUTH", user_id, display_name, "เข้าสู่ระบบอัตโนมัติผ่าน LINE LIFF")
+    return jsonify({"ok": True, "redirect": "/"})
 
 @app.route("/api/auth/passcode", methods=["POST"])
 def passcode_login():
