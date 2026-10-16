@@ -34,6 +34,7 @@ class Config:
     LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "").strip()
     LINE_BOT_BASIC_ID = os.environ.get("LINE_BOT_BASIC_ID", "@905gsngi").strip()
     PHARMACY_LINE_TARGET_ID = os.environ.get("PHARMACY_LINE_TARGET_ID", os.environ.get("LINE_NOTIFY_TARGET_ID", "")).strip()
+    LINE_LIFF_ID = os.environ.get("LINE_LIFF_ID", "").strip()
     EXPIRY_ALERT_DAYS = int(os.environ.get("EXPIRY_ALERT_DAYS", 60))
     
     # Google Workspace credentials

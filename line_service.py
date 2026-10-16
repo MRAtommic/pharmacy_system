@@ -2047,6 +2047,22 @@ class PharmacyLineBot:
         flex = self._create_new_drug_alert_flex(drug)
         return self._broadcast_or_push(flex, exclude_target=exclude_target)
 
+    def get_dispense_flex(self, data, drive_link=None):
+        """Generate Flex Message payload for single dispense."""
+        return self._create_dispense_alert_flex(data, drive_link=drive_link)
+
+    def get_batch_dispense_flex(self, data):
+        """Generate Flex Message payload for multi-drug prescription batch."""
+        return self._create_batch_dispense_flex(data)
+
+    def get_stock_in_flex(self, data):
+        """Generate Flex Message payload for stock in / receiving."""
+        return self._create_stock_in_alert_flex(data)
+
+    def get_new_drug_flex(self, drug):
+        """Generate Flex Message payload for new drug registration."""
+        return self._create_new_drug_alert_flex(drug)
+
     def send_scan_notification(self, drug, scanned_code=None, source="SCANNER"):
         """
         Scan alert card completely disabled per user request: 'ไม่ต้องมีการ์ดสแกนพบรายการยา'

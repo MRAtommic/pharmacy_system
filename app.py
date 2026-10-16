@@ -714,19 +714,29 @@ def create_drug():
     audit('ADD_DRUG', 'drug', new_drug.get('id',''), new_drug.get('name',''),
           f"รหัส: {new_drug.get('code','')} | หมวด: {new_drug.get('category','')} | สต็อก: {new_drug.get('stock_qty','')} {new_drug.get('unit','')}")
 
-    import threading
-    def _bg_notify_new_drug(d):
-        try:
-            from line_service import line_bot
-            line_bot.send_new_drug_notification(d)
-        except Exception as err:
-            logger.error(f"Error sending LINE new drug notification: {err}")
     d_notify = dict(new_drug)
     d_notify['user_email'] = actor_email
     d_notify['user_name'] = actor_name
-    threading.Thread(target=_bg_notify_new_drug, args=(d_notify,), daemon=True).start()
 
-    return jsonify({"ok": True, "drug": new_drug, "message": "เพิ่มข้อมูลยาในคลังเรียบร้อยแล้ว"})
+    from line_service import line_bot
+    flex_payload = None
+    try:
+        flex_payload = line_bot.get_new_drug_flex(d_notify)
+    except Exception as flex_err:
+        logger.error(f"Error generating new drug flex payload: {flex_err}")
+
+    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
+    if not via_liff:
+        import threading
+        def _bg_notify_new_drug(d):
+            try:
+                from line_service import line_bot
+                line_bot.send_new_drug_notification(d)
+            except Exception as err:
+                logger.error(f"Error sending LINE new drug notification: {err}")
+        threading.Thread(target=_bg_notify_new_drug, args=(d_notify,), daemon=True).start()
+
+    return jsonify({"ok": True, "drug": new_drug, "flex_message": flex_payload, "message": "เพิ่มข้อมูลยาในคลังเรียบร้อยแล้ว"})
 
 @app.route("/api/drugs/<int:drug_id>", methods=["PUT"])
 @login_required
@@ -835,7 +845,22 @@ def dispense_stock():
     # so HTTP response to the browser is near instantaneous (<50ms), preventing user wait/double-clicks!
     import threading
     import time
-    def _bg_after_dispense(res, u_email, u_name, disp_by):
+
+    res_notify = dict(result)
+    res_notify['user_email'] = actor_email
+    res_notify['user_name'] = actor_name
+    res_notify['dispensed_by'] = dispensed_by
+
+    from line_service import line_bot
+    flex_payload = None
+    try:
+        flex_payload = line_bot.get_dispense_flex(res_notify)
+    except Exception as flex_err:
+        logger.error(f"Error generating dispense flex payload: {flex_err}")
+
+    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
+
+    def _bg_after_dispense(res, u_email, u_name, disp_by, send_line_push=True):
         global _last_inventory_sheet_sync
         try:
             google_sync.append_dispensing_log(res)
@@ -847,21 +872,23 @@ def dispense_stock():
         except Exception as e:
             logger.error(f"Error syncing to sheet after dispense: {e}")
 
-        try:
-            from line_service import line_bot
-            res_notify = dict(res)
-            res_notify['user_email'] = u_email
-            res_notify['user_name'] = u_name
-            res_notify['dispensed_by'] = disp_by
-            line_bot.send_dispense_notification(res_notify)
-        except Exception as err:
-            logger.error(f"Error sending LINE dispense notification: {err}")
+        if send_line_push:
+            try:
+                from line_service import line_bot
+                r_notify = dict(res)
+                r_notify['user_email'] = u_email
+                r_notify['user_name'] = u_name
+                r_notify['dispensed_by'] = disp_by
+                line_bot.send_dispense_notification(r_notify)
+            except Exception as err:
+                logger.error(f"Error sending LINE dispense notification: {err}")
 
-    threading.Thread(target=_bg_after_dispense, args=(result, actor_email, actor_name, dispensed_by), daemon=True).start()
+    threading.Thread(target=_bg_after_dispense, args=(result, actor_email, actor_name, dispensed_by, not via_liff), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
+        "flex_message": flex_payload,
         "message": f"ตัดสต็อก '{result['drug_name']}' สำเร็จ - คงเหลือ {result['balance_after']} {result['unit']}"
     })
 
@@ -905,7 +932,22 @@ def batch_dispense():
 
     # Background sync to sheets and LINE notify
     import threading
-    def _bg_after_batch(res, u_email, u_name, disp_by):
+
+    res_notify = dict(result)
+    res_notify['user_email'] = actor_email
+    res_notify['user_name'] = actor_name
+    res_notify['dispensed_by'] = dispensed_by
+
+    from line_service import line_bot
+    flex_payload = None
+    try:
+        flex_payload = line_bot.get_batch_dispense_flex(res_notify)
+    except Exception as flex_err:
+        logger.error(f"Error generating batch flex payload: {flex_err}")
+
+    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
+
+    def _bg_after_batch(res, u_email, u_name, disp_by, send_line_push=True):
         global _last_inventory_sheet_sync
         try:
             for item in res.get("items", []):
@@ -915,23 +957,25 @@ def batch_dispense():
         except Exception as e:
             logger.error(f"Error syncing batch dispense to sheet: {e}")
 
-        try:
-            from line_service import line_bot
-            res_notify = dict(res)
-            res_notify['user_email'] = u_email
-            res_notify['user_name'] = u_name
-            res_notify['dispensed_by'] = disp_by
-            line_bot.send_batch_dispense_notification(res_notify)
-        except Exception as err:
-            logger.error(f"Error sending batch LINE notification: {err}")
+        if send_line_push:
+            try:
+                from line_service import line_bot
+                r_notify = dict(res)
+                r_notify['user_email'] = u_email
+                r_notify['user_name'] = u_name
+                r_notify['dispensed_by'] = disp_by
+                line_bot.send_batch_dispense_notification(r_notify)
+            except Exception as err:
+                logger.error(f"Error sending batch LINE notification: {err}")
 
-    threading.Thread(target=_bg_after_batch, args=(result, actor_email, actor_name, dispensed_by), daemon=True).start()
+    threading.Thread(target=_bg_after_batch, args=(result, actor_email, actor_name, dispensed_by, not via_liff), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
         "batch_id": result["batch_id"],
         "requisition_url": f"/api/dispense/requisition/batch/{result['batch_id']}",
+        "flex_message": flex_payload,
         "message": f"ตัดสต็อกใบสั่งยา {result['batch_id']} สำเร็จ ({result['total_items']} รายการ, ยอดรวม {result['total_price_formatted']})"
     })
 
@@ -1039,22 +1083,33 @@ def stock_in_endpoint():
     trigger_bg_sheet_sync()
 
     # LINE Bot Stock In Notification
-    import threading
-    def _bg_notify_stock_in(res):
-        try:
-            from line_service import line_bot
-            line_bot.send_stock_in_notification(res)
-        except Exception as err:
-            logger.error(f"Error sending LINE stock in notification: {err}")
     res_notify = dict(result)
     res_notify['user_email'] = actor_email
     res_notify['user_name'] = actor_name
     res_notify['received_by'] = received_by
-    threading.Thread(target=_bg_notify_stock_in, args=(res_notify,), daemon=True).start()
+
+    from line_service import line_bot
+    flex_payload = None
+    try:
+        flex_payload = line_bot.get_stock_in_flex(res_notify)
+    except Exception as flex_err:
+        logger.error(f"Error generating stock-in flex payload: {flex_err}")
+
+    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
+    if not via_liff:
+        import threading
+        def _bg_notify_stock_in(res):
+            try:
+                from line_service import line_bot
+                line_bot.send_stock_in_notification(res)
+            except Exception as err:
+                logger.error(f"Error sending LINE stock in notification: {err}")
+        threading.Thread(target=_bg_notify_stock_in, args=(res_notify,), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
+        "flex_message": flex_payload,
         "message": f"รับเข้า '{result['drug_name']}' จำนวน {result['quantity']} {result['unit']} สำเร็จ (คงเหลือใหม่ {result['balance_after']} {result['unit']})"
     })
 
@@ -2298,12 +2353,15 @@ def get_line_config():
     days = int(database.get_app_setting("expiry_alert_days") or Config.EXPIRY_ALERT_DAYS or 60)
     last_sent = database.get_app_setting("last_expiry_alert_sent") or "ยังไม่เคยส่ง"
     expiring = database.get_expiring_drugs(days=days)
+    liff_id = database.get_app_setting("line_liff_id") or Config.LINE_LIFF_ID or ""
 
     return jsonify({
         "ok": True,
         "is_configured": bool(Config.LINE_CHANNEL_ACCESS_TOKEN),
         "bot_basic_id": Config.LINE_BOT_BASIC_ID,
         "target_id": target_id,
+        "liff_id": liff_id,
+        "liff_url": f"https://liff.line.me/{liff_id}" if liff_id else "",
         "expiry_alert_days": days,
         "expiring_count": len(expiring),
         "subscribers_count": len(subscribers),
@@ -2317,9 +2375,12 @@ def update_line_config():
     data = request.json or {}
     target_id = data.get("target_id")
     days = data.get("expiry_alert_days")
+    liff_id = data.get("liff_id")
 
     if target_id is not None:
         database.set_app_setting("line_notify_target", str(target_id).strip())
+    if liff_id is not None:
+        database.set_app_setting("line_liff_id", str(liff_id).strip())
     if days is not None:
         try:
             database.set_app_setting("expiry_alert_days", int(days))

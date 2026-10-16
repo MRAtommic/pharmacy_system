@@ -165,6 +165,7 @@ function renderPaginationBar(containerId, targetKey, totalItems) {
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    initLiff();
     loadDashboardStats();
     loadDrugs();
     loadDispensingLogs();
@@ -1159,6 +1160,7 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
     showToast(`⏳ กำลังตัดสต็อก ${drug.name} (-${qty} ${drug.unit})...`, 'info');
 
     try {
+        const usingLiff = isLiffActive();
         const res = await fetch('/api/dispense', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1168,7 +1170,8 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
                 channel: channel,
                 dispensed_by: dispenser,
                 patient_name: patient,
-                notes: notes
+                notes: notes,
+                via_liff: usingLiff
             })
         });
         const data = await res.json();
@@ -1177,6 +1180,9 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
             loadDashboardStats();
             loadDispensingLogs();
             showToast(`✅ ${data.message}`, 'success');
+            if (data.flex_message && usingLiff) {
+                sendFlexViaLiff(data.flex_message);
+            }
         } else {
             showToast('⚠️ ไม่สามารถตัดสต็อกได้: ' + (data.error || 'Unknown error'), 'error');
             loadDrugs();
@@ -3159,6 +3165,117 @@ function closeLineSettingsModal() {
     if (modal) modal.classList.remove('active');
 }
 
+// ─────────────────────────────────────────────────────────────
+// LINE LIFF SERVICE (Free Unlimited Flex Messaging)
+// ─────────────────────────────────────────────────────────────
+let currentLiffId = null;
+let isLiffReady = false;
+let lastBatchFlexMessage = null;
+
+async function initLiff() {
+    if (!window.liff) return;
+    try {
+        const res = await fetch('/api/line/config');
+        const data = await res.json();
+        if (data.ok && data.liff_id) {
+            currentLiffId = String(data.liff_id).trim();
+            if (currentLiffId) {
+                await liff.init({ liffId: currentLiffId });
+                isLiffReady = true;
+                const inClient = liff.isInClient();
+                console.log(`[LIFF] Initialized successfully. InClient: ${inClient}, LoggedIn: ${liff.isLoggedIn()}`);
+                updateLiffStatusUI(true, inClient);
+                return;
+            }
+        }
+        updateLiffStatusUI(false, false);
+    } catch (err) {
+        console.warn("[LIFF] Initialization error:", err);
+        updateLiffStatusUI(false, false);
+    }
+}
+
+function updateLiffStatusUI(ready, inClient) {
+    const badge = document.getElementById('liffStatusBadge');
+    const linkRow = document.getElementById('liffShareLinkRow');
+    const linkEl = document.getElementById('liffShareLink');
+    if (badge) {
+        if (ready) {
+            if (inClient) {
+                badge.className = 'badge badge-success';
+                badge.innerHTML = '<i class="fas fa-check-circle"></i> เปิดใน LINE (ส่งฟรีอัตโนมัติ)';
+            } else {
+                badge.className = 'badge badge-success';
+                badge.innerHTML = '<i class="fas fa-share-nodes"></i> LIFF พร้อมแชร์ (TargetPicker)';
+            }
+        } else {
+            badge.className = 'badge badge-warning';
+            badge.innerText = 'ยังไม่ได้ตั้งค่า';
+        }
+    }
+    if (linkRow && linkEl && currentLiffId) {
+        linkRow.style.display = 'block';
+        const url = `https://liff.line.me/${currentLiffId}`;
+        linkEl.href = url;
+        linkEl.innerText = url;
+    }
+}
+
+function isLiffActive() {
+    return Boolean(window.liff && isLiffReady && liff.isInClient());
+}
+
+async function sendFlexViaLiff(flexPayload) {
+    if (!window.liff || !isLiffReady || !flexPayload) {
+        return { success: false, reason: 'not_ready' };
+    }
+
+    const message = (flexPayload.type === 'flex') ? flexPayload : {
+        type: 'flex',
+        altText: flexPayload.altText || 'การแจ้งเตือนจากระบบคลังยา',
+        contents: flexPayload.contents || flexPayload
+    };
+
+    // 1. If inside LINE client, send directly to current chat (free 100%!)
+    if (liff.isInClient()) {
+        try {
+            await liff.sendMessages([message]);
+            showToast('🚀 ส่งการ์ดแจ้งเตือนเข้า LINE ฟรีเรียบร้อย (ไม่เสียโควต้า)', 'success');
+            return { success: true, method: 'sendMessages' };
+        } catch (err) {
+            console.warn("[LIFF] sendMessages failed:", err);
+        }
+    }
+
+    // 2. If in browser or shareTargetPicker available
+    if (liff.isApiAvailable && liff.isApiAvailable('shareTargetPicker')) {
+        try {
+            const res = await liff.shareTargetPicker([message]);
+            if (res) {
+                showToast('🚀 ส่งการ์ดเข้ากลุ่ม/เพื่อน LINE สำเร็จ (ฟรีไม่เสียโควต้า)', 'success');
+                return { success: true, method: 'shareTargetPicker' };
+            }
+        } catch (err) {
+            console.warn("[LIFF] shareTargetPicker failed:", err);
+        }
+    }
+
+    return { success: false, reason: 'unsupported_or_cancelled' };
+}
+
+async function shareCurrentRxBatchLiff() {
+    if (!lastBatchFlexMessage) {
+        showToast('⚠️ ไม่พบข้อมูลการ์ดยาของใบสั่งนี้', 'warning');
+        return;
+    }
+    if (!window.liff || !isLiffReady) {
+        showToast('⚠️ ยังไม่ได้ตั้งค่า LIFF ID กรุณาตั้งค่าในเมนู LINE ก่อน', 'warning');
+        openLineSettingsModal();
+        return;
+    }
+    await sendFlexViaLiff(lastBatchFlexMessage);
+}
+
 async function loadLineConfig() {
     try {
         const res = await fetch('/api/line/config');
@@ -3186,6 +3303,11 @@ async function loadLineConfig() {
             const inputTarget = document.getElementById('inputLineTargetId');
             if (inputTarget) inputTarget.value = data.target_id || '';
 
+            const inputLiff = document.getElementById('inputLineLiffId');
+            if (inputLiff) inputLiff.value = data.liff_id || '';
+
+            updateLiffStatusUI(Boolean(isLiffReady), Boolean(window.liff && isLiffReady && liff.isInClient()));
+
             const expCountEl = document.getElementById('modalLineExpiringCount');
             if (expCountEl) expCountEl.innerText = `${data.expiring_count} รายการ`;
 
@@ -3201,6 +3323,7 @@ async function saveLineConfig(e) {
     e.preventDefault();
     const days = parseInt(document.getElementById('inputLineExpiryDays')?.value || 60);
     const targetId = document.getElementById('inputLineTargetId')?.value || '';
+    const liffId = document.getElementById('inputLineLiffId')?.value || '';
 
     try {
         const res = await fetch('/api/line/config', {
@@ -3208,12 +3331,14 @@ async function saveLineConfig(e) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 expiry_alert_days: days,
-                target_id: targetId
+                target_id: targetId,
+                liff_id: liffId
             })
         });
         const data = await res.json();
         if (data.ok) {
-            showToast('✅ บันทึกการตั้งค่าแจ้งเตือน LINE เรียบร้อยแล้ว', 'success');
+            showToast('✅ บันทึกการตั้งค่า LINE และ LIFF เรียบร้อยแล้ว', 'success');
+            await initLiff();
             loadLineConfig();
             loadDashboardStats();
             loadDrugs();
@@ -3423,6 +3548,7 @@ async function submitStockIn(e) {
     }
 
     try {
+        const usingLiff = isLiffActive();
         const res = await fetch('/api/stock-in', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3434,13 +3560,17 @@ async function submitStockIn(e) {
                 cost_per_unit: costPerUnit,
                 supplier: supplier,
                 received_by: receivedBy,
-                notes: notes
+                notes: notes,
+                via_liff: usingLiff
             })
         });
 
         const data = await res.json();
         if (data.ok) {
             showToast(`✅ ${data.message}`, 'success');
+            if (data.flex_message && usingLiff) {
+                sendFlexViaLiff(data.flex_message);
+            }
             closeStockInModal();
             loadDrugs();
             loadDashboardStats();
@@ -5015,6 +5145,9 @@ async function submitRxBatchDispense() {
             channel: 'WEB_RX_CART'
         };
 
+        const usingLiff = isLiffActive();
+        payload.via_liff = usingLiff;
+
         const res = await fetch('/api/dispense/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -5024,6 +5157,12 @@ async function submitRxBatchDispense() {
 
         if (data.ok) {
             const result = data.result;
+            if (data.flex_message) {
+                lastBatchFlexMessage = data.flex_message;
+                if (usingLiff) {
+                    sendFlexViaLiff(data.flex_message);
+                }
+            }
             // Clear cart
             rxCart = [];
             updateRxCartBadges();
