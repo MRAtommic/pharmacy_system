@@ -192,9 +192,9 @@ def stock_card_view():
     opening_lot = (selected_drug.get("lot_number") or "").strip() if selected_drug else ""
     opening_exp = (selected_drug.get("expiry_date") or "").strip() if selected_drug else ""
     if opening_lot and opening_exp:
-        opening_lot_exp = f"{opening_lot} / {opening_exp}"
+        opening_lot_exp = f'<div style="line-height:1.25;"><div style="font-weight:600;">{opening_lot}</div><div style="font-size:0.85em; color:#475569;">{opening_exp}</div></div>'
     elif opening_lot:
-        opening_lot_exp = opening_lot
+        opening_lot_exp = f'<span style="font-weight:600;">{opening_lot}</span>'
     elif opening_exp:
         opening_lot_exp = opening_exp
     else:
@@ -313,8 +313,19 @@ def export_stock_card_excel():
         opening_val = round(opening_val, 2)
 
     ws.cell(row=r_idx, column=5, value=data["opening_balance"]).alignment = align_center
-    ws.cell(row=r_idx, column=6, value=opening_val).alignment = align_right
-    ws.cell(row=r_idx, column=7, value="-").alignment = align_center
+    opening_lot = (drug.get("lot_number") or "").strip()
+    opening_exp = (drug.get("expiry_date") or "").strip()
+    if opening_lot and opening_exp:
+        opening_lot_exp_val = f"{opening_lot}\n{opening_exp}"
+    elif opening_lot:
+        opening_lot_exp_val = opening_lot
+    elif opening_exp:
+        opening_lot_exp_val = opening_exp
+    else:
+        opening_lot_exp_val = "-"
+    cell_op_lot = ws.cell(row=r_idx, column=7, value=opening_lot_exp_val)
+    cell_op_lot.alignment = align_center
+    cell_op_lot.alignment.wrap_text = True
     ws.cell(row=r_idx, column=8, value=opening_sign).alignment = align_center
     for c in range(1, 9):
         ws.cell(row=r_idx, column=c).border = border_thin

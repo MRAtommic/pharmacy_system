@@ -889,7 +889,7 @@
                     </td>
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
                     <td class="col-price" id="cellOpeningPrice">{{ opening_value_formatted }}</td>
-                    <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp ยอดยกมา">{{ opening_lot_exp | default('-') }}</td>
+                    <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp ยอดยกมา">{{ (opening_lot_exp or '-') | safe }}</td>
                     <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('วราภรณ์') }}</td>
                 </tr>
 
@@ -1082,9 +1082,9 @@
             const drugExp = (d.drug && d.drug.expiry_date) ? d.drug.expiry_date.trim() : '';
             let openingLotExp = '-';
             if (drugLot && drugExp) {
-                openingLotExp = `${escapeHtml(drugLot)} / ${escapeHtml(drugExp)}`;
+                openingLotExp = `<div style="line-height:1.25;"><div style="font-weight:600;">${escapeHtml(drugLot)}</div><div style="font-size:0.85em; color:#475569;">${escapeHtml(drugExp)}</div></div>`;
             } else if (drugLot) {
-                openingLotExp = escapeHtml(drugLot);
+                openingLotExp = `<span style="font-weight:600;">${escapeHtml(drugLot)}</span>`;
             } else if (drugExp) {
                 openingLotExp = escapeHtml(drugExp);
             }
