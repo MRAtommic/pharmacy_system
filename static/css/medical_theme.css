@@ -4791,13 +4791,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: rgba(2, 132, 199, 0.08);
-  color: #0284c7;
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--teal-600);
   font-size: 0.8rem;
   font-weight: 600;
   padding: 0.25rem 0.65rem;
   border-radius: 9999px;
-  border: 1px solid rgba(2, 132, 199, 0.2);
+  border: 1px solid rgba(15, 118, 110, 0.2);
 }
 
 .pagination-page-pill strong {
@@ -4844,8 +4844,8 @@ body {
 }
 
 .pagination-size-select:focus {
-  border-color: var(--brand-500) !important;
-  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+  border-color: var(--teal-600) !important;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15) !important;
 }
 
 .pagination-nav-row {
@@ -4879,11 +4879,11 @@ body {
 }
 
 .page-btn:hover:not(:disabled):not(.active) {
-  background: var(--bg-surface);
-  border-color: var(--brand-500);
-  color: var(--brand-600);
+  background: var(--teal-50);
+  border-color: var(--teal-500);
+  color: var(--teal-700);
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px rgba(15, 118, 110, 0.08);
 }
 
 .page-btn:active:not(:disabled) {
@@ -4891,12 +4891,31 @@ body {
 }
 
 .page-btn.active {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  background: linear-gradient(135deg, var(--teal-600) 0%, var(--teal-700) 100%) !important;
   color: #FFFFFF !important;
-  border-color: #0284c7 !important;
+  border-color: var(--teal-600) !important;
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.32) !important;
   cursor: default;
+}
+
+[data-theme="dark"] .pagination-page-pill {
+  background: rgba(20, 184, 166, 0.15) !important;
+  color: #2DD4BF !important;
+  border-color: rgba(20, 184, 166, 0.3) !important;
+}
+
+[data-theme="dark"] .page-btn:hover:not(:disabled):not(.active) {
+  background: #1e293b !important;
+  border-color: #14B8A6 !important;
+  color: #2DD4BF !important;
+}
+
+[data-theme="dark"] .page-btn.active {
+  background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%) !important;
+  border-color: #14B8A6 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.45) !important;
 }
 
 .page-btn:disabled {
