@@ -2489,6 +2489,38 @@ def system_status():
         "expiry_alert_configured": True
     })
 
+@app.route("/api/system/backup", methods=["POST"])
+@login_required
+def trigger_backup():
+    try:
+        res = database.perform_db_backup(backup_type="manual")
+        if res.get("success"):
+            audit("DATABASE_BACKUP", target_type="DATABASE", target_name=res["filename"], detail="Manual backup triggered by user")
+            return jsonify({"ok": True, "data": res, "message": f"สำรองข้อมูลสำเร็จ ({res['filename']})"})
+        else:
+            return jsonify({"ok": False, "error": res.get("error", "ไม่สามารถสำรองข้อมูลได้")}), 500
+    except Exception as e:
+        logger.error(f"Backup endpoint error: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/system/backups", methods=["GET"])
+@login_required
+def get_backups():
+    try:
+        backups = database.list_db_backups()
+        return jsonify({"ok": True, "backups": backups})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/system/backup/download/<filename>", methods=["GET"])
+@login_required
+def download_backup_file(filename):
+    safe_name = os.path.basename(filename)
+    backup_file = Path("backups") / safe_name
+    if not backup_file.exists() or not safe_name.endswith(".db"):
+        return jsonify({"ok": False, "error": "ไม่พบไฟล์สำรองข้อมูลนี้"}), 404
+    return send_file(str(backup_file), as_attachment=True, download_name=safe_name)
+
 if __name__ == "__main__":
     port = Config.PORT
     print(f"\n=======================================================")

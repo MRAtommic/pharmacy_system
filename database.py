@@ -25,6 +25,8 @@ def get_db():
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    conn.execute("PRAGMA cache_size = -64000")
     return conn
 
 def init_db():
@@ -2341,5 +2343,77 @@ def delete_category(cat_id, fallback_name="ทั่วไป"):
     conn.close()
     return True, f"ลบหมวดหมู่ {old_name} สำเร็จ"
 
+def perform_db_backup(backup_type='auto'):
+    """
+    Safely backup the SQLite database using the online backup API.
+    Does not lock reads/writes and creates a standalone .db copy.
+    """
+    backup_dir = Path("backups")
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now(BANGKOK_TZ).strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"pharmacy_{backup_type}_{timestamp}.db"
+    backup_path = backup_dir / backup_filename
+    
+    try:
+        source_conn = get_db()
+        dest_conn = sqlite3.connect(str(backup_path))
+        with dest_conn:
+            source_conn.backup(dest_conn)
+        dest_conn.close()
+        source_conn.close()
+        
+        # Cleanup old backups (keep last 14)
+        all_backups = sorted(list(backup_dir.glob("pharmacy_*.db")), key=lambda p: p.stat().st_mtime, reverse=True)
+        if len(all_backups) > 14:
+            for old_bk in all_backups[14:]:
+                try:
+                    old_bk.unlink()
+                except Exception:
+                    pass
+                    
+        return {
+            "success": True,
+            "filename": backup_filename,
+            "path": str(backup_path),
+            "size_bytes": backup_path.stat().st_size,
+            "created_at": get_now_str()
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+def list_db_backups():
+    """
+    List all available database backup files with size and creation dates.
+    """
+    backup_dir = Path("backups")
+    if not backup_dir.exists():
+        return []
+    
+    backups = []
+    for f in sorted(backup_dir.glob("pharmacy_*.db"), key=lambda p: p.stat().st_mtime, reverse=True):
+        stat = f.stat()
+        dt_str = datetime.fromtimestamp(stat.st_mtime, BANGKOK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        size_kb = round(stat.st_size / 1024, 1)
+        backups.append({
+            "filename": f.name,
+            "size_kb": size_kb,
+            "created_at": dt_str
+        })
+    return backups
+
 # Initialize on module import
 init_db()
+
+# Auto-backup check on startup (once a day)
+try:
+    today_prefix = datetime.now(BANGKOK_TZ).strftime("pharmacy_auto_%Y%m%d")
+    backup_dir = Path("backups")
+    has_today = any(f.name.startswith(today_prefix) for f in backup_dir.glob("pharmacy_auto_*.db")) if backup_dir.exists() else False
+    if not has_today:
+        perform_db_backup('auto')
+except Exception:
+    pass

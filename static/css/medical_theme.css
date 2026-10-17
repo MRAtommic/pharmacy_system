@@ -1443,6 +1443,54 @@ body {
   min-width: 960px;
 }
 
+/* 📌 Sticky Actions Column - Prevents having to scroll back and forth */
+#view-inventory .clinical-table th:last-child,
+#view-inventory .clinical-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--bg-surface) !important;
+  z-index: 3;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.04);
+}
+
+#view-inventory .clinical-table tbody tr:hover td:last-child {
+  background: var(--bg-subtle, #F8FAFC) !important;
+}
+
+[data-theme="dark"] #view-inventory .clinical-table th:last-child,
+[data-theme="dark"] #view-inventory .clinical-table td:last-child {
+  background: #1e293b !important;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] #view-inventory .clinical-table tbody tr:hover td:last-child {
+  background: #334155 !important;
+}
+
+/* 🗂️ Compact Table View Mode */
+.desktop-table-wrapper.table-compact #view-inventory .clinical-table {
+  min-width: 780px !important;
+}
+
+.desktop-table-wrapper.table-compact .col-thumb {
+  display: none !important;
+}
+
+.desktop-table-wrapper.table-compact .clinical-table th,
+.desktop-table-wrapper.table-compact .clinical-table td {
+  padding: 0.45rem 0.6rem !important;
+  font-size: 0.825rem !important;
+}
+
+.desktop-table-wrapper.table-compact .drug-trade-name {
+  font-size: 0.85rem !important;
+}
+
+.desktop-table-wrapper.table-compact .drug-code-label {
+  font-size: 0.725rem !important;
+  padding: 0.15rem 0.4rem !important;
+}
+
 /* ==========================================================================
    📋 DISPENSING AUDIT LOGS TOOLBAR & TABLE DESIGN SYSTEM
    Professional, Balanced, Responsive Enterprise Healthcare Layout
@@ -4509,31 +4557,33 @@ body {
 /* Floating Rx Cart Dock */
 .floating-rx-cart-bar {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 24px;
+  right: 24px;
   z-index: 999;
-  background-color: #0F172A;
-  color: #ffffff;
-  border-radius: 12px;
-  padding: 0.65rem 1rem;
+  background: linear-gradient(135deg, #0F766E 0%, #115E59 100%) !important;
+  color: #ffffff !important;
+  border-radius: 16px !important;
+  padding: 0.75rem 1.25rem !important;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+  gap: 1.25rem;
+  box-shadow: 0 12px 30px rgba(15, 118, 110, 0.38), 0 4px 10px rgba(0,0,0,0.1) !important;
   cursor: pointer;
-  animation: rxCartSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  border: 1px solid #334155;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  animation: rxCartSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  backdrop-filter: blur(8px);
 }
 
 [data-theme="dark"] .floating-rx-cart-bar {
-  background-color: #1E293B;
-  border-color: #475569;
+  background: linear-gradient(135deg, #115E59 0%, #042F2E 100%) !important;
+  border-color: rgba(45, 212, 191, 0.3) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6) !important;
 }
 
 .floating-rx-cart-bar:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 28px -5px rgba(15, 23, 42, 0.35);
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 16px 36px rgba(15, 118, 110, 0.5) !important;
 }
 
 @keyframes rxCartSlideUp {

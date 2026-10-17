@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=44.0">
+    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=45.0">
 
     <!-- Favicon & App Icons -->
     <link rel="icon" type="image/x-icon" href="{{ base_prefix | default('') }}/static/favicon.ico">
@@ -278,6 +278,10 @@
                                 <i class="fas fa-chevron-down" style="font-size: 0.7rem; color: var(--text-muted); margin-left: 2px;"></i>
                             </button>
                             <div class="dropdown-menu" id="toolsDropdownMenu" style="min-width: 245px; left: 0; right: auto;">
+                                <button type="button" class="dropdown-item" onclick="triggerManualDbBackup(); closeAllDropdowns();">
+                                    <i class="fas fa-database" style="color: #0F766E;"></i>
+                                    <span>สำรองฐานข้อมูลทันที (Backup Now)</span>
+                                </button>
                                 <button type="button" class="dropdown-item" onclick="exportInventoryExcel(); closeAllDropdowns();">
                                     <i class="fas fa-file-excel" style="color: #107C41;"></i>
                                     <span>ส่งออกคลังยา (Excel)</span>
@@ -310,9 +314,21 @@
                                 </button>
                             </div>
                         </div>
+
+                        <!-- 🗂️ Compact View Mode Toggle -->
+                        <button type="button" class="btn btn-outline" id="btnToggleCompactView" onclick="toggleCompactTableView()" title="สลับมุมมองตาราง กะทัดรัด / ละเอียด" style="height: 36px; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 500;">
+                            <i class="fas fa-table-columns" id="compactViewIcon" style="color: var(--teal-600);"></i>
+                            <span id="compactViewText">มุมมองกะทัดรัด</span>
+                        </button>
                     </div>
 
                     <div class="action-group-right" style="display: flex; gap: 0.5rem; align-items: center;">
+                        <!-- 🛒 Quick Prescription Dispense Basket Button -->
+                        <button type="button" class="btn btn-outline" id="btnToolbarRxCart" onclick="openRxCartModal()" title="เปิดใบสั่งยา / ตะกร้าจ่ายยา (Rx Cart)" style="height: 36px; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; border-color: #0D9488; color: #0F766E; background: #F0FDFA;">
+                            <i class="fas fa-clipboard-list" style="color: #0F766E;"></i>
+                            <span>ใบสั่งยา (Rx)</span>
+                            <span class="pill-counter" id="btnRxCartCount" style="background: #0F766E; color: #fff; font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 9999px; min-width: 18px; text-align: center;">0</span>
+                        </button>
                         <button type="button" class="btn btn-soft-emerald" id="btnOpenStockIn" onclick="openStockInModal()" title="รับยาเข้าสต็อก จัดการ Lot/Batch และต้นทุน" style="height: 36px; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600;">
                             <i class="fas fa-dolly"></i> รับยาเข้าคลัง
                         </button>
@@ -2201,6 +2217,6 @@
         window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
         window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=56.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=57.0"></script>
 </body>
 </html>

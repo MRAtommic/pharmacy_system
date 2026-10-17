@@ -5484,6 +5484,68 @@ async function confirmDeleteCategory(catId, catName, drugCount) {
     }
 }
 
+async function triggerManualDbBackup() {
+    showToast('กำลังสำรองข้อมูลฐานข้อมูล...', 'info');
+    try {
+        const res = await fetch('/api/system/backup', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(`💾 สำรองข้อมูลสำเร็จ: ${data.data.filename}`, 'success');
+        } else {
+            showToast(`สำรองข้อมูลไม่สำเร็จ: ${data.error || 'เกิดข้อผิดพลาด'}`, 'error');
+        }
+    } catch (e) {
+        console.error('Backup error:', e);
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+}
+
+function toggleCompactTableView() {
+    const wrapper = document.querySelector('.desktop-table-wrapper');
+    const icon = document.getElementById('compactViewIcon');
+    const text = document.getElementById('compactViewText');
+    if (!wrapper) return;
+    
+    const isCompact = wrapper.classList.toggle('table-compact');
+    localStorage.setItem('pharmacy_compact_table', isCompact ? '1' : '0');
+    
+    if (icon && text) {
+        if (isCompact) {
+            icon.className = 'fas fa-expand';
+            text.textContent = 'มุมมองปกติ';
+            showToast('เปิดใช้งานมุมมองกะทัดรัด (Compact View)', 'info');
+        } else {
+            icon.className = 'fas fa-table-columns';
+            text.textContent = 'มุมมองกะทัดรัด';
+            showToast('เปิดใช้งานมุมมองปกติ', 'info');
+        }
+    }
+}
+
+// Restore saved compact table view preference
+function initCompactTableView() {
+    if (localStorage.getItem('pharmacy_compact_table') === '1') {
+        const wrapper = document.querySelector('.desktop-table-wrapper');
+        const icon = document.getElementById('compactViewIcon');
+        const text = document.getElementById('compactViewText');
+        if (wrapper) wrapper.classList.add('table-compact');
+        if (icon) icon.className = 'fas fa-expand';
+        if (text) text.textContent = 'มุมมองปกติ';
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCompactTableView);
+} else {
+    initCompactTableView();
+}
+
+window.triggerManualDbBackup = triggerManualDbBackup;
+window.toggleCompactTableView = toggleCompactTableView;
+
 
 
 
