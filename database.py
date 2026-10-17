@@ -250,46 +250,8 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_email ON audit_logs(user_email)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at)")
 
-        # Auto-seed initial drugs if database is newly initialized
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM drugs")
-        count = cursor.fetchone()[0]
-        if count == 0:
-            seed_file = Path(__file__).parent / "seed_drugs.json"
-            if seed_file.exists():
-                try:
-                    with open(seed_file, "r", encoding="utf-8") as sf:
-                        seed_data = json.load(sf)
-                        now_str = get_now_str()
-                        for item in seed_data:
-                            cursor.execute("""
-                                INSERT OR IGNORE INTO drugs (
-                                    code, name, generic_name, category, dosage_form, strength,
-                                    stock_qty, unit, min_threshold, price, cost, expiry_date,
-                                    lot_number, location, image_url, qr_payload, instructions, created_at, updated_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?)
-                            """, (
-                                item.get("code"),
-                                item.get("name"),
-                                item.get("generic_name", ""),
-                                item.get("category", "ทั่วไป"),
-                                item.get("dosage_form", "เม็ด (Tablet)"),
-                                item.get("strength", ""),
-                                int(item.get("stock_qty") or 0),
-                                item.get("unit", "เม็ด"),
-                                int(item.get("min_threshold") or 10),
-                                float(item.get("price") or 0.0),
-                                float(item.get("cost") or 0.0),
-                                item.get("expiry_date", ""),
-                                item.get("lot_number", ""),
-                                item.get("location", "ตู้เก็บยาหลัก"),
-                                item.get("qr_payload") or f"PHARM:{item.get('code')}",
-                                item.get("instructions", ""),
-                                now_str,
-                                now_str
-                            ))
-                except Exception as e:
-                    print(f"Error seeding drugs: {e}")
+        # Auto-seeding of sample drugs is disabled so inventory remains clean
+        pass
     conn.close()
 
 # ─────────────────────────────────────────────────────────────
@@ -2298,6 +2260,86 @@ def get_daily_requisition_data(date_str: str = None):
         "receiver_title": "พสอ.",
         "has_records": len(items) > 0
     }
+
+# ─────────────────────────────────────────────────────────────
+# Category Master Management (CRUD)
+# ─────────────────────────────────────────────────────────────
+
+def get_categories():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT c.id, c.name, c.color, COUNT(d.id) as drug_count
+        FROM categories c
+        LEFT JOIN drugs d ON d.category = c.name
+        GROUP BY c.id, c.name, c.color
+        ORDER BY c.id ASC
+    """)
+    cats = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return cats
+
+def add_category(name, color="teal"):
+    name = (name or "").strip()
+    if not name:
+        return False, "ชื่อหมวดหมู่ต้องไม่ว่างเปล่า"
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO categories (name, color) VALUES (?, ?)", (name, color or "teal"))
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+        return True, {"id": new_id, "name": name, "color": color or "teal", "drug_count": 0}
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, "มีหมวดหมู่นี้อยู่ในระบบแล้ว"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+def update_category(cat_id, new_name, color=None):
+    new_name = (new_name or "").strip()
+    if not new_name:
+        return False, "ชื่อหมวดหมู่ต้องไม่ว่างเปล่า"
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, color FROM categories WHERE id = ?", (cat_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False, "ไม่พบหมวดหมู่นี้"
+    old_name = row["name"]
+    target_color = color if color is not None else row["color"]
+    try:
+        cursor.execute("UPDATE categories SET name = ?, color = ? WHERE id = ?", (new_name, target_color, cat_id))
+        if old_name != new_name:
+            cursor.execute("UPDATE drugs SET category = ? WHERE category = ?", (new_name, old_name))
+        conn.commit()
+        conn.close()
+        return True, {"id": cat_id, "name": new_name, "color": target_color}
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False, "ชื่อหมวดหมู่นี้ซ้ำกับที่มีอยู่แล้ว"
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+def delete_category(cat_id, fallback_name="ทั่วไป"):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM categories WHERE id = ?", (cat_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False, "ไม่พบหมวดหมู่นี้"
+    old_name = row["name"]
+    cursor.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
+    # Reassign affected drugs to fallback category
+    cursor.execute("UPDATE drugs SET category = ? WHERE category = ?", (fallback_name, old_name))
+    conn.commit()
+    conn.close()
+    return True, f"ลบหมวดหมู่ {old_name} สำเร็จ"
 
 # Initialize on module import
 init_db()

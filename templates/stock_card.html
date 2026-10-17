@@ -644,9 +644,11 @@
         .col-lot-exp {
             width: 11.5%;
             text-align: center;
-            font-size: 11.5px;
-            white-space: nowrap;
-            padding: 2px 1px !important;
+            font-size: 11px;
+            line-height: 1.25;
+            white-space: normal;
+            word-break: break-word;
+            padding: 2px 2px !important;
         }
 
         .col-sign {
@@ -887,7 +889,7 @@
                     </td>
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
                     <td class="col-price" id="cellOpeningPrice">{{ opening_value_formatted }}</td>
-                    <td class="col-lot-exp">-</td>
+                    <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp ยอดยกมา">{{ opening_lot_exp | default('-') }}</td>
                     <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('วราภรณ์') }}</td>
                 </tr>
 
@@ -1076,6 +1078,17 @@
             const openingBalFormatted = (d.opening_balance != null) ? d.opening_balance.toLocaleString('en-US') : '0';
 
             // 3. Build Opening Balance Row
+            const drugLot = (d.drug && d.drug.lot_number) ? d.drug.lot_number.trim() : '';
+            const drugExp = (d.drug && d.drug.expiry_date) ? d.drug.expiry_date.trim() : '';
+            let openingLotExp = '-';
+            if (drugLot && drugExp) {
+                openingLotExp = `${escapeHtml(drugLot)} / ${escapeHtml(drugExp)}`;
+            } else if (drugLot) {
+                openingLotExp = escapeHtml(drugLot);
+            } else if (drugExp) {
+                openingLotExp = escapeHtml(drugExp);
+            }
+
             let html = `
                 <tr class="row-opening-balance">
                     <td colspan="4" class="col-opening-merged">
@@ -1083,7 +1096,7 @@
                     </td>
                     <td class="col-balance">${openingBalFormatted}</td>
                     <td class="col-price">${openingPriceFormatted}</td>
-                    <td class="col-lot-exp">-</td>
+                    <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp">${openingLotExp}</td>
                     <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">${escapeHtml(currentSign)}</td>
                 </tr>
             `;
@@ -1094,6 +1107,17 @@
                 let particulars = '';
                 let lotExp = '-';
 
+                const lotStr = (tx.lot_number || '').trim();
+                const expStr = (tx.expiry_date || '').trim();
+                let lotExpFormatted = '-';
+                if (lotStr && expStr) {
+                    lotExpFormatted = `<div style="line-height:1.25;"><div style="font-weight:600;">${escapeHtml(lotStr)}</div><div style="font-size:0.85em; color:#475569;">${escapeHtml(expStr)}</div></div>`;
+                } else if (lotStr) {
+                    lotExpFormatted = `<span style="font-weight:600;">${escapeHtml(lotStr)}</span>`;
+                } else if (expStr) {
+                    lotExpFormatted = escapeHtml(expStr);
+                }
+
                 if (tx.type === 'RECEIVE') {
                     const isGpo = (tx.supplier && (tx.supplier.toUpperCase().includes('GPO') || tx.supplier.includes('องค์การ')));
                     const qtyVal = (tx.qty_in != null && tx.qty_in !== '') ? tx.qty_in : '-';
@@ -1102,11 +1126,11 @@
                     } else {
                         particulars = `รับจาก...-..GPO/..<span class="fill-text">${qtyVal}</span>..บริษัท/จ่าย..-..`;
                     }
-                    lotExp = escapeHtml(tx.expiry_date || '-');
+                    lotExp = lotExpFormatted;
                 } else {
                     const qtyVal = (tx.qty_out != null && tx.qty_out !== '') ? tx.qty_out : '-';
                     particulars = `รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">${qtyVal}</span>..`;
-                    lotExp = '-';
+                    lotExp = lotStr ? `<span style="font-weight:600;">${escapeHtml(lotStr)}</span>` : '-';
                 }
 
                 const balNum = (tx.balance != null) ? Number(tx.balance) : 0;

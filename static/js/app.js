@@ -165,8 +165,8 @@ function renderPaginationBar(containerId, targetKey, totalItems) {
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
-    initLiff();
     loadDashboardStats();
+    loadCategories();
     loadDrugs();
     loadDispensingLogs();
     setupEventListeners();
@@ -308,15 +308,27 @@ async function loadDashboardStats() {
             const totalVal = Number(s.total_inventory_value || 0);
             const valEl = document.getElementById('statTotalValue');
             if (valEl) {
-                valEl.innerText = '฿' + totalVal.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                valEl.className = 'kpi-value text-emerald';
+                const formattedVal = '฿' + totalVal.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                valEl.innerText = formattedVal;
+                valEl.title = formattedVal;
+                valEl.className = 'kpi-value text-emerald kpi-value-money';
+                if (formattedVal.length > 13) {
+                    valEl.style.fontSize = '1.02rem';
+                } else if (formattedVal.length > 10) {
+                    valEl.style.fontSize = '1.12rem';
+                } else {
+                    valEl.style.fontSize = '';
+                }
             }
             const valSub = document.getElementById('statTotalValueSub');
             if (valSub) {
                 if (s.total_inventory_cost !== undefined && Number(s.total_inventory_cost) > 0) {
-                    valSub.innerText = `ต้นทุนรวม: ฿${Number(s.total_inventory_cost).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    const costFormatted = `ต้นทุนรวม: ฿${Number(s.total_inventory_cost).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    valSub.innerText = costFormatted;
+                    valSub.title = costFormatted;
                 } else {
                     valSub.innerText = 'ยอดรวมมูลค่าคงคลังทั้งหมด';
+                    valSub.title = 'ยอดรวมมูลค่าคงคลังทั้งหมด';
                 }
             }
 
@@ -532,6 +544,10 @@ function renderDrugsTable(drugs) {
                    </div>`
                 : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
 
+            const lotHtml = d.lot_number
+                ? `<div style="font-size: 0.725rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 3px;" title="เลขล็อต ${escapeHtml(d.lot_number)}"><i class="fas fa-barcode" style="font-size: 0.65rem; margin-right: 3px; color: var(--text-subtle);"></i>Lot: <strong style="color: var(--text-secondary);">${escapeHtml(d.lot_number)}</strong></div>`
+                : '';
+
             const inCart = (typeof isInRxCart === 'function' && isInRxCart(d.id));
 
             return `
@@ -556,6 +572,7 @@ function renderDrugsTable(drugs) {
                     </td>
                     <td>
                         ${expiryHtml}
+                        ${lotHtml}
                     </td>
                     <td>
                         <span class="drug-location-text">${escapeHtml(d.location || '-')}</span>
@@ -637,6 +654,7 @@ function renderDrugsTable(drugs) {
                             ${d.generic_name ? `<div class="mobile-drug-generic">${escapeHtml(d.generic_name)}</div>` : ''}
                             <div class="mobile-card-meta">
                                 ${d.dosage_form ? `<span class="meta-tag"><i class="fas fa-capsules"></i> ${escapeHtml(d.dosage_form)}</span>` : ''}
+                                ${d.lot_number ? `<span class="meta-tag"><i class="fas fa-barcode"></i> Lot: ${escapeHtml(d.lot_number)}</span>` : ''}
                                 ${d.location ? `<span class="meta-tag"><i class="fas fa-location-dot"></i> ${escapeHtml(d.location)}</span>` : ''}
                                 ${d.expiry_date ? `<span class="meta-tag"><i class="far fa-calendar"></i> ${escapeHtml(d.expiry_date)}</span>` : ''}
                                 ${d.price && Number(d.price) > 0 ? `<span class="meta-price">฿${Number(d.price).toFixed(2)}/${escapeHtml(d.unit)}</span>` : ''}
@@ -791,8 +809,11 @@ function openAddDrugModal() {
     if (titleEl) titleEl.innerText = '➕ เพิ่มยาใหม่เข้าคลัง';
     const form = document.getElementById('drugForm');
     if (form) form.reset();
+    renderDrugCategoryInputOptions();
     const formId = document.getElementById('drugFormId');
     if (formId) formId.value = '';
+    const lotInput = document.getElementById('drugLotInput');
+    if (lotInput) lotInput.value = '';
     removeDrugImage(true);
     const modal = document.getElementById('drugModal');
     if (modal) modal.classList.add('active');
@@ -815,6 +836,7 @@ function openEditDrugModal(id) {
     const titleEl = document.getElementById('drugModalTitle');
     if (titleEl) titleEl.innerText = '✏️ แก้ไขข้อมูลยา';
 
+    renderDrugCategoryInputOptions(drug.category || 'ทั่วไป');
     setVal('drugFormId', drug.id);
     setVal('drugCodeInput', drug.code || '');
     setVal('drugNameInput', drug.name || '');
@@ -827,6 +849,7 @@ function openEditDrugModal(id) {
     setVal('drugMinInput', drug.min_threshold || 10);
     setVal('drugPriceInput', drug.price || 0);
     setVal('drugCostInput', drug.cost || 0);
+    setVal('drugLotInput', drug.lot_number || '');
     setVal('drugExpiryInput', drug.expiry_date || '');
     setVal('drugLocationInput', drug.location || '');
     setVal('drugInstructionsInput', drug.instructions || '');
@@ -885,6 +908,7 @@ async function saveDrug(e) {
         min_threshold: parseInt(getVal('drugMinInput', '10')) || 10,
         price: parseFloat(getVal('drugPriceInput', '0')) || 0,
         cost: parseFloat(getVal('drugCostInput', '0')) || 0,
+        lot_number: getVal('drugLotInput'),
         expiry_date: getVal('drugExpiryInput'),
         location: getVal('drugLocationInput'),
         instructions: getVal('drugInstructionsInput')
@@ -945,6 +969,8 @@ async function confirmDeleteDrug(id) {
 let currentDispenseChannel = 'WEB_MANUAL';
 let isDispensing = false;
 let pendingDispensePayload = null;
+let dispenseModalOpenedAt = 0;
+let isCameraScanLocked = false;
 
 function onDispenseQtyChange() {
     if (!selectedDrugForDispense) return;
@@ -1033,13 +1059,23 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
         if (iconEl) iconEl.style.display = 'block';
     }
 
-    // Reset submit button state
+    // Unfocus any element to swallow trailing scanner Enter keystrokes
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+    }
+    dispenseModalOpenedAt = Date.now();
+    isDispensing = false;
+
+    // Safety guard: Temporarily disable submit button for 450ms to prevent ghost clicks or scanner trailing Enters
     const submitBtn = document.getElementById('btnSubmitDispense');
     if (submitBtn) {
-        submitBtn.disabled = false;
+        submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+        setTimeout(() => {
+            const btn = document.getElementById('btnSubmitDispense');
+            if (btn && !isDispensing) btn.disabled = false;
+        }, 450);
     }
-    isDispensing = false;
 
     document.getElementById('dispenseModal').classList.add('active');
 }
@@ -1101,6 +1137,12 @@ function executeDispenseAfterConfirmation() {
 async function submitDispense(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (isDispensing) return;
+
+    // Safety guard: Reject instant submissions within 400ms of opening (blocks scanner trailing Enter & ghost taps)
+    if (Date.now() - dispenseModalOpenedAt < 400) {
+        console.warn('Blocked premature automatic dispense submission');
+        return;
+    }
     if (!selectedDrugForDispense) return;
 
     const drug = selectedDrugForDispense;
@@ -1160,7 +1202,6 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
     showToast(`⏳ กำลังตัดสต็อก ${drug.name} (-${qty} ${drug.unit})...`, 'info');
 
     try {
-        const usingLiff = isLiffActive();
         const res = await fetch('/api/dispense', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1170,8 +1211,7 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
                 channel: channel,
                 dispensed_by: dispenser,
                 patient_name: patient,
-                notes: notes,
-                via_liff: usingLiff
+                notes: notes
             })
         });
         const data = await res.json();
@@ -1180,9 +1220,6 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
             loadDashboardStats();
             loadDispensingLogs();
             showToast(`✅ ${data.message}`, 'success');
-            if (data.flex_message && usingLiff) {
-                sendFlexViaLiff(data.flex_message);
-            }
         } else {
             showToast('⚠️ ไม่สามารถตัดสต็อกได้: ' + (data.error || 'Unknown error'), 'error');
             loadDrugs();
@@ -1303,13 +1340,30 @@ function renderLogsTable(logs) {
                    </div>`
                 : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
 
+            let dtHtml = '<span style="color: var(--text-muted);">-</span>';
+            if (l.created_at) {
+                const parts = l.created_at.trim().split(' ');
+                if (parts.length === 2) {
+                    dtHtml = `
+                        <div style="font-weight: 600; color: var(--text-primary); font-size: 0.82rem; line-height: 1.25; white-space: nowrap;">
+                            <i class="far fa-calendar-alt" style="color: var(--teal-600); font-size: 0.72rem; margin-right: 4px;"></i>${escapeHtml(parts[0])}
+                        </div>
+                        <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap;">
+                            <i class="far fa-clock" style="font-size: 0.68rem; margin-right: 4px;"></i>${escapeHtml(parts[1])}
+                        </div>
+                    `;
+                } else {
+                    dtHtml = `<span style="font-family: var(--font-mono); font-size: 0.8rem; white-space: nowrap;"><i class="far fa-clock" style="color: var(--text-muted); margin-right: 4px;"></i>${escapeHtml(l.created_at)}</span>`;
+                }
+            }
+
             return `
                 <tr>
                     <td class="col-thumb">
                         ${thumbHtml}
                     </td>
                     <td class="col-datetime">
-                        <i class="far fa-clock" style="color: var(--text-muted); margin-right: 6px;"></i>${escapeHtml(l.created_at || '-')}
+                        ${dtHtml}
                     </td>
                     <td class="col-drug">
                         <div style="font-weight: 700; color: var(--text-primary); font-size: 0.925rem; line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
@@ -2242,6 +2296,7 @@ async function toggleTorch() {
 }
 
 async function startScanner() {
+    isCameraScanLocked = false;
     if (html5QrScanner) {
         return;
     }
@@ -2328,8 +2383,14 @@ async function stopScanner() {
 }
 
 async function onScanSuccess(decodedText, decodedResult) {
-    await stopScanner();
-    await handleScannedCode(decodedText);
+    if (isCameraScanLocked) return;
+    isCameraScanLocked = true;
+    try {
+        await stopScanner();
+        await handleScannedCode(decodedText);
+    } finally {
+        setTimeout(() => { isCameraScanLocked = false; }, 1500);
+    }
 }
 
 async function handleScannedCode(rawCode) {
@@ -2401,6 +2462,8 @@ function submitManualBarcode() {
     const input = document.getElementById('manualBarcodeInput');
     if (!input) return;
     const val = input.value.trim();
+    input.value = '';
+    input.blur(); // Swallow trailing scanner keys
     if (!val) {
         showToast('กรุณากรอกรหัสยาหรือบาร์โค้ด', 'warning');
         return;
@@ -2530,6 +2593,12 @@ function setupEventListeners() {
 
     const catFilter = document.getElementById('categoryFilter');
     if (catFilter) catFilter.addEventListener('change', () => {
+        if (catFilter.value === '__manage__') {
+            catFilter.value = currentSelectedCategory || 'all';
+            openCategoryManagerModal();
+            return;
+        }
+        currentSelectedCategory = catFilter.value;
         if (paginationState.drugs) paginationState.drugs.currentPage = 1;
         loadDrugs();
     });
@@ -2735,27 +2804,44 @@ function toggleRowDropdown(drugId, event) {
     const isOpen = menu.classList.contains('open');
     closeAllDropdowns();
     if (!isOpen) {
-        // Smart Dropup: Check distance to bottom of viewport and table wrapper
         const toggleBtn = event.currentTarget;
         const rect = toggleBtn.getBoundingClientRect();
-        const spaceBelowViewport = window.innerHeight - rect.bottom;
 
-        // Check distance to bottom of the table wrapper
-        const tableWrapper = toggleBtn.closest('.table-wrapper') || toggleBtn.closest('.desktop-table-wrapper');
-        let spaceBelowTable = 999;
-        if (tableWrapper) {
-            const tableRect = tableWrapper.getBoundingClientRect();
-            spaceBelowTable = tableRect.bottom - rect.bottom;
+        // Use fixed positioning so the dropdown floats freely over table and cannot be clipped by table-wrapper overflow
+        menu.style.position = 'fixed';
+        menu.style.zIndex = '99999';
+
+        // Measure menu size while temporarily hidden
+        menu.style.visibility = 'hidden';
+        menu.classList.add('open');
+        const menuWidth = menu.offsetWidth || 195;
+        const menuHeight = menu.offsetHeight || 215;
+        menu.style.visibility = '';
+
+        // Horizontal positioning: align right edge of menu with right edge of button
+        let left = rect.right - menuWidth;
+        if (left < 10) left = 10;
+        if (left + menuWidth > window.innerWidth - 10) {
+            left = window.innerWidth - menuWidth - 10;
         }
+        menu.style.setProperty('left', `${left}px`, 'important');
+        menu.style.setProperty('right', 'auto', 'important');
 
-        // If less than 185px below (menu needs ~170px), flip upwards!
-        if (spaceBelowViewport < 185 || spaceBelowTable < 185) {
+        // Vertical positioning: default downwards unless not enough room in viewport
+        const spaceBelowViewport = window.innerHeight - rect.bottom;
+        const spaceAboveViewport = rect.top;
+
+        if (spaceBelowViewport < menuHeight && spaceAboveViewport > spaceBelowViewport) {
+            // Flip upwards only when at the bottom of the viewport AND there is more room above
+            menu.style.setProperty('top', 'auto', 'important');
+            menu.style.setProperty('bottom', `${window.innerHeight - rect.top + 4}px`, 'important');
             menu.classList.add('dropup');
         } else {
+            // Open downwards
+            menu.style.setProperty('top', `${rect.bottom + 4}px`, 'important');
+            menu.style.setProperty('bottom', 'auto', 'important');
             menu.classList.remove('dropup');
         }
-
-        menu.classList.add('open');
     }
 }
 
@@ -2770,19 +2856,35 @@ function toggleToolsDropdown(event) {
     closeAllDropdowns();
     if (!isOpen) {
         menu.classList.add('open');
+        menu.style.setProperty('left', '0', 'important');
+        menu.style.setProperty('right', 'auto', 'important');
     }
 }
 
 function closeAllDropdowns() {
-    document.querySelectorAll('.row-action-dropdown .dropdown-menu.open').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.row-action-dropdown:not(#toolsDropdown) .dropdown-menu.open').forEach(m => {
+        m.classList.remove('open');
+        m.classList.remove('dropup');
+        m.style.removeProperty('position');
+        m.style.removeProperty('top');
+        m.style.removeProperty('bottom');
+        m.style.removeProperty('left');
+        m.style.removeProperty('right');
+        m.style.removeProperty('z-index');
+    });
     const toolsMenu = document.getElementById('toolsDropdownMenu');
-    if (toolsMenu) toolsMenu.classList.remove('open');
+    if (toolsMenu) {
+        toolsMenu.classList.remove('open');
+    }
 }
 
-// Close dropdowns when clicking anywhere outside
+// Close dropdowns when clicking anywhere outside, scrolling, or resizing
 document.addEventListener('click', function() {
     closeAllDropdowns();
 });
+window.addEventListener('scroll', closeAllDropdowns, { passive: true });
+window.addEventListener('resize', closeAllDropdowns, { passive: true });
+document.addEventListener('scroll', closeAllDropdowns, { passive: true, capture: true });
 
 // ─────────────────────────────────────────────────────────────
 // Google Drive & Sheets Connection Settings
@@ -3165,117 +3267,6 @@ function closeLineSettingsModal() {
     if (modal) modal.classList.remove('active');
 }
 
-// ─────────────────────────────────────────────────────────────
-// LINE LIFF SERVICE (Free Unlimited Flex Messaging)
-// ─────────────────────────────────────────────────────────────
-let currentLiffId = null;
-let isLiffReady = false;
-let lastBatchFlexMessage = null;
-
-async function initLiff() {
-    if (!window.liff) return;
-    try {
-        const res = await fetch('/api/line/config');
-        const data = await res.json();
-        if (data.ok && data.liff_id) {
-            currentLiffId = String(data.liff_id).trim();
-            if (currentLiffId) {
-                await liff.init({ liffId: currentLiffId });
-                isLiffReady = true;
-                const inClient = liff.isInClient();
-                console.log(`[LIFF] Initialized successfully. InClient: ${inClient}, LoggedIn: ${liff.isLoggedIn()}`);
-                updateLiffStatusUI(true, inClient);
-                return;
-            }
-        }
-        updateLiffStatusUI(false, false);
-    } catch (err) {
-        console.warn("[LIFF] Initialization error:", err);
-        updateLiffStatusUI(false, false);
-    }
-}
-
-function updateLiffStatusUI(ready, inClient) {
-    const badge = document.getElementById('liffStatusBadge');
-    const linkRow = document.getElementById('liffShareLinkRow');
-    const linkEl = document.getElementById('liffShareLink');
-    if (badge) {
-        if (ready) {
-            if (inClient) {
-                badge.className = 'badge badge-success';
-                badge.innerHTML = '<i class="fas fa-check-circle"></i> เปิดใน LINE (ส่งฟรีอัตโนมัติ)';
-            } else {
-                badge.className = 'badge badge-success';
-                badge.innerHTML = '<i class="fas fa-share-nodes"></i> LIFF พร้อมแชร์ (TargetPicker)';
-            }
-        } else {
-            badge.className = 'badge badge-warning';
-            badge.innerText = 'ยังไม่ได้ตั้งค่า';
-        }
-    }
-    if (linkRow && linkEl && currentLiffId) {
-        linkRow.style.display = 'block';
-        const url = `https://liff.line.me/${currentLiffId}`;
-        linkEl.href = url;
-        linkEl.innerText = url;
-    }
-}
-
-function isLiffActive() {
-    return Boolean(window.liff && isLiffReady && liff.isInClient());
-}
-
-async function sendFlexViaLiff(flexPayload) {
-    if (!window.liff || !isLiffReady || !flexPayload) {
-        return { success: false, reason: 'not_ready' };
-    }
-
-    const message = (flexPayload.type === 'flex') ? flexPayload : {
-        type: 'flex',
-        altText: flexPayload.altText || 'การแจ้งเตือนจากระบบคลังยา',
-        contents: flexPayload.contents || flexPayload
-    };
-
-    // 1. If inside LINE client, send directly to current chat (free 100%!)
-    if (liff.isInClient()) {
-        try {
-            await liff.sendMessages([message]);
-            showToast('🚀 ส่งการ์ดแจ้งเตือนเข้า LINE ฟรีเรียบร้อย (ไม่เสียโควต้า)', 'success');
-            return { success: true, method: 'sendMessages' };
-        } catch (err) {
-            console.warn("[LIFF] sendMessages failed:", err);
-        }
-    }
-
-    // 2. If in browser or shareTargetPicker available
-    if (liff.isApiAvailable && liff.isApiAvailable('shareTargetPicker')) {
-        try {
-            const res = await liff.shareTargetPicker([message]);
-            if (res) {
-                showToast('🚀 ส่งการ์ดเข้ากลุ่ม/เพื่อน LINE สำเร็จ (ฟรีไม่เสียโควต้า)', 'success');
-                return { success: true, method: 'shareTargetPicker' };
-            }
-        } catch (err) {
-            console.warn("[LIFF] shareTargetPicker failed:", err);
-        }
-    }
-
-    return { success: false, reason: 'unsupported_or_cancelled' };
-}
-
-async function shareCurrentRxBatchLiff() {
-    if (!lastBatchFlexMessage) {
-        showToast('⚠️ ไม่พบข้อมูลการ์ดยาของใบสั่งนี้', 'warning');
-        return;
-    }
-    if (!window.liff || !isLiffReady) {
-        showToast('⚠️ ยังไม่ได้ตั้งค่า LIFF ID กรุณาตั้งค่าในเมนู LINE ก่อน', 'warning');
-        openLineSettingsModal();
-        return;
-    }
-    await sendFlexViaLiff(lastBatchFlexMessage);
-}
-
 async function loadLineConfig() {
     try {
         const res = await fetch('/api/line/config');
@@ -3303,11 +3294,6 @@ async function loadLineConfig() {
             const inputTarget = document.getElementById('inputLineTargetId');
             if (inputTarget) inputTarget.value = data.target_id || '';
 
-            const inputLiff = document.getElementById('inputLineLiffId');
-            if (inputLiff) inputLiff.value = data.liff_id || '';
-
-            updateLiffStatusUI(Boolean(isLiffReady), Boolean(window.liff && isLiffReady && liff.isInClient()));
-
             const expCountEl = document.getElementById('modalLineExpiringCount');
             if (expCountEl) expCountEl.innerText = `${data.expiring_count} รายการ`;
 
@@ -3323,7 +3309,6 @@ async function saveLineConfig(e) {
     e.preventDefault();
     const days = parseInt(document.getElementById('inputLineExpiryDays')?.value || 60);
     const targetId = document.getElementById('inputLineTargetId')?.value || '';
-    const liffId = document.getElementById('inputLineLiffId')?.value || '';
 
     try {
         const res = await fetch('/api/line/config', {
@@ -3331,14 +3316,12 @@ async function saveLineConfig(e) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 expiry_alert_days: days,
-                target_id: targetId,
-                liff_id: liffId
+                target_id: targetId
             })
         });
         const data = await res.json();
         if (data.ok) {
-            showToast('✅ บันทึกการตั้งค่า LINE และ LIFF เรียบร้อยแล้ว', 'success');
-            await initLiff();
+            showToast('✅ บันทึกการตั้งค่าแจ้งเตือน LINE เรียบร้อยแล้ว', 'success');
             loadLineConfig();
             loadDashboardStats();
             loadDrugs();
@@ -3548,7 +3531,6 @@ async function submitStockIn(e) {
     }
 
     try {
-        const usingLiff = isLiffActive();
         const res = await fetch('/api/stock-in', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3560,17 +3542,13 @@ async function submitStockIn(e) {
                 cost_per_unit: costPerUnit,
                 supplier: supplier,
                 received_by: receivedBy,
-                notes: notes,
-                via_liff: usingLiff
+                notes: notes
             })
         });
 
         const data = await res.json();
         if (data.ok) {
             showToast(`✅ ${data.message}`, 'success');
-            if (data.flex_message && usingLiff) {
-                sendFlexViaLiff(data.flex_message);
-            }
             closeStockInModal();
             loadDrugs();
             loadDashboardStats();
@@ -3601,18 +3579,12 @@ function setStockInSupplierType(type) {
     const btnCompany = document.getElementById('btnSupplierTypeCompany');
     const companyWrap = document.getElementById('companySelectWrapper');
     const supplierInput = document.getElementById('stockInSupplierInput');
-    const hint = document.getElementById('stockInDocHint');
 
     if (type === 'GPO') {
         btnGPO?.classList.add('active');
         btnCompany?.classList.remove('active');
         if (companyWrap) companyWrap.style.display = 'none';
         if (supplierInput) supplierInput.value = 'องค์การเภสัชกรรม (GPO)';
-        if (hint) {
-            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "GPO"';
-            hint.style.background = 'rgba(14, 165, 233, 0.15)';
-            hint.style.color = '#0284C7';
-        }
     } else {
         btnCompany?.classList.add('active');
         btnGPO?.classList.remove('active');
@@ -3625,11 +3597,6 @@ function setStockInSupplierType(type) {
         } else {
             if (customInp) customInp.style.display = 'none';
             if (supplierInput) supplierInput.value = sel?.value || 'บริษัท';
-        }
-        if (hint) {
-            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "บริษัท"';
-            hint.style.background = 'rgba(16, 185, 129, 0.15)';
-            hint.style.color = '#059669';
         }
     }
 }
@@ -3739,13 +3706,30 @@ function renderStockInTable(logs) {
                     ? `<span class="badge" style="background: rgba(14, 165, 233, 0.12); color: #0284C7; font-size: 0.75rem;"><i class="fas fa-building-columns" style="font-size: 0.65rem;"></i> GPO</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier)}</span>`
                     : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.75rem;"><i class="fas fa-industry" style="font-size: 0.65rem;"></i> บริษัท</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier || 'บริษัท')}</span>`;
 
+                let inDtHtml = '<span style="color: var(--text-muted);">-</span>';
+                if (l.created_at) {
+                    const parts = l.created_at.trim().split(' ');
+                    if (parts.length === 2) {
+                        inDtHtml = `
+                            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.82rem; line-height: 1.25; white-space: nowrap;">
+                                <i class="far fa-calendar-alt" style="color: var(--emerald-600); font-size: 0.72rem; margin-right: 4px;"></i>${escapeHtml(parts[0])}
+                            </div>
+                            <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap;">
+                                <i class="far fa-clock" style="font-size: 0.68rem; margin-right: 4px;"></i>${escapeHtml(parts[1])}
+                            </div>
+                        `;
+                    } else {
+                        inDtHtml = `<span style="font-family: var(--font-mono); font-size: 0.8rem; white-space: nowrap;"><i class="far fa-clock" style="color: var(--text-muted); margin-right: 4px;"></i>${escapeHtml(l.created_at)}</span>`;
+                    }
+                }
+
                 return `
                     <tr style="${l.is_voided ? 'background: rgba(239, 68, 68, 0.03);' : ''}">
                         <td class="col-thumb">
                             ${thumbHtml}
                         </td>
                         <td class="col-datetime">
-                            <i class="far fa-clock" style="color: var(--text-muted); margin-right: 6px;"></i>${escapeHtml(l.created_at || '-')}
+                            ${inDtHtml}
                         </td>
                         <td>
                             <div style="font-weight: 700; color: var(--text-primary); font-size: 0.925rem; line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
@@ -3928,18 +3912,12 @@ function setEditSupplierType(type) {
     const btnCompany = document.getElementById('btnEditSupplierTypeCompany');
     const companyWrap = document.getElementById('editCompanySelectWrapper');
     const supplierInput = document.getElementById('editStockInSupplier');
-    const hint = document.getElementById('editStockInDocHint');
 
     if (type === 'GPO') {
         btnGPO?.classList.add('active');
         btnCompany?.classList.remove('active');
         if (companyWrap) companyWrap.style.display = 'none';
         if (supplierInput) supplierInput.value = 'องค์การเภสัชกรรม (GPO)';
-        if (hint) {
-            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "GPO"';
-            hint.style.background = 'rgba(14, 165, 233, 0.15)';
-            hint.style.color = '#0284C7';
-        }
     } else {
         btnCompany?.classList.add('active');
         btnGPO?.classList.remove('active');
@@ -3952,11 +3930,6 @@ function setEditSupplierType(type) {
         } else {
             if (customInp) customInp.style.display = 'none';
             if (supplierInput) supplierInput.value = sel?.value || 'บริษัท';
-        }
-        if (hint) {
-            hint.innerHTML = '📝 เอกสาร Stock Card: ลงช่อง "บริษัท"';
-            hint.style.background = 'rgba(16, 185, 129, 0.15)';
-            hint.style.color = '#059669';
         }
     }
 }
@@ -4272,13 +4245,34 @@ function renderAnalyticsCharts(analytics) {
     // 1. Valuation KPIs
     const val = analytics.valuation || {};
     const retailValEl = document.getElementById('analyticsRetailVal');
-    if (retailValEl) retailValEl.innerText = `฿${(val.retail_value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (retailValEl) {
+        const retTxt = `฿${(val.retail_value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        retailValEl.innerText = retTxt;
+        retailValEl.title = retTxt;
+        retailValEl.className = 'kpi-value text-blue kpi-value-money';
+        if (retTxt.length > 13) retailValEl.style.fontSize = '1.02rem';
+        else if (retTxt.length > 10) retailValEl.style.fontSize = '1.12rem';
+    }
 
     const costValEl = document.getElementById('analyticsCostVal');
-    if (costValEl) costValEl.innerText = `฿${(val.cost_value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (costValEl) {
+        const costTxt = `฿${(val.cost_value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        costValEl.innerText = costTxt;
+        costValEl.title = costTxt;
+        costValEl.className = 'kpi-value text-emerald kpi-value-money';
+        if (costTxt.length > 13) costValEl.style.fontSize = '1.02rem';
+        else if (costTxt.length > 10) costValEl.style.fontSize = '1.12rem';
+    }
 
     const marginValEl = document.getElementById('analyticsMarginVal');
-    if (marginValEl) marginValEl.innerText = `฿${(val.potential_margin || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (marginValEl) {
+        const marginTxt = `฿${(val.potential_margin || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        marginValEl.innerText = marginTxt;
+        marginValEl.title = marginTxt;
+        marginValEl.className = 'kpi-value text-indigo kpi-value-money';
+        if (marginTxt.length > 13) marginValEl.style.fontSize = '1.02rem';
+        else if (marginTxt.length > 10) marginValEl.style.fontSize = '1.12rem';
+    }
 
     const marginPercentEl = document.getElementById('analyticsMarginPercent');
     if (marginPercentEl) {
@@ -5145,9 +5139,6 @@ async function submitRxBatchDispense() {
             channel: 'WEB_RX_CART'
         };
 
-        const usingLiff = isLiffActive();
-        payload.via_liff = usingLiff;
-
         const res = await fetch('/api/dispense/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -5157,12 +5148,6 @@ async function submitRxBatchDispense() {
 
         if (data.ok) {
             const result = data.result;
-            if (data.flex_message) {
-                lastBatchFlexMessage = data.flex_message;
-                if (usingLiff) {
-                    sendFlexViaLiff(data.flex_message);
-                }
-            }
             // Clear cart
             rxCart = [];
             updateRxCartBadges();
@@ -5221,6 +5206,284 @@ function closeRxBatchSuccessModal() {
         modal.classList.remove('active');
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+// 🏷️ DRUG CATEGORY MANAGEMENT SYSTEM (CRUD)
+// ─────────────────────────────────────────────────────────────
+
+let currentCategories = [];
+let currentSelectedCategory = 'all';
+let editingCategoryId = null;
+
+async function loadCategories() {
+    try {
+        const res = await fetch('/api/categories');
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.categories)) {
+            currentCategories = data.categories;
+            renderCategoryFilterOptions();
+            renderDrugCategoryInputOptions();
+            renderCategoryManagerList();
+        }
+    } catch (e) {
+        console.error('Failed to load categories:', e);
+    }
+}
+
+function renderCategoryFilterOptions() {
+    const filterSelect = document.getElementById('categoryFilter');
+    if (!filterSelect) return;
+    
+    const currentVal = currentSelectedCategory || filterSelect.value || 'all';
+    
+    let html = '<option value="all">ทุกหมวดหมู่ยา</option>';
+    currentCategories.forEach(cat => {
+        html += `<option value="${escapeHtml(cat.name)}">${escapeHtml(cat.name)}</option>`;
+    });
+    html += '<option value="__manage__">⚙️ + จัดการหมวดหมู่...</option>';
+    
+    filterSelect.innerHTML = html;
+    
+    // Restore previous selection if valid
+    const hasVal = Array.from(filterSelect.options).some(opt => opt.value === currentVal);
+    if (hasVal && currentVal !== '__manage__') {
+        filterSelect.value = currentVal;
+    } else {
+        filterSelect.value = 'all';
+        currentSelectedCategory = 'all';
+    }
+}
+
+function renderDrugCategoryInputOptions(selectedCategory = null) {
+    const catSelect = document.getElementById('drugCategoryInput');
+    if (!catSelect) return;
+    
+    const currentVal = selectedCategory || catSelect.value || 'ทั่วไป';
+    let found = false;
+    
+    let html = '';
+    currentCategories.forEach(cat => {
+        const isSel = (cat.name === currentVal);
+        if (isSel) found = true;
+        html += `<option value="${escapeHtml(cat.name)}"${isSel ? ' selected' : ''}>${escapeHtml(cat.name)}</option>`;
+    });
+    
+    // If the drug had a category not in currentCategories, preserve it as an option
+    if (currentVal && !found && currentVal !== '__manage__') {
+        html += `<option value="${escapeHtml(currentVal)}" selected>${escapeHtml(currentVal)} (เดิม)</option>`;
+    }
+    
+    catSelect.innerHTML = html;
+}
+
+function openCategoryManagerModal() {
+    editingCategoryId = null;
+    const modal = document.getElementById('categoryManagerModal');
+    if (!modal) return;
+    modal.classList.add('active');
+    
+    const nameInput = document.getElementById('newCategoryNameInput');
+    if (nameInput) {
+        nameInput.value = '';
+        setTimeout(() => nameInput.focus(), 100);
+    }
+    renderCategoryManagerList();
+}
+
+function closeCategoryManagerModal() {
+    editingCategoryId = null;
+    const modal = document.getElementById('categoryManagerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function renderCategoryManagerList() {
+    const container = document.getElementById('categoryManagerList');
+    const countBadge = document.getElementById('catManagerCount');
+    if (!container) return;
+    
+    if (countBadge) {
+        countBadge.textContent = currentCategories.length;
+    }
+    
+    if (currentCategories.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0; font-size: 0.85rem;">
+                <i class="fas fa-tags" style="font-size: 1.5rem; color: var(--text-subtle); display: block; margin-bottom: 0.4rem;"></i>
+                ยังไม่มีหมวดหมู่ยา กรุณาเพิ่มหมวดหมู่แรกด้านบน
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = currentCategories.map(cat => {
+        const isEditing = (editingCategoryId === cat.id);
+        const drugCount = cat.drug_count || 0;
+        const color = cat.color || 'teal';
+        
+        if (isEditing) {
+            return `
+                <div class="cat-item-row" style="background: var(--bg-subtle); border-color: var(--teal-500);">
+                    <form class="cat-edit-form" onsubmit="event.preventDefault(); saveEditCategoryInline(${cat.id});">
+                        <select id="editCatColor_${cat.id}" class="form-select" style="width: 100px; height: 32px; padding: 0.2rem 0.5rem; font-size: 0.78rem; flex-shrink: 0;">
+                            <option value="teal"${color === 'teal' ? ' selected' : ''}>เขียวอมฟ้า</option>
+                            <option value="emerald"${color === 'emerald' ? ' selected' : ''}>เขียวสด</option>
+                            <option value="blue"${color === 'blue' ? ' selected' : ''}>น้ำเงิน</option>
+                            <option value="purple"${color === 'purple' ? ' selected' : ''}>ม่วง</option>
+                            <option value="amber"${color === 'amber' ? ' selected' : ''}>ส้มอำพัน</option>
+                            <option value="rose"${color === 'rose' ? ' selected' : ''}>แดงกุหลาบ</option>
+                            <option value="cyan"${color === 'cyan' ? ' selected' : ''}>ฟ้าสดใส</option>
+                            <option value="indigo"${color === 'indigo' ? ' selected' : ''}>คราม</option>
+                            <option value="slate"${color === 'slate' ? ' selected' : ''}>เทา</option>
+                        </select>
+                        <input type="text" id="editCatName_${cat.id}" class="form-input" value="${escapeHtml(cat.name)}" style="height: 32px; font-size: 0.82rem; padding: 0.2rem 0.6rem; flex: 1; min-width: 120px;" required>
+                        <div class="cat-actions">
+                            <button type="submit" class="cat-action-btn" title="บันทึก" style="color: var(--teal-600); border-color: var(--teal-500);">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button type="button" class="cat-action-btn" onclick="cancelEditCategoryInline()" title="ยกเลิก">
+                                <i class="fas fa-xmark"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+        }
+        
+        return `
+            <div class="cat-item-row">
+                <div class="cat-item-main">
+                    <span class="cat-color-dot cat-dot-${escapeHtml(color)}"></span>
+                    <span class="cat-name-label" title="${escapeHtml(cat.name)}">${escapeHtml(cat.name)}</span>
+                    <span class="cat-drug-badge" title="มียาในหมวดนี้ ${drugCount} รายการ">
+                        <i class="fas fa-pills" style="font-size: 0.65rem; margin-right: 3px;"></i>${drugCount} ยา
+                    </span>
+                </div>
+                <div class="cat-actions">
+                    <button type="button" class="cat-action-btn" onclick="startEditCategoryInline(${cat.id})" title="แก้ไขชื่อ/สีหมวดหมู่">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button type="button" class="cat-action-btn cat-btn-delete" onclick="confirmDeleteCategory(${cat.id}, '${escapeHtml(cat.name).replace(/'/g, "\\'")}', ${drugCount})" title="ลบหมวดหมู่นี้">
+                        <i class="fas fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function submitAddCategory() {
+    const nameInput = document.getElementById('newCategoryNameInput');
+    const colorSelect = document.getElementById('newCategoryColorSelect');
+    if (!nameInput) return;
+    
+    const name = nameInput.value.trim();
+    const color = colorSelect ? colorSelect.value : 'teal';
+    
+    if (!name) {
+        showToast('กรุณากรอกชื่อหมวดหมู่ที่ต้องการเพิ่ม', 'warning');
+        nameInput.focus();
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, color })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            nameInput.value = '';
+            showToast(`เพิ่มหมวดหมู่ "${name}" เรียบร้อยแล้ว`, 'success');
+            await loadCategories();
+            loadDrugs();
+        } else {
+            showToast(data.error || 'ไม่สามารถเพิ่มหมวดหมู่ได้', 'error');
+        }
+    } catch (e) {
+        console.error('Add category error:', e);
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย', 'error');
+    }
+}
+
+function startEditCategoryInline(catId) {
+    editingCategoryId = catId;
+    renderCategoryManagerList();
+    setTimeout(() => {
+        const input = document.getElementById(`editCatName_${catId}`);
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }, 50);
+}
+
+function cancelEditCategoryInline() {
+    editingCategoryId = null;
+    renderCategoryManagerList();
+}
+
+async function saveEditCategoryInline(catId) {
+    const nameInput = document.getElementById(`editCatName_${catId}`);
+    const colorSelect = document.getElementById(`editCatColor_${catId}`);
+    if (!nameInput) return;
+    
+    const name = nameInput.value.trim();
+    const color = colorSelect ? colorSelect.value : 'teal';
+    
+    if (!name) {
+        showToast('ชื่อหมวดหมู่ต้องไม่ว่างเปล่า', 'warning');
+        nameInput.focus();
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/categories/${catId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, color })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            editingCategoryId = null;
+            showToast(`แก้ไขหมวดหมู่เป็น "${name}" เรียบร้อยแล้ว`, 'success');
+            await loadCategories();
+            loadDrugs();
+        } else {
+            showToast(data.error || 'ไม่สามารถแก้ไขหมวดหมู่ได้', 'error');
+        }
+    } catch (e) {
+        console.error('Edit category error:', e);
+        showToast('เกิดข้อผิดพลาดในการบันทึกการแก้ไข', 'error');
+    }
+}
+
+async function confirmDeleteCategory(catId, catName, drugCount) {
+    let confirmMsg = `ต้องการลบหมวดหมู่ "${catName}" ใช่หรือไม่?`;
+    if (drugCount > 0) {
+        confirmMsg = `หมวดหมู่ "${catName}" มียาอยู่ ${drugCount} รายการ!\n\nหากลบ ระบบจะย้ายยาทั้ง ${drugCount} รายการไปอยู่หมวดหมู่ "ทั่วไป" อัตโนมัติ เพื่อป้องกันข้อมูลสูญหาย\n\nต้องการยืนยันการลบหรือไม่?`;
+    }
+    
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/categories/${catId}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(`ลบหมวดหมู่ "${catName}" สำเร็จแล้ว`, 'success');
+            await loadCategories();
+            loadDrugs();
+        } else {
+            showToast(data.error || 'ไม่สามารถลบหมวดหมู่ได้', 'error');
+        }
+    } catch (e) {
+        console.error('Delete category error:', e);
+        showToast('เกิดข้อผิดพลาดในการลบหมวดหมู่', 'error');
+    }
+}
+
 
 
 

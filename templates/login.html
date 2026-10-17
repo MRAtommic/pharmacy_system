@@ -11,6 +11,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
+    <!-- Favicon & App Icons -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/img/app_icon_192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/img/app_icon_512.png">
+    <link rel="shortcut icon" href="/static/favicon.ico">
+
+    <!-- PWA & Mobile App Support -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/static/img/app_icon_192.png">
+    <meta name="theme-color" content="#0F766E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PharmaCore">
+
     <style>
         *, *::before, *::after {
             box-sizing: border-box;
@@ -322,40 +337,7 @@
     </div>
 </div>
 
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
-    // Auto-login if opened inside LINE LIFF
-    const liffId = "{{ liff_id }}";
-    if (window.liff && liffId) {
-        liff.init({ liffId }).then(() => {
-            if (liff.isInClient() && liff.isLoggedIn()) {
-                const card = document.querySelector('.login-card');
-                if (card) {
-                    const notice = document.createElement('div');
-                    notice.style.cssText = "margin-bottom: 1rem; padding: 0.75rem; background: rgba(6,199,85,0.08); border: 1px solid #06C755; border-radius: 8px; font-size: 0.84rem; text-align: center; color: #059669; font-weight: 600;";
-                    notice.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังเข้าสู่ระบบอัตโนมัติด้วยบัญชี LINE...';
-                    card.prepend(notice);
-                }
-
-                liff.getProfile().then(profile => {
-                    fetch('/api/auth/liff-login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            userId: profile.userId,
-                            displayName: profile.displayName,
-                            pictureUrl: profile.pictureUrl
-                        })
-                    }).then(r => r.json()).then(resData => {
-                        if (resData.ok) {
-                            window.location.href = resData.redirect || '/';
-                        }
-                    }).catch(e => console.warn('LIFF login fetch error:', e));
-                }).catch(err => console.warn('LIFF profile error:', err));
-            }
-        }).catch(err => console.warn('LIFF init error:', err));
-    }
-
     document.getElementById('btnGoogleLogin').addEventListener('click', function() {
         this.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="color:#0F766E; font-size:1.05rem;"></i><span>กำลังเชื่อมต่อไปยัง Google...</span>';
         this.style.opacity = '0.85';
@@ -393,6 +375,11 @@
             errEl.style.display = 'block';
             btn.disabled = false;
             btn.innerHTML = 'เข้าสู่ระบบ';
+        });
+    }
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
         });
     }
 </script>

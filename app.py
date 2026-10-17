@@ -154,6 +154,18 @@ def stock_card_view():
 
     for tx in transactions:
         tx["date_short"] = format_thai_date_short(tx["created_at"])
+        lot = (tx.get("lot_number") or "").strip()
+        exp = (tx.get("expiry_date") or "").strip()
+
+        if lot and exp:
+            lot_exp_display = f'<div style="line-height:1.25;"><div style="font-weight:600;">{lot}</div><div style="font-size:0.85em; color:#475569;">{exp}</div></div>'
+        elif lot:
+            lot_exp_display = f'<span style="font-weight:600;">{lot}</span>'
+        elif exp:
+            lot_exp_display = exp
+        else:
+            lot_exp_display = "-"
+
         if tx["type"] == "RECEIVE":
             is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
             qty_in = tx.get("qty_in") or tx.get("quantity") or "-"
@@ -161,12 +173,11 @@ def stock_card_view():
                 tx["particulars_html"] = f'รับจาก..<span class="fill-text">{qty_in}</span>..GPO/..-..บริษัท/จ่าย..-..'
             else:
                 tx["particulars_html"] = f'รับจาก...-..GPO/..<span class="fill-text">{qty_in}</span>..บริษัท/จ่าย..-..'
-            exp = (tx.get("expiry_date") or "").strip()
-            tx["lot_exp_html"] = exp if exp else "-"
+            tx["lot_exp_html"] = lot_exp_display
         else:
             qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
             tx["particulars_html"] = f'รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{qty_out}</span>..'
-            tx["lot_exp_html"] = '-'
+            tx["lot_exp_html"] = lot_exp_display if lot else "-"
 
         if tx.get("total_price"):
             tx["total_price_formatted"] = f"{round(tx['total_price']):,}"
@@ -178,6 +189,17 @@ def stock_card_view():
     empty_rows_count = max(0, 24 - used_rows)
     opening_value_formatted = card_data.get("opening_value_formatted", "0") if card_data else "0"
 
+    opening_lot = (selected_drug.get("lot_number") or "").strip() if selected_drug else ""
+    opening_exp = (selected_drug.get("expiry_date") or "").strip() if selected_drug else ""
+    if opening_lot and opening_exp:
+        opening_lot_exp = f"{opening_lot} / {opening_exp}"
+    elif opening_lot:
+        opening_lot_exp = opening_lot
+    elif opening_exp:
+        opening_lot_exp = opening_exp
+    else:
+        opening_lot_exp = "-"
+
     return render_template(
         "stock_card.html",
         drugs=drugs,
@@ -187,6 +209,7 @@ def stock_card_view():
         opening_date_short=opening_date_short,
         opening_balance=opening_balance,
         opening_value_formatted=opening_value_formatted,
+        opening_lot_exp=opening_lot_exp,
         transactions=transactions,
         empty_rows_count=empty_rows_count,
         packaging=format_packaging_size(selected_drug),
@@ -326,8 +349,17 @@ def export_stock_card_excel():
         ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["type"] == "DISPENSE" else "-").alignment = align_center
         ws.cell(row=r_idx, column=5, value=tx["balance"]).alignment = align_center
         ws.cell(row=r_idx, column=6, value=bal_val).alignment = align_right
-        lot_exp = (tx.get('expiry_date') or '').strip()
-        ws.cell(row=r_idx, column=7, value=lot_exp or "-").alignment = align_center
+        lot = (tx.get("lot_number") or "").strip()
+        exp = (tx.get("expiry_date") or "").strip()
+        if lot and exp:
+            lot_exp = f"{lot}\n{exp}"
+        elif lot:
+            lot_exp = lot
+        elif exp:
+            lot_exp = exp
+        else:
+            lot_exp = "-"
+        ws.cell(row=r_idx, column=7, value=lot_exp).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         ws.cell(row=r_idx, column=8, value="").alignment = align_center
 
         for c in range(1, 9):
@@ -573,26 +605,7 @@ def login_page():
         audit('LOGIN', 'AUTH', 'passcode', 'Admin', 'เข้าสู่ระบบด้วย Passcode')
         return redirect(next_url)
     error = request.args.get('error', '')
-    liff_id = database.get_app_setting("line_liff_id") or Config.LINE_LIFF_ID or ""
-    return render_template("login.html", error=error, base_url=Config.BASE_URL, liff_id=liff_id)
-
-@app.route("/api/auth/liff-login", methods=["POST"])
-def liff_login():
-    data = request.get_json(silent=True) or {}
-    user_id = (data.get("userId") or "").strip()
-    display_name = (data.get("displayName") or "LINE User").strip()
-    picture_url = (data.get("pictureUrl") or "/static/uploads/drugs/app_icon_192.png").strip()
-
-    if not user_id:
-        return jsonify({"ok": False, "error": "Missing LINE user ID"}), 400
-
-    session["user_email"] = f"{user_id}@line.user"
-    session["user_name"] = display_name
-    session["user_picture"] = picture_url
-    session["line_user_id"] = user_id
-    session.permanent = True
-    audit("LOGIN", "AUTH", user_id, display_name, "เข้าสู่ระบบอัตโนมัติผ่าน LINE LIFF")
-    return jsonify({"ok": True, "redirect": "/"})
+    return render_template("login.html", error=error, base_url=Config.BASE_URL)
 
 @app.route("/api/auth/passcode", methods=["POST"])
 def passcode_login():
@@ -614,6 +627,10 @@ def logout():
     session.clear()
     return redirect('/login')
 
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(str(Path(__file__).parent / "static"), "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
 @app.route("/manifest.json")
 def manifest():
@@ -733,29 +750,19 @@ def create_drug():
     audit('ADD_DRUG', 'drug', new_drug.get('id',''), new_drug.get('name',''),
           f"รหัส: {new_drug.get('code','')} | หมวด: {new_drug.get('category','')} | สต็อก: {new_drug.get('stock_qty','')} {new_drug.get('unit','')}")
 
+    import threading
+    def _bg_notify_new_drug(d):
+        try:
+            from line_service import line_bot
+            line_bot.send_new_drug_notification(d)
+        except Exception as err:
+            logger.error(f"Error sending LINE new drug notification: {err}")
     d_notify = dict(new_drug)
     d_notify['user_email'] = actor_email
     d_notify['user_name'] = actor_name
+    threading.Thread(target=_bg_notify_new_drug, args=(d_notify,), daemon=True).start()
 
-    from line_service import line_bot
-    flex_payload = None
-    try:
-        flex_payload = line_bot.get_new_drug_flex(d_notify)
-    except Exception as flex_err:
-        logger.error(f"Error generating new drug flex payload: {flex_err}")
-
-    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
-    if not via_liff:
-        import threading
-        def _bg_notify_new_drug(d):
-            try:
-                from line_service import line_bot
-                line_bot.send_new_drug_notification(d)
-            except Exception as err:
-                logger.error(f"Error sending LINE new drug notification: {err}")
-        threading.Thread(target=_bg_notify_new_drug, args=(d_notify,), daemon=True).start()
-
-    return jsonify({"ok": True, "drug": new_drug, "flex_message": flex_payload, "message": "เพิ่มข้อมูลยาในคลังเรียบร้อยแล้ว"})
+    return jsonify({"ok": True, "drug": new_drug, "message": "เพิ่มข้อมูลยาในคลังเรียบร้อยแล้ว"})
 
 @app.route("/api/drugs/<int:drug_id>", methods=["PUT"])
 @login_required
@@ -786,6 +793,50 @@ def remove_drug(drug_id):
     audit('DELETE_DRUG', 'drug', drug_id, drug_name, 'ลบรายการยาออกจากคลัง')
     trigger_bg_sheet_sync()
     return jsonify({"ok": True, "message": "ลบยาออกจากคลังเรียบร้อยแล้ว"})
+
+# ─────────────────────────────────────────────────────────────
+# Category Master Management API (CRUD)
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/api/categories", methods=["GET"])
+def api_get_categories():
+    categories = database.get_categories()
+    return jsonify({"ok": True, "categories": categories})
+
+@app.route("/api/categories", methods=["POST"])
+def api_add_category():
+    data = request.get_json(silent=True) or {}
+    name = data.get("name", "").strip()
+    color = data.get("color", "teal").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อหมวดหมู่"}), 400
+    ok, res = database.add_category(name, color)
+    if not ok:
+        return jsonify({"ok": False, "error": res}), 400
+    audit('ADD_CATEGORY', 'category', str(res['id']), name, f'เพิ่มหมวดหมู่ยา: {name}')
+    return jsonify({"ok": True, "category": res, "message": "เพิ่มหมวดหมู่สำเร็จ"})
+
+@app.route("/api/categories/<int:cat_id>", methods=["PUT"])
+def api_update_category(cat_id):
+    data = request.get_json(silent=True) or {}
+    name = data.get("name", "").strip()
+    color = data.get("color")
+    if not name:
+        return jsonify({"ok": False, "error": "กรุณาระบุชื่อหมวดหมู่"}), 400
+    ok, res = database.update_category(cat_id, name, color)
+    if not ok:
+        return jsonify({"ok": False, "error": res}), 400
+    audit('UPDATE_CATEGORY', 'category', str(cat_id), name, f'แก้ไขหมวดหมู่ยา: {name}')
+    return jsonify({"ok": True, "category": res, "message": "แก้ไขหมวดหมู่สำเร็จ"})
+
+@app.route("/api/categories/<int:cat_id>", methods=["DELETE"])
+def api_delete_category(cat_id):
+    fallback = request.args.get("fallback", "ทั่วไป")
+    ok, msg = database.delete_category(cat_id, fallback)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 400
+    audit('DELETE_CATEGORY', 'category', str(cat_id), str(cat_id), f'ลบหมวดหมู่ยา (ย้ายยาไป {fallback})')
+    return jsonify({"ok": True, "message": msg})
 
 # ─────────────────────────────────────────────────────────────
 # Stock Dispensing & Deduction API
@@ -864,22 +915,7 @@ def dispense_stock():
     # so HTTP response to the browser is near instantaneous (<50ms), preventing user wait/double-clicks!
     import threading
     import time
-
-    res_notify = dict(result)
-    res_notify['user_email'] = actor_email
-    res_notify['user_name'] = actor_name
-    res_notify['dispensed_by'] = dispensed_by
-
-    from line_service import line_bot
-    flex_payload = None
-    try:
-        flex_payload = line_bot.get_dispense_flex(res_notify)
-    except Exception as flex_err:
-        logger.error(f"Error generating dispense flex payload: {flex_err}")
-
-    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
-
-    def _bg_after_dispense(res, u_email, u_name, disp_by, send_line_push=True):
+    def _bg_after_dispense(res, u_email, u_name, disp_by):
         global _last_inventory_sheet_sync
         try:
             google_sync.append_dispensing_log(res)
@@ -891,23 +927,21 @@ def dispense_stock():
         except Exception as e:
             logger.error(f"Error syncing to sheet after dispense: {e}")
 
-        if send_line_push:
-            try:
-                from line_service import line_bot
-                r_notify = dict(res)
-                r_notify['user_email'] = u_email
-                r_notify['user_name'] = u_name
-                r_notify['dispensed_by'] = disp_by
-                line_bot.send_dispense_notification(r_notify)
-            except Exception as err:
-                logger.error(f"Error sending LINE dispense notification: {err}")
+        try:
+            from line_service import line_bot
+            res_notify = dict(res)
+            res_notify['user_email'] = u_email
+            res_notify['user_name'] = u_name
+            res_notify['dispensed_by'] = disp_by
+            line_bot.send_dispense_notification(res_notify)
+        except Exception as err:
+            logger.error(f"Error sending LINE dispense notification: {err}")
 
-    threading.Thread(target=_bg_after_dispense, args=(result, actor_email, actor_name, dispensed_by, not via_liff), daemon=True).start()
+    threading.Thread(target=_bg_after_dispense, args=(result, actor_email, actor_name, dispensed_by), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
-        "flex_message": flex_payload,
         "message": f"ตัดสต็อก '{result['drug_name']}' สำเร็จ - คงเหลือ {result['balance_after']} {result['unit']}"
     })
 
@@ -951,22 +985,7 @@ def batch_dispense():
 
     # Background sync to sheets and LINE notify
     import threading
-
-    res_notify = dict(result)
-    res_notify['user_email'] = actor_email
-    res_notify['user_name'] = actor_name
-    res_notify['dispensed_by'] = dispensed_by
-
-    from line_service import line_bot
-    flex_payload = None
-    try:
-        flex_payload = line_bot.get_batch_dispense_flex(res_notify)
-    except Exception as flex_err:
-        logger.error(f"Error generating batch flex payload: {flex_err}")
-
-    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
-
-    def _bg_after_batch(res, u_email, u_name, disp_by, send_line_push=True):
+    def _bg_after_batch(res, u_email, u_name, disp_by):
         global _last_inventory_sheet_sync
         try:
             for item in res.get("items", []):
@@ -976,25 +995,23 @@ def batch_dispense():
         except Exception as e:
             logger.error(f"Error syncing batch dispense to sheet: {e}")
 
-        if send_line_push:
-            try:
-                from line_service import line_bot
-                r_notify = dict(res)
-                r_notify['user_email'] = u_email
-                r_notify['user_name'] = u_name
-                r_notify['dispensed_by'] = disp_by
-                line_bot.send_batch_dispense_notification(r_notify)
-            except Exception as err:
-                logger.error(f"Error sending batch LINE notification: {err}")
+        try:
+            from line_service import line_bot
+            res_notify = dict(res)
+            res_notify['user_email'] = u_email
+            res_notify['user_name'] = u_name
+            res_notify['dispensed_by'] = disp_by
+            line_bot.send_batch_dispense_notification(res_notify)
+        except Exception as err:
+            logger.error(f"Error sending batch LINE notification: {err}")
 
-    threading.Thread(target=_bg_after_batch, args=(result, actor_email, actor_name, dispensed_by, not via_liff), daemon=True).start()
+    threading.Thread(target=_bg_after_batch, args=(result, actor_email, actor_name, dispensed_by), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
         "batch_id": result["batch_id"],
         "requisition_url": f"/api/dispense/requisition/batch/{result['batch_id']}",
-        "flex_message": flex_payload,
         "message": f"ตัดสต็อกใบสั่งยา {result['batch_id']} สำเร็จ ({result['total_items']} รายการ, ยอดรวม {result['total_price_formatted']})"
     })
 
@@ -1102,33 +1119,22 @@ def stock_in_endpoint():
     trigger_bg_sheet_sync()
 
     # LINE Bot Stock In Notification
+    import threading
+    def _bg_notify_stock_in(res):
+        try:
+            from line_service import line_bot
+            line_bot.send_stock_in_notification(res)
+        except Exception as err:
+            logger.error(f"Error sending LINE stock in notification: {err}")
     res_notify = dict(result)
     res_notify['user_email'] = actor_email
     res_notify['user_name'] = actor_name
     res_notify['received_by'] = received_by
-
-    from line_service import line_bot
-    flex_payload = None
-    try:
-        flex_payload = line_bot.get_stock_in_flex(res_notify)
-    except Exception as flex_err:
-        logger.error(f"Error generating stock-in flex payload: {flex_err}")
-
-    via_liff = bool(data.get("via_liff") or request.headers.get("X-Via-LIFF"))
-    if not via_liff:
-        import threading
-        def _bg_notify_stock_in(res):
-            try:
-                from line_service import line_bot
-                line_bot.send_stock_in_notification(res)
-            except Exception as err:
-                logger.error(f"Error sending LINE stock in notification: {err}")
-        threading.Thread(target=_bg_notify_stock_in, args=(res_notify,), daemon=True).start()
+    threading.Thread(target=_bg_notify_stock_in, args=(res_notify,), daemon=True).start()
 
     return jsonify({
         "ok": True,
         "result": result,
-        "flex_message": flex_payload,
         "message": f"รับเข้า '{result['drug_name']}' จำนวน {result['quantity']} {result['unit']} สำเร็จ (คงเหลือใหม่ {result['balance_after']} {result['unit']})"
     })
 
@@ -1272,18 +1278,29 @@ def disconnect_google_endpoint():
 # ─────────────────────────────────────────────────────────────
 
 def _determine_redirect_uri():
-    cf_ray = request.headers.get("cf-ray")
-    cf_host = request.headers.get("x-forwarded-host") or request.host or ""
+    host = request.headers.get("x-forwarded-host") or request.host or ""
+    proto = request.headers.get("x-forwarded-proto") or ("https" if request.is_secure else "http")
     
-    # If accessing via public domain or Cloudflare tunnel
-    if cf_ray or "openchat.sbs" in cf_host:
-        return "https://openchat.sbs/api/auth/google/callback"
+    # If accessing via ngrok domain
+    if "ngrok" in host:
+        return f"https://{host}/api/auth/google/callback"
     
     # If direct local access
-    if "localhost" in cf_host or "127.0.0.1" in cf_host:
+    if "localhost" in host or "127.0.0.1" in host:
         return "http://localhost:5005/api/auth/google/callback"
 
-    return Config.OAUTH2_REDIRECT_URI or "https://openchat.sbs/api/auth/google/callback"
+    # If accessing via Cloudflare / openchat
+    if "openchat.sbs" in host:
+        return "https://openchat.sbs/api/auth/google/callback"
+
+    # If Config.OAUTH2_REDIRECT_URI is set and does not point to openchat
+    if Config.OAUTH2_REDIRECT_URI and "openchat.sbs" not in Config.OAUTH2_REDIRECT_URI:
+        return Config.OAUTH2_REDIRECT_URI
+
+    if host:
+        return f"{proto}://{host}/api/auth/google/callback"
+
+    return "https://encrypt-unvocal-hankering.ngrok-free.dev/api/auth/google/callback"
 
 @app.route("/api/auth/google/login")
 def google_oauth_login():
@@ -1607,8 +1624,8 @@ def export_inventory_excel():
     # ── Header row ──
     headers = ["ลำดับ", "รหัสยา", "ชื่อยา", "ชื่อสามัญ", "หมวดหมู่",
                "รูปแบบยา", "สต็อกคงเหลือ", "หน่วย", "จุดเตือนขั้นต่ำ",
-               "ราคา (บาท)", "ตำแหน่งจัดเก็บ"]
-    col_widths = [6, 13, 30, 25, 22, 20, 15, 10, 17, 13, 20]
+               "ราคา (บาท)", "เลขล็อต (Lot)", "วันหมดอายุ", "ตำแหน่งจัดเก็บ"]
+    col_widths = [6, 13, 30, 25, 22, 20, 15, 10, 17, 13, 16, 14, 20]
 
     ws.append(headers)
     for c_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
@@ -1634,15 +1651,17 @@ def export_inventory_excel():
             d.get("unit", ""),
             d.get("min_threshold", 10),
             d.get("price") or 0,
+            d.get("lot_number") or "",
+            d.get("expiry_date") or "",
             d.get("location") or "",
         ]
         ws.append(row_data)
         xlsx_row = row_num + 2
         row_fill = low_fill if is_low else (alt_fill if row_num % 2 == 0 else None)
-        for c_idx in range(1, 12):
+        for c_idx in range(1, 14):
             cell = ws.cell(row=xlsx_row, column=c_idx)
             cell.border    = thin_border
-            cell.alignment = center if c_idx in (1, 7, 8, 9, 10) else left
+            cell.alignment = center if c_idx in (1, 7, 8, 9, 10, 11, 12) else left
             cell.font      = (danger_font if c_idx == 7 and is_low else body_font)
             if c_idx == 7 and is_low:
                 cell.font = danger_font
@@ -2372,15 +2391,12 @@ def get_line_config():
     days = int(database.get_app_setting("expiry_alert_days") or Config.EXPIRY_ALERT_DAYS or 60)
     last_sent = database.get_app_setting("last_expiry_alert_sent") or "ยังไม่เคยส่ง"
     expiring = database.get_expiring_drugs(days=days)
-    liff_id = database.get_app_setting("line_liff_id") or Config.LINE_LIFF_ID or ""
 
     return jsonify({
         "ok": True,
         "is_configured": bool(Config.LINE_CHANNEL_ACCESS_TOKEN),
         "bot_basic_id": Config.LINE_BOT_BASIC_ID,
         "target_id": target_id,
-        "liff_id": liff_id,
-        "liff_url": f"https://liff.line.me/{liff_id}" if liff_id else "",
         "expiry_alert_days": days,
         "expiring_count": len(expiring),
         "subscribers_count": len(subscribers),
@@ -2394,12 +2410,9 @@ def update_line_config():
     data = request.json or {}
     target_id = data.get("target_id")
     days = data.get("expiry_alert_days")
-    liff_id = data.get("liff_id")
 
     if target_id is not None:
         database.set_app_setting("line_notify_target", str(target_id).strip())
-    if liff_id is not None:
-        database.set_app_setting("line_liff_id", str(liff_id).strip())
     if days is not None:
         try:
             database.set_app_setting("expiry_alert_days", int(days))

@@ -1,8 +1,12 @@
 __pycache__/
 *.pyc
-.env
+.env*
 uploads/
 pharmacy.db-shm
 pharmacy.db-wal
+pharmacy.db.bak*
+*.bak*
+backup_*/
+seed_drugs.json.disabled
 .vscode/
 .idea/

@@ -14,11 +14,17 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=36.0">
+    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=41.0">
+
+    <!-- Favicon & App Icons -->
+    <link rel="icon" type="image/x-icon" href="{{ base_prefix | default('') }}/static/favicon.ico">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ base_prefix | default('') }}/static/img/app_icon_192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="{{ base_prefix | default('') }}/static/img/app_icon_512.png">
+    <link rel="shortcut icon" href="{{ base_prefix | default('') }}/static/favicon.ico">
 
     <!-- PWA & Mobile App Support (APK Style) -->
     <link rel="manifest" href="{{ base_prefix | default('') }}/manifest.json">
-    <link rel="apple-touch-icon" href="{{ base_prefix | default('') }}/static/uploads/drugs/app_icon_192.png">
+    <link rel="apple-touch-icon" href="{{ base_prefix | default('') }}/static/img/app_icon_192.png">
     <meta name="theme-color" content="#0F766E">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,9 +39,6 @@
 
     <!-- Chart.js Modern Data Visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-
-    <!-- LINE Front-end Framework (LIFF) SDK - Free Unlimited Flex Messaging -->
-    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
 
@@ -157,7 +160,7 @@
                     </div>
                     <div class="kpi-info">
                         <span class="kpi-label">มูลค่ายาคงเหลือรวม</span>
-                        <div class="kpi-value text-emerald" id="statTotalValue">฿-</div>
+                        <div class="kpi-value text-emerald kpi-value-money" id="statTotalValue">฿-</div>
                         <span class="kpi-subtext" id="statTotalValueSub">ยอดรวมมูลค่าคงคลังทั้งหมด</span>
                     </div>
                 </div>
@@ -231,16 +234,23 @@
                     </div>
 
                     <div class="catalog-filters-cluster">
-                        <select id="categoryFilter" class="form-select category-select-pill">
-                            <option value="all">ทุกหมวดหมู่ยา</option>
-                            <option value="ยาลดไข้ บรรเทาปวด">ยาลดไข้ บรรเทาปวด</option>
-                            <option value="ยาปฏิชีวนะ (ฆ่าเชื้อ)">ยาปฏิชีวนะ (ฆ่าเชื้อ)</option>
-                            <option value="ยาระบบทางเดินอาหาร">ยาระบบทางเดินอาหาร</option>
-                            <option value="ยาแก้แพ้ ลดน้ำมูก">ยาแก้แพ้ ลดน้ำมูก</option>
-                            <option value="ยาแก้ไอ ละลายเสมหะ">ยาแก้ไอ ละลายเสมหะ</option>
-                            <option value="วิตามินและอาหารเสริม">วิตามินและอาหารเสริม</option>
-                            <option value="เวชภัณฑ์และอุปกรณ์">เวชภัณฑ์และอุปกรณ์</option>
-                        </select>
+                        <div style="display: flex; gap: 0.35rem; align-items: center;">
+                            <select id="categoryFilter" class="form-select category-select-pill">
+                                <option value="all">ทุกหมวดหมู่ยา</option>
+                                <option value="ยาลดไข้ บรรเทาปวด">ยาลดไข้ บรรเทาปวด</option>
+                                <option value="ยาปฏิชีวนะ (ฆ่าเชื้อ)">ยาปฏิชีวนะ (ฆ่าเชื้อ)</option>
+                                <option value="ยาระบบทางเดินอาหาร">ยาระบบทางเดินอาหาร</option>
+                                <option value="ยาแก้แพ้ ลดน้ำมูก">ยาแก้แพ้ ลดน้ำมูก</option>
+                                <option value="ยาแก้ไอ ละลายเสมหะ">ยาแก้ไอ ละลายเสมหะ</option>
+                                <option value="ยาสมุนไพร">ยาสมุนไพร</option>
+                                <option value="วิตามินและอาหารเสริม">วิตามินและอาหารเสริม</option>
+                                <option value="เวชภัณฑ์และอุปกรณ์">เวชภัณฑ์และอุปกรณ์</option>
+                                <option value="__manage__">⚙️ + จัดการหมวดหมู่...</option>
+                            </select>
+                            <button type="button" class="btn btn-outline btn-icon category-manage-btn" onclick="openCategoryManagerModal()" title="จัดการหมวดหมู่ยา (เพิ่ม/แก้ไข/ลบ)" style="height: 38px; width: 38px; min-width: 38px; border-radius: 9999px; flex-shrink: 0;">
+                                <i class="fas fa-tags" style="color: var(--teal-600);"></i>
+                            </button>
+                        </div>
 
                         <div class="catalog-filter-chips">
                             <label class="filter-chip chip-rose" id="chipLowStock" title="คลิกเพื่อกรองเฉพาะยาที่สต็อกลดลงถึงจุดเตือนขั้นต่ำ">
@@ -267,26 +277,36 @@
                                 <span>เครื่องมือจัดการ</span>
                                 <i class="fas fa-chevron-down" style="font-size: 0.7rem; color: var(--text-muted); margin-left: 2px;"></i>
                             </button>
-                            <div class="dropdown-menu" id="toolsDropdownMenu" style="min-width: 235px; left: 0; right: auto;">
+                            <div class="dropdown-menu" id="toolsDropdownMenu" style="min-width: 245px; left: 0; right: auto;">
                                 <button type="button" class="dropdown-item" onclick="exportInventoryExcel(); closeAllDropdowns();">
-                                    <i class="fas fa-file-excel" style="color: #107C41; width: 16px;"></i> ส่งออกคลังยา (Excel)
+                                    <i class="fas fa-file-excel" style="color: #107C41;"></i>
+                                    <span>ส่งออกคลังยา (Excel)</span>
                                 </button>
-                                <a href="/stock-card" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">
-                                    <i class="fas fa-file-invoice" style="color: #0F766E; width: 16px;"></i> พิมพ์บัญชีรับ-จ่าย (Stock Card)
+                                <a href="/stock-card" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();">
+                                    <i class="fas fa-file-invoice" style="color: #0F766E;"></i>
+                                    <span>พิมพ์บัญชีรับ-จ่าย (Stock Card)</span>
                                 </a>
-                                <a href="/daily-requisition" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">
-                                    <i class="fas fa-file-medical" style="color: #0284C7; width: 16px;"></i> พิมพ์ใบเบิกเวชภัณฑ์ยา (ประจำวัน)
+                                <a href="/daily-requisition" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();">
+                                    <i class="fas fa-file-medical" style="color: #0284C7;"></i>
+                                    <span>พิมพ์ใบเบิกเวชภัณฑ์ยา (ประจำวัน)</span>
                                 </a>
+                                <button type="button" class="dropdown-item" onclick="openCategoryManagerModal(); closeAllDropdowns();">
+                                    <i class="fas fa-tags" style="color: #0F766E;"></i>
+                                    <span>จัดการหมวดหมู่ยา (เพิ่ม/ลบ/แก้ไข)</span>
+                                </button>
                                 <div class="dropdown-divider"></div>
                                 <button type="button" class="dropdown-item" id="btnSyncSheet" onclick="syncWithGoogleSheet(); closeAllDropdowns();">
-                                    <i class="fas fa-rotate" style="color: #4285F4; width: 16px;"></i> ซิงก์กับ Google Sheet
+                                    <i class="fas fa-rotate" style="color: #4285F4;"></i>
+                                    <span>ซิงก์กับ Google Sheet</span>
                                 </button>
                                 <button type="button" class="dropdown-item" id="btnLineExpiryAlert" onclick="sendLineExpiryAlertNow(); closeAllDropdowns();">
-                                    <i class="fab fa-line" style="color: #06C755; width: 16px;"></i> ส่งเตือนยาหมดอายุเข้า LINE
+                                    <i class="fab fa-line" style="color: #06C755;"></i>
+                                    <span>ส่งเตือนยาหมดอายุเข้า LINE</span>
                                 </button>
                                 <div class="dropdown-divider"></div>
                                 <button type="button" class="dropdown-item" onclick="openApkInstallModal(); closeAllDropdowns();">
-                                    <i class="fab fa-android" style="color: #10B981; width: 16px;"></i> ติดตั้งแอพมือถือ (APK / PWA)
+                                    <i class="fab fa-android" style="color: #10B981;"></i>
+                                    <span>ติดตั้งแอพมือถือ (APK / PWA)</span>
                                 </button>
                             </div>
                         </div>
@@ -380,8 +400,8 @@
                     <thead>
                         <tr>
                             <th class="col-thumb" style="width: 52px; text-align: center;">รูป</th>
-                            <th class="col-datetime" style="width: 160px;">วัน-เวลาที่ตัดจ่าย</th>
-                            <th class="col-drug">รายการยา</th>
+                            <th class="col-datetime" style="width: 175px; min-width: 170px;">วัน-เวลาที่ตัดจ่าย</th>
+                            <th class="col-drug" style="min-width: 220px;">รายการยา</th>
                             <th class="col-qty" style="width: 95px; text-align: center;">จำนวนจ่าย</th>
                             <th class="col-balance" style="width: 120px; text-align: center;">คงเหลือก่อน ➔ หลัง</th>
                             <th class="col-channel" style="width: 110px; text-align: center;">ช่องทาง</th>
@@ -446,7 +466,7 @@
                     <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--border-default); text-align: left;">
                         <label class="form-label">หรือพิมพ์รหัสยา / บาร์โค้ด:</label>
                         <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="manualBarcodeInput" class="form-input" placeholder="เช่น MED-0001, 885..., หรือชื่อยา" style="font-family: var(--font-mono); flex: 1;" onkeydown="if(event.key==='Enter') submitManualBarcode()">
+                            <input type="text" id="manualBarcodeInput" class="form-input" placeholder="เช่น MED-0001, 885..., หรือชื่อยา" style="font-family: var(--font-mono); flex: 1;" onkeydown="if(event.key==='Enter'){ event.preventDefault(); event.stopPropagation(); submitManualBarcode(); }">
                             <button class="btn btn-primary" onclick="submitManualBarcode()">
                                 ค้นหา
                             </button>
@@ -706,6 +726,68 @@
     </nav>
 
     <!-- ─────────────────────────────────────────────────────────────
+         MODAL: CATEGORY MANAGER (จัดการหมวดหมู่ยา)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="categoryManagerModal" onclick="if(event.target===this)closeCategoryManagerModal()">
+        <div class="modal-box" style="max-width: 500px; width: 92%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(15, 118, 110, 0.12); color: var(--teal-600); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">
+                        <i class="fas fa-tags"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">จัดการหมวดหมู่ยา</h3>
+                        <p style="margin: 0.15rem 0 0; font-size: 0.75rem; color: var(--text-muted);">เพิ่ม แก้ไข หรือลบหมวดหมู่ยาในคลัง</p>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-outline btn-icon" onclick="closeCategoryManagerModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1.15rem;">
+                <!-- Add New Category Box -->
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border-default); border-radius: 10px; padding: 0.85rem; margin-bottom: 1.15rem;">
+                    <label class="form-label" style="font-weight: 600; font-size: 0.8rem; margin-bottom: 0.45rem; display: block;">
+                        ➕ เพิ่มหมวดหมู่ใหม่
+                    </label>
+                    <div style="display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap;">
+                        <input type="text" id="newCategoryNameInput" class="form-input" placeholder="ระบุชื่อหมวดหมู่ เช่น ยาสมุนไพร..." style="flex: 1; min-width: 170px;" onkeydown="if(event.key==='Enter'){event.preventDefault();submitAddCategory();}">
+                        <select id="newCategoryColorSelect" class="form-select" style="width: 105px; flex-shrink: 0;">
+                            <option value="teal">เขียวอมฟ้า</option>
+                            <option value="emerald">เขียวสด</option>
+                            <option value="blue">น้ำเงิน</option>
+                            <option value="purple">ม่วง</option>
+                            <option value="amber">ส้มอำพัน</option>
+                            <option value="rose">แดงกุหลาบ</option>
+                            <option value="cyan">ฟ้าสดใส</option>
+                            <option value="indigo">คราม</option>
+                            <option value="slate">เทา</option>
+                        </select>
+                        <button type="button" class="btn btn-primary" onclick="submitAddCategory()" style="padding: 0.45rem 0.85rem; white-space: nowrap; height: 38px;">
+                            <i class="fas fa-plus"></i> เพิ่ม
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Existing Categories List -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">
+                            หมวดหมู่ทั้งหมดในระบบ (<span id="catManagerCount">0</span>)
+                        </span>
+                    </div>
+                    <div id="categoryManagerList" style="display: flex; flex-direction: column; gap: 0.45rem; max-height: 290px; overflow-y: auto; padding-right: 2px;">
+                        <div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0; font-size: 0.825rem;">
+                            <i class="fas fa-spinner fa-spin"></i> กำลังโหลดหมวดหมู่...
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 0.75rem 1.15rem; border-top: 1px solid var(--border-default); display: flex; justify-content: flex-end;">
+                <button type="button" class="btn btn-outline" onclick="closeCategoryManagerModal()">ปิดหน้าต่าง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
          MODAL: ADD / EDIT DRUG (2-COLUMN ENTERPRISE DIALOG)
          ───────────────────────────────────────────────────────────── -->
     <div class="modal-overlay" id="drugModal">
@@ -765,13 +847,19 @@
                             <input type="text" id="drugGenericInput" class="form-input" placeholder="เช่น Paracetamol">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">หมวดหมู่ยา</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                                <label class="form-label" style="margin: 0;">หมวดหมู่ยา</label>
+                                <button type="button" class="btn-link" onclick="openCategoryManagerModal()" style="font-size: 0.75rem; color: var(--teal-600); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0;">
+                                    <i class="fas fa-gear"></i> จัดการหมวดหมู่
+                                </button>
+                            </div>
                             <select id="drugCategoryInput" class="form-select">
                                 <option value="ยาลดไข้ บรรเทาปวด">ยาลดไข้ บรรเทาปวด</option>
                                 <option value="ยาปฏิชีวนะ (ฆ่าเชื้อ)">ยาปฏิชีวนะ (ฆ่าเชื้อ)</option>
                                 <option value="ยาระบบทางเดินอาหาร">ยาระบบทางเดินอาหาร</option>
                                 <option value="ยาแก้แพ้ ลดน้ำมูก">ยาแก้แพ้ ลดน้ำมูก</option>
                                 <option value="ยาแก้ไอ ละลายเสมหะ">ยาแก้ไอ ละลายเสมหะ</option>
+                                <option value="ยาสมุนไพร">ยาสมุนไพร</option>
                                 <option value="วิตามินและอาหารเสริม">วิตามินและอาหารเสริม</option>
                                 <option value="เวชภัณฑ์และอุปกรณ์">เวชภัณฑ์และอุปกรณ์</option>
                                 <option value="ทั่วไป">ทั่วไป</option>
@@ -811,6 +899,10 @@
                             <input type="number" id="drugCostInput" class="form-input" step="0.25" value="0.0">
                         </div>
                         <div class="form-group">
+                            <label class="form-label">เลขล็อต (Lot / Batch No.)</label>
+                            <input type="text" id="drugLotInput" class="form-input" placeholder="เช่น LOT-6701 หรือ B240801">
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">วันหมดอายุ (Expiry Date)</label>
                             <input type="date" id="drugExpiryInput" class="form-input">
                         </div>
@@ -845,7 +937,7 @@
                 <h3 style="color: var(--rose-600);"><i class="fas fa-minus-circle"></i> ตัดจ่ายสต็อกยา</h3>
                 <button class="btn btn-outline btn-icon" onclick="closeDispenseModal()"><i class="fas fa-xmark"></i></button>
             </div>
-            <form onsubmit="submitDispense(event)">
+            <form id="dispenseModalForm" onsubmit="event.preventDefault(); return false;" onkeydown="if(event.key==='Enter'){event.preventDefault(); return false;}">
                 <div class="modal-body">
                     <div style="background: var(--bg-subtle); border: 1px solid var(--border-default); padding: 0.85rem 1rem; border-radius: var(--radius-md); margin-bottom: 1rem; display: flex; gap: 0.85rem; align-items: center;">
                         <div id="dispenseDrugImgContainer" style="width: 52px; height: 52px; border-radius: 8px; overflow: hidden; background: #e2e8f0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border-default);">
@@ -892,7 +984,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline" onclick="closeDispenseModal()">ยกเลิก</button>
-                    <button type="submit" id="btnSubmitDispense" class="btn btn-danger"><i class="fas fa-check"></i> ยืนยันการตัดจ่าย</button>
+                    <button type="button" id="btnSubmitDispense" class="btn btn-danger" onclick="submitDispense(event)"><i class="fas fa-check"></i> ยืนยันการตัดจ่าย</button>
                 </div>
             </form>
         </div>
@@ -1101,9 +1193,6 @@
                     <a id="rxSuccessPrintBtn" href="#" target="_blank" class="btn btn-primary" style="background: #059669; border-color: #059669; font-weight: 700; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.95rem; text-decoration: none; border-radius: 8px;">
                         <i class="fas fa-print"></i> พิมพ์ใบเบิกยา A4 รวมทุกรายการ
                     </a>
-                    <button id="rxSuccessShareLineBtn" type="button" class="btn" onclick="shareCurrentRxBatchLiff()" style="background: #06C755; color: #ffffff; border-color: #06C755; font-weight: 700; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.95rem; border-radius: 8px;">
-                        <i class="fab fa-line" style="font-size: 1.15rem;"></i> ส่งการ์ดเข้า LINE (ฟรีผ่าน LIFF)
-                    </button>
                     <button type="button" class="btn btn-outline" onclick="closeRxBatchSuccessModal()" style="padding: 0.65rem 1rem; border-radius: 8px;">
                         ปิดหน้าต่าง / ทำรายการต่อ
                     </button>
@@ -1416,24 +1505,6 @@
                             <input type="text" id="inputLineTargetId" class="form-input" placeholder="เว้นว่างไว้เพื่อ Broadcast ถึงทุกคนที่แชทหรือติดตาม">
                             <small style="color: var(--text-muted); font-size: 0.725rem;">สามารถใส่ User ID (U...) หรือ Group ID (C...) ที่ต้องการให้เตือนเฉพาะกลุ่มได้</small>
                         </div>
-
-                        <!-- LINE LIFF ID Setting (Bypass 300 quota limit completely) -->
-                        <div class="form-group" style="margin-top: 0.85rem; padding: 0.85rem; background: rgba(6, 199, 85, 0.06); border: 1px solid rgba(6, 199, 85, 0.25); border-radius: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
-                                <label class="form-label" style="font-weight: 700; color: #06C755; margin-bottom: 0;">
-                                    <i class="fab fa-line"></i> LINE LIFF ID (ส่งการ์ดฟรี ไม่จำกัดโควต้า)
-                                </label>
-                                <span id="liffStatusBadge" class="badge badge-warning" style="font-size: 0.7rem;">ยังไม่ได้ตั้งค่า</span>
-                            </div>
-                            <input type="text" id="inputLineLiffId" class="form-input" placeholder="เช่น 200xxxxxxx-xxxxxxx" style="font-family: monospace;">
-                            <div style="font-size: 0.725rem; color: var(--text-secondary); margin-top: 0.35rem; line-height: 1.4;">
-                                💡 เมื่อใส่ <strong>LIFF ID</strong> (สร้างได้ฟรีใน LINE Developers) หากเปิดระบบผ่าน LINE ระบบจะส่งการ์ด Flex อัตโนมัติผ่าน <code>liff.sendMessages</code> โดย <strong>ไม่ถูกหักโควต้า 300 ข้อความ/เดือน</strong> แม้แต่ข้อความเดียว!
-                            </div>
-                            <div id="liffShareLinkRow" style="display: none; margin-top: 0.5rem; font-size: 0.75rem;">
-                                <span>🔗 ลิงก์เปิดผ่าน LINE LIFF: </span>
-                                <a id="liffShareLink" href="#" target="_blank" style="color: #06C755; font-weight: 600; text-decoration: underline;"></a>
-                            </div>
-                        </div>
                         <div style="text-align: right; margin-top: 0.5rem;">
                             <button type="submit" class="btn btn-primary" style="height: 32px; font-size: 0.75rem;">
                                 บันทึกการตั้งค่า
@@ -1549,11 +1620,8 @@
                     <div class="modal-section-title" style="margin-top: 0.85rem;">3. แหล่งที่มาและบันทึก (Supplier & Audit)</div>
                     <div class="form-grid">
                         <div class="form-group col-span-2">
-                            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.25rem;">
+                            <label class="form-label">
                                 <span><i class="fas fa-truck-ramp-box"></i> ผู้จัดจำหน่าย / แหล่งที่มา (Supplier) *</span>
-                                <span id="stockInDocHint" class="badge" style="background: rgba(14, 165, 233, 0.15); color: #0284C7; font-size: 0.75rem; font-weight: 600;">
-                                    📝 เอกสาร Stock Card: ลงช่อง "GPO"
-                                </span>
                             </label>
 
                             <!-- Supplier Type Selector: GPO vs บริษัท -->
@@ -1691,11 +1759,8 @@
 
                     <!-- Supplier Selection (GPO vs บริษัท) -->
                     <div class="form-group" style="margin-bottom: 0.85rem;">
-                        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.25rem;">
+                        <label class="form-label">
                             <span>ผู้จัดจำหน่าย / แหล่งที่มา (Supplier) *</span>
-                            <span id="editStockInDocHint" class="badge" style="background: rgba(14, 165, 233, 0.15); color: #0284C7; font-size: 0.75rem; font-weight: 600;">
-                                📝 เอกสาร Stock Card: ลงช่อง "GPO"
-                            </span>
                         </label>
                         <div class="supplier-type-toggle">
                             <button type="button" class="btn btn-supplier-type active" id="btnEditSupplierTypeGPO" onclick="setEditSupplierType('GPO')">
@@ -1856,7 +1921,7 @@
         <div class="modal-box apk-modal-box">
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 0.75rem;">
-                    <img src="/static/uploads/drugs/app_icon_192.png" alt="PharmaCore Icon" style="width: 42px; height: 42px; border-radius: 10px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);">
+                    <img src="/static/img/app_icon_192.png" alt="PharmaCore Icon" style="width: 42px; height: 42px; border-radius: 10px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);">
                     <div>
                         <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.45rem;">
                             <span>ติดตั้งแอป PharmaCore</span>
@@ -2136,6 +2201,6 @@
         window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
         window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=48.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=56.0"></script>
 </body>
 </html>
