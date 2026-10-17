@@ -462,6 +462,209 @@ body {
   box-sizing: border-box;
 }
 
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
+/* Hallmark · macrostructure: Stat-Led / Clinical Workbench · theme: Medical Slate & Pure Teal */
+
+/* ==========================================================================
+   🏛️ Hallmark Redesign: Unified Clinical Stat Ribbon (Anti-AI-Slop Executive Bar)
+   ========================================================================== */
+
+.clinical-stat-ribbon {
+  display: flex;
+  align-items: stretch;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.clinical-stat-ribbon:hover {
+  border-color: var(--border-strong);
+}
+
+.stat-ribbon-hero {
+  padding: 0.85rem 1.25rem;
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.05) 0%, rgba(15, 118, 110, 0.01) 100%);
+  border-right: 1px solid var(--border-subtle);
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.stat-ribbon-tag {
+  font-size: 0.725rem;
+  font-weight: 600;
+  color: #0F766E;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.2rem;
+}
+
+.stat-hero-number {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #0F766E;
+  font-family: var(--font-mono);
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.stat-ribbon-meta {
+  font-size: 0.725rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-ribbon-group {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.stat-ribbon-group.stat-ribbon-alerts {
+  border-right: none;
+}
+
+.stat-pill-item {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid var(--border-subtle);
+  transition: background-color 0.15s ease;
+}
+
+.stat-pill-item:last-child {
+  border-right: none;
+}
+
+.stat-pill-label {
+  font-size: 0.725rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.stat-pill-label i {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.stat-pill-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin: 0.15rem 0;
+}
+
+.stat-pill-val-row .stat-number {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  line-height: 1.2;
+}
+
+.stat-pill-val-row .stat-unit {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.stat-pill-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.stat-interactive {
+  cursor: pointer;
+}
+
+.stat-interactive:hover {
+  background-color: var(--bg-subtle);
+}
+
+.stat-interactive.has-alerts {
+  background-color: rgba(239, 68, 68, 0.04);
+}
+
+/* Dark Mode Overrides */
+[data-theme="dark"] .clinical-stat-ribbon {
+  background-color: #1e293b;
+  border-color: #334155;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .stat-ribbon-hero {
+  background: rgba(15, 118, 110, 0.12);
+  border-right-color: #334155;
+}
+
+[data-theme="dark"] .stat-ribbon-tag {
+  color: #2DD4BF;
+}
+
+[data-theme="dark"] .stat-hero-number {
+  color: #2DD4BF;
+}
+
+[data-theme="dark"] .stat-ribbon-group {
+  border-right-color: #334155;
+}
+
+[data-theme="dark"] .stat-pill-item {
+  border-right-color: #334155;
+}
+
+[data-theme="dark"] .stat-interactive:hover {
+  background-color: #263349;
+}
+
+/* Responsive Stat Ribbon */
+@media (max-width: 1024px) {
+  .clinical-stat-ribbon {
+    flex-wrap: wrap;
+  }
+  .stat-ribbon-hero {
+    width: 100%;
+    min-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .stat-ribbon-group {
+    width: 50%;
+    flex: none;
+  }
+  [data-theme="dark"] .stat-ribbon-hero {
+    border-bottom-color: #334155;
+  }
+}
+
+@media (max-width: 640px) {
+  .clinical-stat-ribbon {
+    flex-direction: column;
+  }
+  .stat-ribbon-group {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .stat-pill-item {
+    padding: 0.65rem 0.85rem;
+  }
+}
+
 /* ==========================================================================
    KPI Summary Grid (Executive Medical Standard)
    ========================================================================== */

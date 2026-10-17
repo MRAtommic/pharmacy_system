@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=45.0">
+    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=46.0">
 
     <!-- Favicon & App Icons -->
     <link rel="icon" type="image/x-icon" href="{{ base_prefix | default('') }}/static/favicon.ico">
@@ -138,85 +138,62 @@
 
         <!-- 💊 VIEW 1: DRUG INVENTORY CATALOG -->
         <div id="view-inventory">
-            <!-- 📊 6-Metric Executive Summary Cards -->
-            <section class="kpi-grid">
-                <div class="kpi-card kpi-card-blue">
-                    <div class="kpi-icon-box">
-                        <i class="fas fa-prescription-bottle-medical"></i>
-                    </div>
-                    <div class="kpi-info">
-                        <span class="kpi-label">รายการยาทั้งหมด</span>
-                        <div class="kpi-value-wrap">
-                            <span class="kpi-value" id="statTotalDrugs">-</span>
-                            <span class="kpi-unit-label">ชนิด</span>
+            <!-- 🏛️ Hallmark Redesign: Unified Clinical Stat Ribbon -->
+            <section class="clinical-stat-ribbon">
+                <!-- Zone 1: Master Valuation Hero -->
+                <div class="stat-ribbon-hero">
+                    <span class="stat-ribbon-tag"><i class="fas fa-shield-halved"></i> มูลค่าเวชภัณฑ์คงคลัง</span>
+                    <div class="stat-hero-number kpi-value text-emerald kpi-value-money" id="statTotalValue">฿-</div>
+                    <span class="stat-ribbon-meta" id="statTotalValueSub">ยอดรวมมูลค่าคงคลังทั้งหมด</span>
+                </div>
+
+                <!-- Zone 2: Volume & Inventory Capacity -->
+                <div class="stat-ribbon-group">
+                    <div class="stat-pill-item">
+                        <span class="stat-pill-label"><i class="fas fa-pills"></i> ชนิดยาในคลัง</span>
+                        <div class="stat-pill-val-row">
+                            <span class="stat-number kpi-value" id="statTotalDrugs">-</span>
+                            <span class="stat-unit">ชนิด</span>
                         </div>
-                        <span class="kpi-subtext">รายการในฐานข้อมูลคลัง</span>
+                        <span class="stat-pill-hint">ทะเบียนเวชภัณฑ์</span>
                     </div>
-                </div>
 
-                <div class="kpi-card kpi-card-hero">
-                    <div class="kpi-icon-box">
-                        <i class="fas fa-coins"></i>
-                    </div>
-                    <div class="kpi-info">
-                        <span class="kpi-label">มูลค่ายาคงเหลือรวม</span>
-                        <div class="kpi-value text-emerald kpi-value-money" id="statTotalValue">฿-</div>
-                        <span class="kpi-subtext" id="statTotalValueSub">ยอดรวมมูลค่าคงคลังทั้งหมด</span>
-                    </div>
-                </div>
-
-                <div class="kpi-card kpi-card-purple">
-                    <div class="kpi-icon-box">
-                        <i class="fas fa-boxes-stacked"></i>
-                    </div>
-                    <div class="kpi-info">
-                        <span class="kpi-label">จำนวนยาคงเหลือ</span>
-                        <div class="kpi-value-wrap">
-                            <span class="kpi-value" id="statTotalUnits">-</span>
+                    <div class="stat-pill-item">
+                        <span class="stat-pill-label"><i class="fas fa-boxes-stacked"></i> จำนวนคงเหลือรวม</span>
+                        <div class="stat-pill-val-row">
+                            <span class="stat-number kpi-value" id="statTotalUnits">-</span>
                         </div>
-                        <span class="kpi-subtext" id="statTotalUnitsSub">หน่วยคงคลัง (รวมทุกชนิด)</span>
+                        <span class="stat-pill-hint" id="statTotalUnitsSub">รวมทุกรายการ</span>
                     </div>
                 </div>
 
-                <div class="kpi-card kpi-card-alert" id="kpiCardLowStock">
-                    <div class="kpi-icon-box">
-                        <i class="fas fa-triangle-exclamation"></i>
-                    </div>
-                    <div class="kpi-info">
-                        <span class="kpi-label">ยาใกล้หมดสต็อก</span>
-                        <div class="kpi-value-wrap">
-                            <span class="kpi-value" id="statLowStock">-</span>
+                <!-- Zone 3: Operational Action & Alerts -->
+                <div class="stat-ribbon-group stat-ribbon-alerts">
+                    <div class="stat-pill-item stat-interactive" id="kpiCardLowStock">
+                        <span class="stat-pill-label"><i class="fas fa-triangle-exclamation"></i> ใกล้หมดสต็อก</span>
+                        <div class="stat-pill-val-row">
+                            <span class="stat-number kpi-value" id="statLowStock">-</span>
                             <span id="statLowStockBadge" class="kpi-micro-badge safe"><i class="fas fa-check"></i> ปกติ</span>
                         </div>
-                        <span class="kpi-subtext">ถึงจุดเตือนขั้นต่ำ</span>
+                        <span class="stat-pill-hint">จุดเตือนขั้นต่ำ</span>
                     </div>
-                </div>
 
-                <div class="kpi-card kpi-card-warning" id="kpiCardExpiring" onclick="toggleExpiringFilter()" style="cursor: pointer;" title="คลิกเพื่อกรองเฉพาะยาใกล้หมดอายุ">
-                    <div class="kpi-icon-box">
-                        <i class="fas fa-hourglass-half"></i>
-                    </div>
-                    <div class="kpi-info">
-                        <span class="kpi-label">ยาใกล้หมดอายุ (60 วัน)</span>
-                        <div class="kpi-value-wrap">
-                            <span class="kpi-value" id="statExpiringSoon">-</span>
+                    <div class="stat-pill-item stat-interactive" id="kpiCardExpiring" onclick="toggleExpiringFilter()" title="คลิกเพื่อกรองเฉพาะยาใกล้หมดอายุ">
+                        <span class="stat-pill-label"><i class="fas fa-hourglass-half"></i> ใกล้หมดอายุ (60 วัน)</span>
+                        <div class="stat-pill-val-row">
+                            <span class="stat-number kpi-value" id="statExpiringSoon">-</span>
                             <span id="statExpiringBadge" class="kpi-micro-badge safe"><i class="fas fa-check"></i> สดใหม่</span>
                         </div>
-                        <span class="kpi-subtext">คลิกเพื่อกรองดูรายการ</span>
+                        <span class="stat-pill-hint">คลิกเพื่อกรองดู</span>
                     </div>
-                </div>
 
-                <div class="kpi-card kpi-card-indigo">
-                    <div class="kpi-icon-box">
-                        <i class="fas fa-clipboard-check"></i>
-                    </div>
-                    <div class="kpi-info">
-                        <span class="kpi-label">ตัดสต็อกวันนี้</span>
-                        <div class="kpi-value-wrap">
-                            <span class="kpi-value" id="statTodayDispensed">-</span>
-                            <span class="kpi-unit-label">หน่วย</span>
+                    <div class="stat-pill-item">
+                        <span class="stat-pill-label"><i class="fas fa-clipboard-check"></i> ตัดสต็อกวันนี้</span>
+                        <div class="stat-pill-val-row">
+                            <span class="stat-number kpi-value" id="statTodayDispensed">-</span>
+                            <span class="stat-unit">หน่วย</span>
                         </div>
-                        <span class="kpi-subtext" id="statTodayDispensedSub">หน่วยที่เบิกจ่ายวันนี้</span>
+                        <span class="stat-pill-hint" id="statTodayDispensedSub">รายการเบิกจ่าย</span>
                     </div>
                 </div>
             </section>
