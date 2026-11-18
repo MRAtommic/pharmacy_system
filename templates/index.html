@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Enterprise Design System Stylesheet -->
-    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=46.0">
+    <link rel="stylesheet" href="{{ base_prefix | default('') }}/static/css/medical_theme.css?v=48.0">
 
     <!-- Favicon & App Icons -->
     <link rel="icon" type="image/x-icon" href="{{ base_prefix | default('') }}/static/favicon.ico">
@@ -255,10 +255,6 @@
                                 <i class="fas fa-chevron-down" style="font-size: 0.7rem; color: var(--text-muted); margin-left: 2px;"></i>
                             </button>
                             <div class="dropdown-menu" id="toolsDropdownMenu" style="min-width: 245px; left: 0; right: auto;">
-                                <button type="button" class="dropdown-item" onclick="triggerManualDbBackup(); closeAllDropdowns();">
-                                    <i class="fas fa-database" style="color: #0F766E;"></i>
-                                    <span>สำรองฐานข้อมูลทันที (Backup Now)</span>
-                                </button>
                                 <button type="button" class="dropdown-item" onclick="exportInventoryExcel(); closeAllDropdowns();">
                                     <i class="fas fa-file-excel" style="color: #107C41;"></i>
                                     <span>ส่งออกคลังยา (Excel)</span>
@@ -271,15 +267,7 @@
                                     <i class="fas fa-file-medical" style="color: #0284C7;"></i>
                                     <span>พิมพ์ใบเบิกเวชภัณฑ์ยา (ประจำวัน)</span>
                                 </a>
-                                <button type="button" class="dropdown-item" onclick="openCategoryManagerModal(); closeAllDropdowns();">
-                                    <i class="fas fa-tags" style="color: #0F766E;"></i>
-                                    <span>จัดการหมวดหมู่ยา (เพิ่ม/ลบ/แก้ไข)</span>
-                                </button>
                                 <div class="dropdown-divider"></div>
-                                <button type="button" class="dropdown-item" id="btnSyncSheet" onclick="syncWithGoogleSheet(); closeAllDropdowns();">
-                                    <i class="fas fa-rotate" style="color: #4285F4;"></i>
-                                    <span>ซิงก์กับ Google Sheet</span>
-                                </button>
                                 <button type="button" class="dropdown-item" id="btnLineExpiryAlert" onclick="sendLineExpiryAlertNow(); closeAllDropdowns();">
                                     <i class="fab fa-line" style="color: #06C755;"></i>
                                     <span>ส่งเตือนยาหมดอายุเข้า LINE</span>
@@ -291,12 +279,6 @@
                                 </button>
                             </div>
                         </div>
-
-                        <!-- 🗂️ Compact View Mode Toggle -->
-                        <button type="button" class="btn btn-outline" id="btnToggleCompactView" onclick="toggleCompactTableView()" title="สลับมุมมองตาราง กะทัดรัด / ละเอียด" style="height: 36px; display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 500;">
-                            <i class="fas fa-table-columns" id="compactViewIcon" style="color: var(--teal-600);"></i>
-                            <span id="compactViewText">มุมมองกะทัดรัด</span>
-                        </button>
                     </div>
 
                     <div class="action-group-right" style="display: flex; gap: 0.5rem; align-items: center;">
@@ -327,7 +309,6 @@
                             <th style="width: 155px; min-width: 135px;">หมวดหมู่</th>
                             <th style="width: 130px; min-width: 115px;">คงเหลือ</th>
                             <th style="width: 150px; min-width: 135px;">วันหมดอายุ</th>
-                            <th style="width: 115px; min-width: 100px;">ตำแหน่งเก็บ</th>
                             <th style="width: 175px; min-width: 165px; text-align: right;">การจัดการ</th>
                         </tr>
                     </thead>
@@ -895,13 +876,10 @@
                             <label class="form-label">เลขล็อต (Lot / Batch No.)</label>
                             <input type="text" id="drugLotInput" class="form-input" placeholder="เช่น LOT-6701 หรือ B240801">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group col-span-2">
                             <label class="form-label">วันหมดอายุ (Expiry Date)</label>
                             <input type="date" id="drugExpiryInput" class="form-input">
-                        </div>
-                        <div class="form-group col-span-2">
-                            <label class="form-label">ตำแหน่งจัดเก็บ (Location)</label>
-                            <input type="text" id="drugLocationInput" class="form-input" placeholder="เช่น ตู้ A - ชั้น 1">
+                            <input type="hidden" id="drugLocationInput" value="">
                         </div>
                     </div>
 
@@ -941,6 +919,18 @@
                             <h4 id="dispenseDrugName" style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">-</h4>
                             <p id="dispenseDrugCode" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; font-family: var(--font-mono);">-</p>
                         </div>
+                    </div>
+
+                    <div class="form-group" id="dispenseLotGroup">
+                        <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span><i class="fas fa-layer-group" style="color: var(--teal-600); margin-right: 4px;"></i> เลือกล็อตที่ต้องการตัดจ่าย</span>
+                            <span id="dispenseLotHint" style="font-size: 0.725rem; color: #047857; font-weight: 600;">
+                                <i class="fas fa-shield-halved"></i> FEFO (ตัดหมดอายุก่อนอัตโนมัติ)
+                            </span>
+                        </label>
+                        <select id="dispenseLotSelect" class="form-select" onchange="onDispenseLotSelectChange()">
+                            <option value="">⚡ ตัดตามระบบ FEFO อัตโนมัติ (แนะนำ - ล็อตหมดอายุก่อน)</option>
+                        </select>
                     </div>
 
                     <div class="form-group">
@@ -1315,10 +1305,7 @@
                                 <input type="checkbox" id="showOptExpiry" checked onchange="updateLabelPreview()">
                                 <span>วันหมดอายุ (Exp Date) & Lot</span>
                             </label>
-                            <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer;">
-                                <input type="checkbox" id="showOptLocation" onchange="updateLabelPreview()">
-                                <span>ตำแหน่งจัดเก็บ (Location)</span>
-                            </label>
+                            <input type="checkbox" id="showOptLocation" style="display: none;">
                             <label style="display: flex; align-items: center; gap: 0.45rem; cursor: pointer;">
                                 <input type="checkbox" id="showOptBorder" checked onchange="updateLabelPreview()">
                                 <span>แสดงเส้นประกรอบสติกเกอร์ (สำหรับตัด)</span>
@@ -1354,6 +1341,143 @@
                     <i class="fas fa-print" style="margin-right: 0.3rem;"></i> สั่งพิมพ์ทันที (Print Grid)
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: LOT-SPECIFIC QR CODE (รหัส QR เฉพาะล็อตยา)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="lotQrModal">
+        <div class="modal-box" style="max-width: 480px; text-align: center;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(14, 165, 233, 0.12); color: #0284C7; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                        <i class="fas fa-qrcode"></i>
+                    </div>
+                    <div style="text-align: left;">
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">QR Code ประจำล็อตยา</h3>
+                        <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">รหัสเฉพาะล็อตเพื่อความแม่นยำในการจ่ายและพิมพ์ฉลาก</p>
+                    </div>
+                </div>
+                <button class="btn btn-outline btn-icon" onclick="closeLotQrModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <div id="lotQrCanvasContainer" style="display: flex; justify-content: center; align-items: center; padding: 1.25rem; background: #FFFFFF; border-radius: var(--radius-md); border: 2px dashed var(--border-default); margin-bottom: 1rem; min-height: 200px;">
+                    <!-- QR Image generated by JS -->
+                </div>
+                <div style="background: var(--bg-subtle); border-radius: var(--radius-md); padding: 0.85rem 1rem; text-align: left; font-size: 0.85rem; border: 1px solid var(--border-default);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+                        <span style="color: var(--text-muted);">ชื่อยา:</span>
+                        <strong id="lotQrDrugName" style="color: var(--text-primary); text-align: right;">-</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+                        <span style="color: var(--text-muted);">รหัสยา:</span>
+                        <span id="lotQrDrugCode" style="font-family: var(--font-mono); font-weight: 600;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+                        <span style="color: var(--text-muted);">เลขล็อต (Lot No.):</span>
+                        <span id="lotQrLotNo" class="lot-code-pill">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+                        <span style="color: var(--text-muted);">วันหมดอายุ:</span>
+                        <strong id="lotQrExpiry" style="color: var(--rose-600);">-</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">คงเหลือในล็อตนี้:</span>
+                        <strong id="lotQrStock" style="color: #059669;">-</strong>
+                    </div>
+                </div>
+                <div style="margin-top: 0.85rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); word-break: break-all;" id="lotQrPayloadText">
+                    -
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 0.5rem;">
+                <button type="button" class="btn btn-outline" onclick="closeLotQrModal()">ปิด</button>
+                <div style="display: flex; gap: 0.4rem;">
+                    <button type="button" class="btn btn-soft-primary" onclick="downloadLotQrImage()" id="btnDownloadLotQr">
+                        <i class="fas fa-download"></i> โหลดรูป QR
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="printFromLotQrModal()" id="btnPrintLotSticker">
+                        <i class="fas fa-print"></i> พิมพ์ฉลากสติกเกอร์
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────
+         MODAL: EDIT DRUG LOT (ตั้งค่าและแก้ไขล็อตยา)
+         ───────────────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="editLotModal" onclick="if(event.target === this) closeEditLotModal()">
+        <div class="modal-box" style="max-width: 520px;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                        <i class="fas fa-sliders"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700;">ตั้งค่าและแก้ไขล็อตยา</h3>
+                        <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">แก้ไขเลขล็อต, ปรับปรุงสต็อกคงเหลือ และวันหมดอายุ</p>
+                    </div>
+                </div>
+                <button class="btn btn-outline btn-icon" onclick="closeEditLotModal()"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form id="editLotForm" onsubmit="handleSaveLotEdit(event)">
+                <input type="hidden" id="editLotDrugId">
+                <input type="hidden" id="editLotId">
+                <div class="modal-body" style="padding: 1.25rem;">
+                    <!-- Drug Info Header Card -->
+                    <div style="background: var(--bg-subtle); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0.85rem 1rem; margin-bottom: 1.15rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <span class="code-pill" id="editLotDrugCode">-</span>
+                            <span id="editLotFefoBadge" style="display: none;" class="lot-fefo-pill"><i class="fas fa-shield-halved"></i> ล็อต FEFO แนะนำ</span>
+                        </div>
+                        <div id="editLotDrugName" style="font-weight: 700; font-size: 1rem; color: var(--text-primary);">-</div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group col-span-2">
+                            <label class="form-label">เลขล็อต (Lot / Batch No.) *</label>
+                            <input type="text" id="editLotNumberInput" class="form-input" required placeholder="เช่น LOT-6701 หรือ B240801">
+                            <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 3px; display: block;">เลขล็อตจะใช้ในการจ่ายยา, สแกน QR Code และติดฉลากยา</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">จำนวนคงเหลือในล็อตนี้ *</label>
+                            <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                <input type="number" id="editLotQtyInput" class="form-input" min="0" required placeholder="0">
+                                <span id="editLotUnit" style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">หน่วย</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">วันหมดอายุ (Expiry Date)</label>
+                            <input type="date" id="editLotExpiryInput" class="form-input">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">ราคาทุนต่อหน่วย (บาท)</label>
+                            <input type="number" id="editLotCostInput" class="form-input" step="0.01" min="0" placeholder="0.00">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">หมายเหตุล็อต</label>
+                            <input type="text" id="editLotNotesInput" class="form-input" placeholder="เช่น ล็อตสั่งพิเศษ">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.25rem;">
+                    <button type="button" class="btn btn-outline" id="btnDeleteLot" onclick="handleDeleteLot()" style="color: #DC2626; border-color: #FCA5A5; display: inline-flex; align-items: center; gap: 0.35rem;">
+                        <i class="fas fa-trash-can"></i> ลบล็อตนี้
+                    </button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-outline" onclick="closeEditLotModal()">ยกเลิก</button>
+                        <button type="submit" class="btn btn-primary" id="btnSaveLotSubmit" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                            <i class="fas fa-check"></i> บันทึกการแก้ไข
+                        </button>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -2194,6 +2318,6 @@
         window.CURRENT_USER_NAME = "{{ (current_user.name or current_user.email or '') | e }}";
         window.CURRENT_USER_EMAIL = "{{ (current_user.email or '') | e }}";
     </script>
-    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=57.0"></script>
+    <script src="{{ base_prefix | default('') }}/static/js/app.js?v=60.0"></script>
 </body>
 </html>

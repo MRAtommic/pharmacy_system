@@ -700,19 +700,75 @@ def get_drug(drug_id):
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
     return jsonify({"ok": True, "drug": drug})
 
+@app.route("/api/drugs/<int:drug_id>/lots", methods=["GET"])
+@login_required
+def get_drug_lots_endpoint(drug_id):
+    """Retrieve all lots/batches for a drug."""
+    drug = database.get_drug_by_id(drug_id)
+    if not drug:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
+    lots = database.get_drug_lots(drug_id, active_only=False)
+    return jsonify({"ok": True, "drug": drug, "lots": lots, "count": len(lots)})
+
+@app.route("/api/lots/<int:lot_id>", methods=["GET"])
+@login_required
+def get_lot_endpoint(lot_id):
+    """Retrieve details for a single specific lot."""
+    lot = database.get_lot_by_id(lot_id)
+    if not lot:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลล็อตยา"}), 404
+    return jsonify({"ok": True, "lot": lot})
+
+@app.route("/api/lots/<int:lot_id>", methods=["PUT", "POST"])
+@login_required
+def update_lot_endpoint(lot_id):
+    """Update details of a specific drug lot (number, qty, expiry, cost, notes)."""
+    data = request.get_json(silent=True) or {}
+    lot_number = data.get("lot_number")
+    stock_qty = data.get("stock_qty")
+    expiry_date = data.get("expiry_date")
+    cost_per_unit = data.get("cost_per_unit")
+    notes = data.get("notes")
+
+    res = database.update_lot(
+        lot_id,
+        lot_number=lot_number,
+        stock_qty=stock_qty,
+        expiry_date=expiry_date,
+        cost_per_unit=cost_per_unit,
+        notes=notes
+    )
+    if not res.get("ok"):
+        return jsonify(res), 400
+    return jsonify(res)
+
+@app.route("/api/lots/<int:lot_id>", methods=["DELETE"])
+@login_required
+def delete_lot_endpoint(lot_id):
+    """Delete a specific drug lot."""
+    res = database.delete_lot(lot_id)
+    if not res.get("ok"):
+        return jsonify(res), 400
+    return jsonify(res)
+
 @app.route("/api/drugs/scan-lookup", methods=["GET"])
 def scan_lookup():
     code = request.args.get("code", "").strip()
+    lot_param = request.args.get("lot", "").strip()
     if not code:
         return jsonify({"ok": False, "error": "กรุณาระบุรหัสที่สแกน"}), 400
 
     clean_code = code
+    lot_number = lot_param
+
     if "http://" in clean_code or "https://" in clean_code:
         try:
             from urllib.parse import urlparse, parse_qs
             parsed = urlparse(clean_code)
             qs = parse_qs(parsed.query)
             extracted = qs.get("scan", [None])[0] or qs.get("code", [None])[0] or qs.get("dispense", [None])[0]
+            if not lot_number:
+                lot_number = qs.get("lot", [None])[0] or ""
             if extracted:
                 clean_code = extracted.strip()
             else:
@@ -723,12 +779,39 @@ def scan_lookup():
             pass
 
     clean_code = clean_code.replace("PHARM:", "").strip()
+
+    # Support CODE#LOT format
+    if "#" in clean_code:
+        parts = clean_code.split("#", 1)
+        clean_code = parts[0].strip()
+        if not lot_number:
+            lot_number = parts[1].strip()
+
     drug = database.get_drug_by_code(clean_code) or database.find_drug_by_name_or_alias(clean_code)
     
     if drug:
-        return jsonify({"ok": True, "found": True, "drug": drug})
+        matched_lot = None
+        if lot_number:
+            lots = database.get_drug_lots(drug["id"])
+            for l in lots:
+                if (l["lot_number"] or "").strip().lower() == lot_number.strip().lower():
+                    matched_lot = l
+                    break
+        return jsonify({
+            "ok": True, 
+            "found": True, 
+            "drug": drug, 
+            "matched_lot": matched_lot,
+            "scanned_lot": lot_number
+        })
     else:
-        return jsonify({"ok": True, "found": False, "scanned_code": code, "clean_code": clean_code})
+        return jsonify({
+            "ok": True, 
+            "found": False, 
+            "scanned_code": code, 
+            "clean_code": clean_code,
+            "scanned_lot": lot_number
+        })
 
 def trigger_bg_sheet_sync():
     """Run Google Sheet sync in daemon thread so API responses are lightning fast."""
@@ -898,6 +981,7 @@ def dispense_stock():
         dispensed_by = default_dispenser
     patient_name = data.get("patient_name") or ""
     notes = data.get("notes") or ""
+    lot_id = data.get("lot_id")
 
     if not drug_id:
         return jsonify({"ok": False, "error": "กรุณาระบุรหัสยาที่ต้องการตัดสต็อก"}), 400
@@ -913,14 +997,15 @@ def dispense_stock():
     success, result = database.deduct_stock(
         drug_id, quantity,
         channel=channel, dispensed_by=dispensed_by,
-        patient_name=patient_name, notes=notes
+        patient_name=patient_name, notes=notes, lot_id=lot_id
     )
 
     if not success:
         return jsonify({"ok": False, "error": result}), 400
 
+    lot_info = f" | ล็อต: {result.get('lot_number')}" if result.get('lot_number') else ""
     audit('DISPENSE', 'drug', drug_id, result.get('drug_name',''),
-          f"ตัดจ่าย {quantity} {result.get('unit','')} | คงเหลือ: {result.get('balance_after','')} | ผู้รับ: {patient_name}")
+          f"ตัดจ่าย {quantity} {result.get('unit','')}{lot_info} | คงเหลือ: {result.get('balance_after','')} | ผู้รับ: {patient_name}")
 
     # Run Google Sheets sync & LINE notification in background thread
     # so HTTP response to the browser is near instantaneous (<50ms), preventing user wait/double-clicks!

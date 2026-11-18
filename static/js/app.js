@@ -182,8 +182,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => openBatchPrintModal(), 600);
     }
     const codeParam = urlParams.get('scan') || urlParams.get('dispense');
+    const lotParam = urlParams.get('lot');
     if (codeParam) {
-        setTimeout(() => handleScannedCode(codeParam), 600);
+        setTimeout(() => handleScannedCode(lotParam ? `${codeParam}#${lotParam}` : codeParam), 600);
     }
 
     // Check Google OAuth redirect result
@@ -544,14 +545,21 @@ function renderDrugsTable(drugs) {
                    </div>`
                 : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
 
-            const lotHtml = d.lot_number
-                ? `<div style="font-size: 0.725rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 3px;" title="เลขล็อต ${escapeHtml(d.lot_number)}"><i class="fas fa-barcode" style="font-size: 0.65rem; margin-right: 3px; color: var(--text-subtle);"></i>Lot: <strong style="color: var(--text-secondary);">${escapeHtml(d.lot_number)}</strong></div>`
-                : '';
+            const lots = d.lots || [];
+            const lotCount = d.lot_count !== undefined ? d.lot_count : lots.length;
+
+            const lotBadgeHtml = `
+                <div style="margin-top: 3px;">
+                    <button type="button" class="btn-lot-badge" id="btn-lot-toggle-${d.id}" onclick="toggleDrugLotsSubrow(${d.id}, event)" title="คลิกเพื่อคลี่ดูและจัดการ ${lotCount} ล็อตย่อย">
+                        <i class="fas fa-layer-group"></i> <span>${lotCount} ล็อต</span> <i class="fas fa-chevron-down lot-chevron" id="lot-chevron-${d.id}"></i>
+                    </button>
+                </div>
+            `;
 
             const inCart = (typeof isInRxCart === 'function' && isInRxCart(d.id));
 
             return `
-                <tr ${rowClass}>
+                <tr ${rowClass} id="drug-row-${d.id}">
                     <td class="col-thumb">
                         ${thumbHtml}
                     </td>
@@ -572,10 +580,7 @@ function renderDrugsTable(drugs) {
                     </td>
                     <td>
                         ${expiryHtml}
-                        ${lotHtml}
-                    </td>
-                    <td>
-                        <span class="drug-location-text">${escapeHtml(d.location || '-')}</span>
+                        ${lotBadgeHtml}
                     </td>
                     <td style="text-align: right; padding-right: 0.85rem;">
                         <div class="table-actions-cluster">
@@ -613,6 +618,24 @@ function renderDrugsTable(drugs) {
                         </div>
                     </td>
                 </tr>
+                <tr id="lots-subrow-${d.id}" class="drug-lots-subrow" style="display: none;">
+                    <td colspan="7" style="padding: 0;">
+                        <div class="drug-lots-panel">
+                            <div class="drug-lots-header">
+                                <div class="drug-lots-title">
+                                    <i class="fas fa-boxes-stacked"></i>
+                                    <span>รายการล็อตของ <strong>${escapeHtml(d.name)}</strong> (ทั้งหมด ${lots.length} ล็อต)</span>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn-lot-action-sm emerald" onclick="openStockInModal(${d.id});" title="รับยาเข้าและสร้างล็อตใหม่">
+                                        <i class="fas fa-plus"></i> เพิ่มล็อตใหม่
+                                    </button>
+                                </div>
+                            </div>
+                            ${renderLotsSubtable(d, lots)}
+                        </div>
+                    </td>
+                </tr>
             `;
         }).join('');
     }
@@ -630,6 +653,8 @@ function renderDrugsTable(drugs) {
                 : `<div class="drug-card-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
 
             const inCart = (typeof isInRxCart === 'function' && isInRxCart(d.id));
+            const lots = d.lots || [];
+            const lotCount = d.lot_count !== undefined ? d.lot_count : lots.length;
 
             return `
                 <div class="drug-mobile-card ${isExpired ? 'card-expired' : isLow ? 'card-low-stock' : isExpiringSoon ? 'card-expiring' : ''}">
@@ -654,8 +679,9 @@ function renderDrugsTable(drugs) {
                             ${d.generic_name ? `<div class="mobile-drug-generic">${escapeHtml(d.generic_name)}</div>` : ''}
                             <div class="mobile-card-meta">
                                 ${d.dosage_form ? `<span class="meta-tag"><i class="fas fa-capsules"></i> ${escapeHtml(d.dosage_form)}</span>` : ''}
-                                ${d.lot_number ? `<span class="meta-tag"><i class="fas fa-barcode"></i> Lot: ${escapeHtml(d.lot_number)}</span>` : ''}
-                                ${d.location ? `<span class="meta-tag"><i class="fas fa-location-dot"></i> ${escapeHtml(d.location)}</span>` : ''}
+                                <button type="button" class="btn-lot-badge" onclick="toggleDrugLotsCard(${d.id}, event)" style="margin-top:2px;">
+                                    <i class="fas fa-layer-group"></i> <span>${lotCount} ล็อต</span> <i class="fas fa-chevron-down lot-chevron" id="mobile-lot-chevron-${d.id}"></i>
+                                </button>
                                 ${d.expiry_date ? `<span class="meta-tag"><i class="far fa-calendar"></i> ${escapeHtml(d.expiry_date)}</span>` : ''}
                                 ${d.price && Number(d.price) > 0 ? `<span class="meta-price">฿${Number(d.price).toFixed(2)}/${escapeHtml(d.unit)}</span>` : ''}
                             </div>
@@ -695,12 +721,155 @@ function renderDrugsTable(drugs) {
                             </div>
                         </div>
                     </div>
+
+                    <div id="mobile-lots-panel-${d.id}" class="drug-lots-card-panel" style="display: none;">
+                        <div style="font-size: 0.8rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                            <span><i class="fas fa-layer-group" style="color: var(--teal-600);"></i> ล็อตย่อย (${lots.length})</span>
+                            <button type="button" class="btn-lot-action-sm emerald" onclick="openStockInModal(${d.id});" style="font-size: 0.7rem; padding: 2px 6px;">
+                                <i class="fas fa-plus"></i> เพิ่มล็อต
+                            </button>
+                        </div>
+                        ${lots.length === 0 ? `<div style="text-align: center; color: var(--text-muted); font-size: 0.75rem; padding: 0.5rem;">ยังไม่มีข้อมูลล็อต</div>` :
+                          lots.map((lot, idx) => `
+                            <div class="lot-mobile-item">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+                                    <span class="lot-code-pill">${escapeHtml(lot.lot_number)}</span>
+                                    <span style="font-size: 0.8rem; font-weight: 700; color: ${lot.stock_qty <= 0 ? 'var(--rose-600)' : 'var(--text-primary)'};">
+                                        ${lot.stock_qty.toLocaleString()} ${escapeHtml(d.unit)}
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+                                    <span>EXP: ${escapeHtml(lot.expiry_date || '-')}</span>
+                                    ${idx === 0 && lot.stock_qty > 0 ? `<span class="lot-fefo-pill"><i class="fas fa-shield-halved"></i> FEFO</span>` : ''}
+                                </div>
+                                <div style="display: flex; gap: 0.35rem; justify-content: flex-end; flex-wrap: wrap;">
+                                    <button type="button" class="btn-lot-action-sm primary" onclick="openLotQrModal(${d.id}, ${lot.id})">
+                                        <i class="fas fa-qrcode"></i> QR
+                                    </button>
+                                    <button type="button" class="btn-lot-action-sm" onclick="openLotStickerModal(${d.id}, ${lot.id})">
+                                        <i class="fas fa-print"></i> ฉลาก
+                                    </button>
+                                    <button type="button" class="btn-lot-action-sm amber" onclick="openEditLotModal(${d.id}, ${lot.id}, event)">
+                                        <i class="fas fa-sliders"></i> ตั้งค่าล็อต
+                                    </button>
+                                    <button type="button" class="btn-lot-action-sm danger" onclick="openDispenseModalForDrug(${d.id}, 'WEB_MANUAL', ${lot.id})" ${lot.stock_qty <= 0 ? 'disabled style="opacity:0.5;"' : ''}>
+                                        <i class="fas fa-minus"></i> ตัดล็อตนี้
+                                    </button>
+                                </div>
+                            </div>
+                          `).join('')}
+                    </div>
                 </div>
             `;
         }).join('');
     }
 
     renderPaginationBar('drugsPaginationWrapper', 'drugs', totalItems);
+}
+
+function renderLotsSubtable(drug, lots) {
+    if (!lots || lots.length === 0) {
+        return `
+            <div style="padding: 1.25rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px dashed var(--border-default);">
+                <i class="fas fa-inbox" style="font-size: 1.4rem; color: var(--text-subtle); display: block; margin-bottom: 0.35rem;"></i>
+                ยังไม่มีข้อมูลล็อตย่อยสำหรับยานี้
+                <div style="margin-top: 0.4rem;">
+                    <button type="button" class="btn-lot-action-sm emerald" onclick="openStockInModal(${drug.id});">
+                        <i class="fas fa-plus"></i> รับยาเข้าและบันทึกล็อตแรก
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <table class="lot-subtable">
+            <thead>
+                <tr>
+                    <th style="width: 25%; min-width: 160px;">เลขล็อต (Lot / Batch)</th>
+                    <th style="width: 25%; min-width: 170px;">วันหมดอายุ / สถานะ</th>
+                    <th style="width: 14%; min-width: 100px;">คงเหลือ</th>
+                    <th style="width: 12%; min-width: 90px;">ทุน/หน่วย</th>
+                    <th style="text-align: right; width: 24%; min-width: 260px;">จัดการเฉพาะล็อต</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${lots.map((lot, idx) => {
+                    const isFefoEarliest = (idx === 0 && lot.stock_qty > 0);
+                    return `
+                    <tr>
+                        <td>
+                            <span class="lot-code-pill">${escapeHtml(lot.lot_number)}</span>
+                            ${lot.notes ? `<div style="font-size: 0.72rem; color: var(--text-subtle); margin-top: 3px;">${escapeHtml(lot.notes)}</div>` : ''}
+                        </td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                <span style="font-weight: 600;">${escapeHtml(lot.expiry_date || '-')}</span>
+                                ${isFefoEarliest ? `<span class="lot-fefo-pill" title="ล็อตแนะนำจ่ายก่อนตามระบบ FEFO (หมดอายุก่อน)"><i class="fas fa-shield-halved"></i> FEFO แนะนำ</span>` : ''}
+                                ${lot.urgency_text && lot.urgency !== 'normal' && lot.urgency !== 'unknown' ? `<span class="expiry-alert-pill ${lot.urgency}" style="font-size: 0.65rem; padding: 1px 6px;">${escapeHtml(lot.urgency_text)}</span>` : ''}
+                            </div>
+                        </td>
+                        <td>
+                            <strong style="color: ${lot.stock_qty <= 0 ? 'var(--rose-600)' : 'var(--text-primary)'}; font-size: 0.9rem;">${lot.stock_qty.toLocaleString()}</strong> 
+                            <small style="color: var(--text-muted);">${escapeHtml(drug.unit)}</small>
+                        </td>
+                        <td>
+                            ${lot.cost_per_unit ? `฿${Number(lot.cost_per_unit).toFixed(2)}` : '-'}
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display: inline-flex; gap: 0.35rem; justify-content: flex-end; flex-wrap: wrap;">
+                                <button type="button" class="btn-lot-action-sm primary" onclick="openLotQrModal(${drug.id}, ${lot.id})" title="ดูและดาวน์โหลด QR Code ประจำล็อตนี้">
+                                    <i class="fas fa-qrcode"></i> QR
+                                </button>
+                                <button type="button" class="btn-lot-action-sm" onclick="openLotStickerModal(${drug.id}, ${lot.id})" title="พิมพ์ฉลากสติกเกอร์ล็อตนี้">
+                                    <i class="fas fa-print"></i> พิมพ์
+                                </button>
+                                <button type="button" class="btn-lot-action-sm amber" onclick="openEditLotModal(${drug.id}, ${lot.id}, event)" title="ตั้งค่า/แก้ไขข้อมูลล็อตนี้">
+                                    <i class="fas fa-sliders"></i> ตั้งค่าล็อต
+                                </button>
+                                <button type="button" class="btn-lot-action-sm danger" onclick="openDispenseModalForDrug(${drug.id}, 'WEB_MANUAL', ${lot.id})" ${lot.stock_qty <= 0 ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''} title="ตัดจ่ายยาจากล็อตนี้โดยตรง">
+                                    <i class="fas fa-minus"></i> ตัดสต็อก
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function toggleDrugLotsSubrow(drugId, event) {
+    if (event) event.stopPropagation();
+    const subrow = document.getElementById(`lots-subrow-${drugId}`);
+    const chevron = document.getElementById(`lot-chevron-${drugId}`);
+    const badge = document.getElementById(`btn-lot-toggle-${drugId}`);
+    if (!subrow) return;
+
+    const isHidden = subrow.style.display === 'none' || subrow.style.display === '';
+    if (isHidden) {
+        subrow.style.display = 'table-row';
+        if (chevron) chevron.classList.add('open');
+        if (badge) badge.classList.add('active');
+    } else {
+        subrow.style.display = 'none';
+        if (chevron) chevron.classList.remove('open');
+        if (badge) badge.classList.remove('active');
+    }
+}
+
+function toggleDrugLotsCard(drugId, event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById(`mobile-lots-panel-${drugId}`);
+    const chevron = document.getElementById(`mobile-lot-chevron-${drugId}`);
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none' || panel.style.display === '';
+    panel.style.display = isHidden ? 'block' : 'none';
+    if (chevron) {
+        if (isHidden) chevron.classList.add('open');
+        else chevron.classList.remove('open');
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1009,7 +1178,7 @@ function onDispenseQtyChange() {
     }
 }
 
-function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
+function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL', preselectLotId = null) {
     let drug = null;
     if (typeof drugOrId === 'object' && drugOrId !== null) {
         drug = drugOrId;
@@ -1022,12 +1191,43 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
     currentDispenseChannel = channel || 'WEB_MANUAL';
     selectedDrugForDispense = drug;
     document.getElementById('dispenseDrugName').innerText = drug.name;
-    document.getElementById('dispenseDrugCode').innerText = `รหัส: ${drug.code} • คงเหลือ: ${drug.stock_qty} ${drug.unit}`;
+    document.getElementById('dispenseDrugCode').innerText = `รหัส: ${drug.code} • คงเหลือรวม: ${drug.stock_qty} ${drug.unit}`;
     
+    // Populate Lot selector dropdown
+    const lotGroup = document.getElementById('dispenseLotGroup');
+    const lotSelect = document.getElementById('dispenseLotSelect');
+    const lots = drug.lots || [];
+
+    if (lotSelect) {
+        let lotOptionsHtml = `<option value="">⚡ ตัดจ่ายระบบ FEFO อัตโนมัติ (แนะนำ - ล็อตหมดอายุก่อน)</option>`;
+        if (lots.length > 0) {
+            lots.forEach(lot => {
+                const isOutOfStock = lot.stock_qty <= 0;
+                let tag = '';
+                if (lot.is_fefo_recommended) tag = ' ⭐ [FEFO แนะนำ]';
+                else if (lot.is_expired) tag = ' ❌ [หมดอายุ]';
+                else if (lot.days_until_expiry !== null && lot.days_until_expiry <= 60) tag = ` ⚠️ [ใกล้หมดอายุ ${lot.days_until_expiry} วัน]`;
+
+                const isSelected = preselectLotId && (lot.id === Number(preselectLotId) || lot.id == preselectLotId);
+                lotOptionsHtml += `
+                    <option value="${lot.id}" data-stock="${lot.stock_qty}" data-lot="${escapeHtml(lot.lot_number)}" ${isOutOfStock ? 'disabled' : ''} ${isSelected ? 'selected' : ''}>
+                        ล็อต: ${escapeHtml(lot.lot_number)} — คงเหลือ: ${lot.stock_qty} ${drug.unit} | EXP: ${lot.expiry_date || '-'}${tag}
+                    </option>
+                `;
+            });
+            if (lotGroup) lotGroup.style.display = 'block';
+        } else {
+            lotOptionsHtml = `<option value="">(ตัดสต็อกโดยตรงจากคลังหลัก)</option>`;
+            if (lotGroup) lotGroup.style.display = 'block';
+        }
+        lotSelect.innerHTML = lotOptionsHtml;
+    }
+
+    onDispenseLotSelectChange();
+
     const qtyInput = document.getElementById('dispenseQtyInput');
     if (qtyInput) {
         qtyInput.value = 1;
-        qtyInput.max = drug.stock_qty;
     }
     document.getElementById('dispenseUnitLabel').innerText = drug.unit;
     document.getElementById('dispensePatientInput').value = '';
@@ -1080,6 +1280,34 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL') {
     document.getElementById('dispenseModal').classList.add('active');
 }
 
+function onDispenseLotSelectChange() {
+    if (!selectedDrugForDispense) return;
+    const drug = selectedDrugForDispense;
+    const lotSelect = document.getElementById('dispenseLotSelect');
+    const hintEl = document.getElementById('dispenseLotHint');
+    const qtyInput = document.getElementById('dispenseQtyInput');
+    const lotId = lotSelect ? lotSelect.value : '';
+
+    if (lotId) {
+        const lot = (drug.lots || []).find(l => l.id == lotId);
+        if (lot) {
+            const lotStock = Number(lot.stock_qty) || 0;
+            if (qtyInput) qtyInput.max = lotStock;
+            if (hintEl) {
+                hintEl.innerHTML = `<i class="fas fa-box-open"></i> ล็อต <strong>${escapeHtml(lot.lot_number)}</strong> คงเหลือ ${lotStock} ${drug.unit}`;
+                hintEl.style.color = '#0284c7';
+            }
+        }
+    } else {
+        if (qtyInput) qtyInput.max = drug.stock_qty;
+        if (hintEl) {
+            hintEl.innerHTML = `<i class="fas fa-shield-halved"></i> FEFO (ตัดจ่ายล่วงหน้าจากล็อตหมดอายุก่อนอัตโนมัติ)`;
+            hintEl.style.color = '#047857';
+        }
+    }
+    onDispenseQtyChange();
+}
+
 function closeDispenseModal() {
     const modal = document.getElementById('dispenseModal');
     if (modal) modal.classList.remove('active');
@@ -1130,7 +1358,7 @@ function executeDispenseAfterConfirmation() {
     if (!pendingDispensePayload) return;
     const p = pendingDispensePayload;
     closeHighQtyConfirmModal();
-    executeDispense(p.drug, p.quantity, p.channel, p.dispensed_by, p.patient_name, p.notes);
+    executeDispense(p.drug, p.quantity, p.channel, p.dispensed_by, p.patient_name, p.notes, p.lot_id);
     pendingDispensePayload = null;
 }
 
@@ -1148,6 +1376,15 @@ async function submitDispense(e) {
     const drug = selectedDrugForDispense;
     const qty = parseInt(document.getElementById('dispenseQtyInput')?.value) || 1;
     const currentStock = Number(drug.stock_qty) || 0;
+    const lotId = document.getElementById('dispenseLotSelect')?.value || null;
+
+    if (lotId) {
+        const lot = (drug.lots || []).find(l => l.id == lotId);
+        if (lot && qty > Number(lot.stock_qty)) {
+            showToast(`❌ ยอดตัดจ่ายเกินคงเหลือในล็อต ${lot.lot_number} (คงเหลือ ${lot.stock_qty} ${drug.unit})`, 'error');
+            return;
+        }
+    }
 
     // 1. Hard check: cannot dispense more than stock
     if (qty > currentStock) {
@@ -1174,17 +1411,18 @@ async function submitDispense(e) {
             channel: channel,
             dispensed_by: dispenser,
             patient_name: patient,
-            notes: notes
+            notes: notes,
+            lot_id: lotId
         };
         openHighQtyConfirmModal(drug, qty, currentStock);
         return;
     }
 
     // Normal quantity: execute directly
-    executeDispense(drug, qty, channel, dispenser, patient, notes);
+    executeDispense(drug, qty, channel, dispenser, patient, notes, lotId);
 }
 
-async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
+async function executeDispense(drug, qty, channel, dispenser, patient, notes, lotId = null) {
     if (isDispensing) return;
 
     // 1. Lock immediately so the button cannot be clicked again
@@ -1211,7 +1449,8 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes) {
                 channel: channel,
                 dispensed_by: dispenser,
                 patient_name: patient,
-                notes: notes
+                notes: notes,
+                lot_id: lotId ? Number(lotId) : null
             })
         });
         const data = await res.json();
@@ -1532,10 +1771,299 @@ async function voidDispense(logId, drugName, qty) {
 // ─────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────
-// Advanced QR/Barcode Sticker Label Printer (Batch & Grid Layout)
+// QR Code Generator Modal & Lot QR Code Handler
 // ─────────────────────────────────────────────────────────────
 
 let currentLabelDrug = null;
+let currentLabelLot = null;
+let currentLotModalDrug = null;
+let currentLotModalLot = null;
+let currentLotModalQrDataUrl = '';
+
+function openLotQrModal(drugId, lotId) {
+    const drug = allDrugs.find(d => d.id === Number(drugId) || d.id == drugId);
+    if (!drug) return;
+    const lot = (drug.lots || []).find(l => l.id === Number(lotId) || l.id == lotId);
+    if (!lot) return;
+
+    currentLotModalDrug = drug;
+    currentLotModalLot = lot;
+
+    const modal = document.getElementById('lotQrModal');
+    if (!modal) return;
+
+    const drugNameEl = document.getElementById('lotQrDrugName');
+    const drugCodeEl = document.getElementById('lotQrDrugCode');
+    const lotNoEl = document.getElementById('lotQrLotNo');
+    const expiryEl = document.getElementById('lotQrExpiry');
+    const stockEl = document.getElementById('lotQrStock');
+
+    if (drugNameEl) drugNameEl.innerText = drug.name;
+    if (drugCodeEl) drugCodeEl.innerText = drug.code;
+    if (lotNoEl) lotNoEl.innerText = lot.lot_number;
+    if (expiryEl) expiryEl.innerText = lot.expiry_date || '-';
+    if (stockEl) stockEl.innerText = `${lot.stock_qty} ${drug.unit || 'หน่วย'}`;
+
+    const origin = window.location.origin;
+    const qrPayload = `${origin}/?scan=${encodeURIComponent(drug.code)}&lot=${encodeURIComponent(lot.lot_number)}`;
+    const payloadTextEl = document.getElementById('lotQrPayloadText');
+    if (payloadTextEl) payloadTextEl.innerText = qrPayload;
+
+    const container = document.getElementById('lotQrCanvasContainer');
+    if (container) {
+        container.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: #0284c7;"></i>';
+    }
+
+    modal.classList.add('active');
+
+    // Generate QR
+    generateQrDataUrl(qrPayload, 180).then(dataUrl => {
+        currentLotModalQrDataUrl = dataUrl;
+        if (container) {
+            container.innerHTML = `<img src="${dataUrl}" alt="QR ล็อต ${escapeHtml(lot.lot_number)}" style="width: 180px; height: 180px; display: block; border-radius: 4px;">`;
+        }
+    });
+}
+
+function closeLotQrModal() {
+    const modal = document.getElementById('lotQrModal');
+    if (modal) modal.classList.remove('active');
+    currentLotModalDrug = null;
+    currentLotModalLot = null;
+    currentLotModalQrDataUrl = '';
+}
+
+function downloadLotQrImage() {
+    if (!currentLotModalQrDataUrl || !currentLotModalDrug || !currentLotModalLot) return;
+    const link = document.createElement('a');
+    link.download = `QR_${currentLotModalDrug.code}_Lot_${currentLotModalLot.lot_number}.png`;
+    link.href = currentLotModalQrDataUrl;
+    link.click();
+}
+
+function printFromLotQrModal() {
+    if (!currentLotModalDrug || !currentLotModalLot) return;
+    const drugId = currentLotModalDrug.id;
+    const lotId = currentLotModalLot.id;
+    closeLotQrModal();
+    openLotStickerModal(drugId, lotId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 📦 LOT MANAGEMENT & SETTINGS (ตั้งค่าและแก้ไขล็อตยา)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function openEditLotModal(drugId, lotId, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    let drug = allDrugs.find(d => d.id === Number(drugId) || d.id == drugId);
+    let lot = drug && (drug.lots || []).find(l => l.id === Number(lotId) || l.id == lotId);
+
+    if (!lot) {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/lots/${lotId}`);
+            const data = await res.json();
+            if (data.ok && data.lot) {
+                lot = data.lot;
+                if (!drug) {
+                    drug = {
+                        id: lot.drug_id,
+                        name: lot.drug_name,
+                        code: lot.drug_code,
+                        unit: lot.drug_unit
+                    };
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching lot details:', e);
+        }
+    }
+
+    if (!lot) {
+        showToast('ไม่พบข้อมูลล็อตยา', 'error');
+        return;
+    }
+
+    const drugIdEl = document.getElementById('editLotDrugId');
+    const lotIdEl = document.getElementById('editLotId');
+    const drugCodeEl = document.getElementById('editLotDrugCode');
+    const drugNameEl = document.getElementById('editLotDrugName');
+    const unitEl = document.getElementById('editLotUnit');
+    const numInput = document.getElementById('editLotNumberInput');
+    const qtyInput = document.getElementById('editLotQtyInput');
+    const expInput = document.getElementById('editLotExpiryInput');
+    const costInput = document.getElementById('editLotCostInput');
+    const notesInput = document.getElementById('editLotNotesInput');
+
+    if (drugIdEl) drugIdEl.value = drug ? drug.id : (lot.drug_id || '');
+    if (lotIdEl) lotIdEl.value = lot.id;
+    if (drugCodeEl) drugCodeEl.textContent = (drug && drug.code) || lot.drug_code || '-';
+    if (drugNameEl) drugNameEl.textContent = (drug && drug.name) || lot.drug_name || '-';
+    if (unitEl) unitEl.textContent = (drug && drug.unit) || lot.drug_unit || 'หน่วย';
+
+    if (numInput) numInput.value = lot.lot_number || '';
+    if (qtyInput) qtyInput.value = lot.stock_qty !== undefined ? lot.stock_qty : 0;
+    if (expInput) expInput.value = lot.expiry_date || '';
+    if (costInput) costInput.value = (lot.cost_per_unit !== undefined && lot.cost_per_unit !== null) ? lot.cost_per_unit : '';
+    if (notesInput) notesInput.value = lot.notes || '';
+
+    const fefoBadge = document.getElementById('editLotFefoBadge');
+    if (fefoBadge) {
+        fefoBadge.style.display = (drug && drug.lots && drug.lots[0] && drug.lots[0].id === lot.id && lot.stock_qty > 0) ? 'inline-flex' : 'none';
+    }
+
+    const modal = document.getElementById('editLotModal');
+    if (modal) {
+        modal.classList.add('active');
+        setTimeout(() => {
+            document.getElementById('editLotNumberInput')?.focus();
+        }, 100);
+    }
+}
+
+function closeEditLotModal() {
+    const modal = document.getElementById('editLotModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function handleSaveLotEdit(event) {
+    event.preventDefault();
+    const drugId = parseInt(document.getElementById('editLotDrugId').value, 10);
+    const lotId = parseInt(document.getElementById('editLotId').value, 10);
+    const lotNumber = (document.getElementById('editLotNumberInput').value || '').trim();
+    const stockQty = parseInt(document.getElementById('editLotQtyInput').value, 10);
+    const expiryDate = document.getElementById('editLotExpiryInput').value || '';
+    const costPerUnit = document.getElementById('editLotCostInput').value;
+    const notes = (document.getElementById('editLotNotesInput').value || '').trim();
+
+    if (!lotNumber) {
+        showToast('กรุณาระบุเลขล็อต', 'warning');
+        return;
+    }
+    if (isNaN(stockQty) || stockQty < 0) {
+        showToast('จำนวนคงเหลือต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป', 'warning');
+        return;
+    }
+
+    const submitBtn = document.getElementById('btnSaveLotSubmit');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังบันทึก...';
+    }
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/lots/${lotId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lot_number: lotNumber,
+                stock_qty: stockQty,
+                expiry_date: expiryDate,
+                cost_per_unit: costPerUnit,
+                notes: notes
+            })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            throw new Error(data.error || 'ไม่สามารถบันทึกข้อมูลล็อตได้');
+        }
+
+        showToast('บันทึกการแก้ไขข้อมูลล็อตเรียบร้อยแล้ว', 'success');
+        closeEditLotModal();
+
+        // Preserve subrow expanded state after reloading
+        const subrowWasOpen = document.getElementById(`lots-subrow-${drugId}`)?.style.display !== 'none';
+        await loadDrugs();
+        if (subrowWasOpen) {
+            const subrow = document.getElementById(`lots-subrow-${drugId}`);
+            const chevron = document.getElementById(`lot-chevron-${drugId}`);
+            const badge = document.getElementById(`btn-lot-toggle-${drugId}`);
+            if (subrow) subrow.style.display = 'table-row';
+            if (chevron) chevron.classList.add('open');
+            if (badge) badge.classList.add('active');
+        }
+    } catch (err) {
+        showToast(err.message || 'เกิดข้อผิดพลาดในการบันทึก', 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas fa-check"></i> บันทึกการแก้ไข';
+        }
+    }
+}
+
+async function handleDeleteLot() {
+    const drugId = parseInt(document.getElementById('editLotDrugId').value, 10);
+    const lotId = parseInt(document.getElementById('editLotId').value, 10);
+    const lotNumber = (document.getElementById('editLotNumberInput').value || '').trim();
+
+    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบล็อต "${lotNumber}" นี้ออกจากระบบ?\n(การลบจะไม่สามารถย้อนกลับได้)`)) {
+        return;
+    }
+
+    const delBtn = document.getElementById('btnDeleteLot');
+    if (delBtn) {
+        delBtn.disabled = true;
+        delBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังลบ...';
+    }
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/lots/${lotId}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            throw new Error(data.error || 'ไม่สามารถลบล็อตนี้ได้');
+        }
+
+        showToast('ลบล็อตยาเรียบร้อยแล้ว', 'success');
+        closeEditLotModal();
+
+        const subrowWasOpen = document.getElementById(`lots-subrow-${drugId}`)?.style.display !== 'none';
+        await loadDrugs();
+        if (subrowWasOpen) {
+            const subrow = document.getElementById(`lots-subrow-${drugId}`);
+            const chevron = document.getElementById(`lot-chevron-${drugId}`);
+            const badge = document.getElementById(`btn-lot-toggle-${drugId}`);
+            if (subrow) subrow.style.display = 'table-row';
+            if (chevron) chevron.classList.add('open');
+            if (badge) badge.classList.add('active');
+        }
+    } catch (err) {
+        showToast(err.message || 'เกิดข้อผิดพลาดในการลบ', 'error');
+    } finally {
+        if (delBtn) {
+            delBtn.disabled = false;
+            delBtn.innerHTML = '<i class="fas fa-trash-can"></i> ลบล็อตนี้';
+        }
+    }
+}
+
+function openLotStickerModal(drugId, lotId) {
+    const drug = allDrugs.find(d => d.id === Number(drugId) || d.id == drugId);
+    if (!drug) return;
+    const lot = (drug.lots || []).find(l => l.id === Number(lotId) || l.id == lotId);
+    if (!lot) return;
+
+    currentLabelDrug = drug;
+    currentLabelLot = lot;
+
+    populateLabelDrugDropdown(drug.id);
+
+    const presetSelect = document.getElementById('labelLayoutPreset');
+    if (presetSelect) presetSelect.value = 'a4-standard';
+    
+    const countInput = document.getElementById('labelPrintCount');
+    if (countInput) countInput.value = '24';
+
+    document.getElementById('qrModal').classList.add('active');
+    updateLabelPreview();
+}
 
 function populateLabelDrugDropdown(selectedId = null) {
     const select = document.getElementById('labelDrugSelect');
@@ -1553,6 +2081,7 @@ function openQrModal(id) {
     if (!drug) return;
 
     currentLabelDrug = drug;
+    currentLabelLot = null; // default to general drug sticker
     populateLabelDrugDropdown(drug.id);
     
     // Set default preset and recommended count
@@ -1578,6 +2107,7 @@ function openBatchPrintModal() {
 function closeQrModal() {
     const modal = document.getElementById('qrModal');
     if (modal) modal.classList.remove('active');
+    currentLabelLot = null;
 }
 
 function onLabelDrugChange() {
@@ -1587,6 +2117,7 @@ function onLabelDrugChange() {
     const drug = allDrugs.find(d => d.id === drugId);
     if (drug) {
         currentLabelDrug = drug;
+        currentLabelLot = null; // reset specific lot when switching drugs
         updateLabelPreview();
     }
 }
@@ -1662,7 +2193,9 @@ async function updateLabelPreview() {
     const showBorder = document.getElementById('showOptBorder')?.checked;
 
     const origin = window.location.origin;
-    const qrPayload = `${origin}/?scan=${encodeURIComponent(drug.code)}`;
+    const qrPayload = currentLabelLot 
+        ? `${origin}/?scan=${encodeURIComponent(drug.code)}&lot=${encodeURIComponent(currentLabelLot.lot_number)}`
+        : `${origin}/?scan=${encodeURIComponent(drug.code)}`;
     const qrDataUrl = await generateQrDataUrl(qrPayload, 120);
 
     // Layout configuration rules
@@ -1862,7 +2395,7 @@ async function updateLabelPreview() {
             <div style="flex: 1; min-width: 0; overflow: hidden; line-height: 1.18;">
                 ${showTradeName ? `<div style="font-size: ${config.nameSize}; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; margin-bottom: 1px;">${escapeHtml(drug.name)}</div>` : ''}
                 ${showCode ? `<div style="font-size: ${config.descSize}; color: #334155; font-weight: 600;">รหัส: ${escapeHtml(drug.code)}</div>` : ''}
-                ${showExpiry ? `<div style="font-size: ${config.descSize}; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">EXP: ${escapeHtml(drug.expiry_date || '-')}</div>` : ''}
+                ${showExpiry ? `<div style="font-size: ${config.descSize}; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">EXP: ${escapeHtml((currentLabelLot ? currentLabelLot.expiry_date : drug.expiry_date) || '-')}${currentLabelLot ? ` • Lot: ${escapeHtml(currentLabelLot.lot_number)}` : ''}</div>` : ''}
                 ${showLocation && drug.location ? `<div style="font-size: ${config.descSize}; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ตู้: ${escapeHtml(drug.location)}</div>` : ''}
             </div>` : ''}
         </div>
@@ -1909,7 +2442,9 @@ async function executeBatchPrint() {
     const showBorder = document.getElementById('showOptBorder')?.checked;
 
     const origin = window.location.origin;
-    const qrPayload = `${origin}/?scan=${encodeURIComponent(drug.code)}`;
+    const qrPayload = currentLabelLot 
+        ? `${origin}/?scan=${encodeURIComponent(drug.code)}&lot=${encodeURIComponent(currentLabelLot.lot_number)}`
+        : `${origin}/?scan=${encodeURIComponent(drug.code)}`;
     const qrDataUrl = await generateQrDataUrl(qrPayload, 140);
 
     let config = {
@@ -2081,7 +2616,7 @@ async function executeBatchPrint() {
                 <div class="label-info">
                     ${showTradeName ? `<div class="drug-name">${escapeHtml(drug.name)}</div>` : ''}
                     ${showCode ? `<div class="drug-code">รหัส: ${escapeHtml(drug.code)}</div>` : ''}
-                    ${showExpiry ? `<div class="drug-exp">EXP: ${escapeHtml(drug.expiry_date || '-')}</div>` : ''}
+                    ${showExpiry ? `<div class="drug-exp">EXP: ${escapeHtml((currentLabelLot ? currentLabelLot.expiry_date : drug.expiry_date) || '-')}${currentLabelLot ? ` • Lot: ${escapeHtml(currentLabelLot.lot_number)}` : ''}</div>` : ''}
                     ${showLocation && drug.location ? `<div class="drug-loc">ตู้: ${escapeHtml(drug.location)}</div>` : ''}
                 </div>` : ''}
             </div>
@@ -2398,11 +2933,13 @@ async function handleScannedCode(rawCode) {
     
     // Parse URL if the code was a URL (e.g. scanned from regular phone camera or LINE QR)
     let cleanCode = rawCode.trim();
+    let urlLot = null;
     if (cleanCode.startsWith('http://') || cleanCode.startsWith('https://')) {
         try {
             const url = new URL(cleanCode);
+            urlLot = url.searchParams.get('lot');
             cleanCode = url.searchParams.get('scan') || url.searchParams.get('code') || url.searchParams.get('dispense') || cleanCode;
-            if (cleanCode.includes('/')) {
+            if (cleanCode.includes('/') && !cleanCode.startsWith('http')) {
                 const parts = cleanCode.split('/');
                 cleanCode = parts[parts.length - 1];
             }
@@ -2414,14 +2951,23 @@ async function handleScannedCode(rawCode) {
     showToast(`🔍 กำลังตรวจสอบรหัส: ${cleanCode}...`, 'info');
 
     try {
-        const res = await fetch(`/api/drugs/scan-lookup?code=${encodeURIComponent(cleanCode)}`);
+        let lookupUrl = `/api/drugs/scan-lookup?code=${encodeURIComponent(cleanCode)}`;
+        if (urlLot) {
+            lookupUrl += `&lot=${encodeURIComponent(urlLot)}`;
+        }
+        const res = await fetch(lookupUrl);
         const data = await res.json();
 
         if (data.ok && data.found && data.drug) {
             const drug = data.drug;
+            const matchedLotId = data.matched_lot ? data.matched_lot.id : null;
             switchTab('inventory');
-            openDispenseModalForDrug(drug.id, 'QR_SCAN');
-            showToast(`✅ พบยาในคลัง: ${drug.name}`, 'success');
+            openDispenseModalForDrug(drug.id, 'QR_SCAN', matchedLotId);
+            if (data.matched_lot) {
+                showToast(`✅ พบยา: ${drug.name} (ล็อต: ${data.matched_lot.lot_number})`, 'success');
+            } else {
+                showToast(`✅ พบยาในคลัง: ${drug.name}`, 'success');
+            }
         } else {
             // Open nice modal prompt instead of window.confirm!
             openNewBarcodeModal(cleanCode);

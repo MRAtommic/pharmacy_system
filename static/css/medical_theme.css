@@ -2070,9 +2070,9 @@ body {
   line-height: 1.45;
 }
 
-#drugsTableBody td:nth-child(3),
-#logsTableBody td:nth-child(3),
-#stockInTableBody td:nth-child(3) {
+#drugsTableBody > tr.clinical-row > td:nth-child(3),
+#logsTableBody > tr > td:nth-child(3),
+#stockInTableBody > tr > td:nth-child(3) {
   white-space: normal !important;
   min-width: 230px !important;
   max-width: 380px !important;
@@ -3962,10 +3962,8 @@ body {
 /* Table Thumbnail Column (42x42 strictly constrained, always Column 1) */
 .clinical-table th.col-thumb,
 .clinical-table td.col-thumb,
-#drugsTableBody th:first-child,
-#drugsTableBody td:first-child,
-#stockInTableBody th:first-child,
-#stockInTableBody td:first-child {
+#drugsTableBody > tr.clinical-row > td:first-child,
+#stockInTableBody > tr > td:first-child {
   width: 70px !important;
   max-width: 70px !important;
   min-width: 70px !important;
@@ -5681,3 +5679,293 @@ body {
   gap: 0.45rem;
   width: 100%;
 }
+
+/* ==========================================================================
+   📦 MULTI-LOT / BATCH TRACKING ACCORDION & SUB-ROWS
+   ========================================================================== */
+
+.btn-lot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.735rem;
+  font-weight: 600;
+  color: var(--teal-700, #0F766E);
+  background: var(--teal-50, #F0FDFA);
+  border: 1px solid var(--teal-200, #99F6E4);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 1.2;
+  margin-top: 4px;
+  user-select: none;
+}
+
+[data-theme="dark"] .btn-lot-badge {
+  color: #5EEAD4;
+  background: rgba(20, 184, 166, 0.15);
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+.btn-lot-badge:hover {
+  background: var(--teal-100, #CCFBF1);
+  border-color: var(--teal-400, #2DD4BF);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(15, 118, 110, 0.12);
+}
+
+.btn-lot-badge.active {
+  background: var(--teal-600, #0D9488);
+  color: #FFFFFF;
+  border-color: var(--teal-700, #0F766E);
+}
+
+.lot-chevron {
+  font-size: 0.65rem;
+  transition: transform 0.25s ease;
+}
+
+.lot-chevron.open {
+  transform: rotate(180deg);
+}
+
+.drug-lots-subrow {
+  background: var(--bg-subtle, #F8FAFC);
+  transition: all 0.3s ease;
+}
+
+[data-theme="dark"] .drug-lots-subrow {
+  background: #0B132B;
+}
+
+.drug-lots-panel {
+  padding: 0.85rem 1.25rem 1.15rem 1.25rem;
+  background: var(--bg-subtle, #F8FAFC);
+  border-bottom: 2px solid var(--border-default, #E2E8F0);
+  border-top: 1px solid var(--border-subtle, #EDF2F7);
+}
+
+[data-theme="dark"] .drug-lots-panel {
+  background: #0F172A;
+  border-color: #1E293B;
+}
+
+.drug-lots-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.drug-lots-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #0F172A);
+}
+
+.drug-lots-title i {
+  color: var(--brand-500, #2563EB);
+}
+
+.lot-subtable {
+  width: 100% !important;
+  table-layout: auto !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  background: var(--bg-surface, #FFFFFF) !important;
+  border: 1px solid var(--border-default, #E2E8F0) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  overflow: hidden !important;
+  font-size: 0.8125rem !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  margin: 0 !important;
+}
+
+[data-theme="dark"] .lot-subtable {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+}
+
+.lot-subtable th {
+  background: var(--bg-muted, #F1F5F9) !important;
+  color: var(--text-secondary, #475569) !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+  padding: 0.65rem 0.85rem !important;
+  border-bottom: 1px solid var(--border-default, #E2E8F0) !important;
+  text-align: left !important;
+  position: static !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
+[data-theme="dark"] .lot-subtable th {
+  background: #111827 !important;
+  color: #94A3B8 !important;
+  border-color: #334155 !important;
+}
+
+.lot-subtable td {
+  padding: 0.65rem 0.85rem !important;
+  border-bottom: 1px solid var(--border-subtle, #EDF2F7) !important;
+  color: var(--text-primary, #0F172A) !important;
+  vertical-align: middle !important;
+  position: static !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+}
+
+[data-theme="dark"] .lot-subtable td {
+  border-color: #334155 !important;
+  color: #F1F5F9 !important;
+}
+
+.lot-subtable tr:last-child td {
+  border-bottom: none !important;
+}
+
+.lot-subtable tr:hover td {
+  background: var(--bg-subtle, #F8FAFC) !important;
+}
+
+[data-theme="dark"] .lot-subtable tr:hover td {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.lot-subtable th:last-child,
+.lot-subtable td:last-child {
+  position: static !important;
+  box-shadow: none !important;
+  right: auto !important;
+}
+
+.lot-code-pill {
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--brand-700, #1D4ED8);
+  background: var(--brand-50, #EFF6FF);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--brand-200, #BFDBFE);
+  display: inline-block;
+}
+
+[data-theme="dark"] .lot-code-pill {
+  color: #93C5FD;
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.lot-fefo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.685rem;
+  font-weight: 700;
+  color: #047857;
+  background: #D1FAE5;
+  border: 1px solid #A7F3D0;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .lot-fefo-pill {
+  color: #6EE7B7;
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.btn-lot-action-sm {
+  padding: 0.28rem 0.6rem;
+  font-size: 0.725rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border-default, #E2E8F0);
+  background: var(--bg-surface, #FFFFFF);
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .btn-lot-action-sm {
+  background: #1E293B;
+  border-color: #334155;
+  color: #CBD5E1;
+}
+
+.btn-lot-action-sm:hover {
+  background: var(--bg-subtle, #F8FAFC);
+  color: var(--text-primary, #0F172A);
+  border-color: var(--border-strong, #CBD5E1);
+  transform: translateY(-1px);
+}
+
+.btn-lot-action-sm.primary:hover {
+  background: var(--brand-50, #EFF6FF);
+  color: var(--brand-600, #2563EB);
+  border-color: var(--brand-300, #93C5FD);
+}
+
+.btn-lot-action-sm.danger:hover {
+  background: #FFF1F2;
+  color: #E11D48;
+  border-color: #FECDD3;
+}
+
+.btn-lot-action-sm.amber:hover {
+  background: #FFFBEB;
+  color: #D97706;
+  border-color: #FDE68A;
+}
+
+.btn-lot-action-sm.emerald:hover {
+  background: #ECFDF5;
+  color: #059669;
+  border-color: #A7F3D0;
+}
+
+/* Mobile Lot Card Inside */
+.drug-lots-card-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-subtle, #F8FAFC);
+  border: 1px solid var(--border-default, #E2E8F0);
+  border-radius: var(--radius-md, 8px);
+}
+
+[data-theme="dark"] .drug-lots-card-panel {
+  background: #0F172A;
+  border-color: #1E293B;
+}
+
+.lot-mobile-item {
+  padding: 0.65rem;
+  background: var(--bg-surface, #FFFFFF);
+  border: 1px solid var(--border-default, #E2E8F0);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+[data-theme="dark"] .lot-mobile-item {
+  background: #1E293B;
+  border-color: #334155;
+}
+
+.lot-mobile-item:last-child {
+  margin-bottom: 0;
+}
+
