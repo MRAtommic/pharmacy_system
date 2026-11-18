@@ -19,6 +19,16 @@ BANGKOK_TZ = ZoneInfo("Asia/Bangkok")
 def get_now_str():
     return datetime.now(BANGKOK_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
+def to_num(val, default=0):
+    """Safely parse numbers without rounding or losing decimal precision."""
+    if val is None or val == "":
+        return default
+    try:
+        f = float(val)
+        return int(f) if f.is_integer() else f
+    except (ValueError, TypeError):
+        return default
+
 def get_db():
     conn = sqlite3.connect(Config.DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
@@ -712,9 +722,15 @@ def update_lot(lot_id, lot_number=None, stock_qty=None, expiry_date=None, cost_p
             return {"ok": False, "error": f"เลขล็อต '{new_lot_number}' ซ้ำกับล็อตอื่นของยานี้"}
 
         try:
-            new_stock_qty = lot["stock_qty"] if stock_qty is None else max(0, int(stock_qty))
+            if stock_qty is None:
+                new_stock_qty = lot["stock_qty"]
+            else:
+                f_qty = float(stock_qty)
+                if f_qty < 0:
+                    return {"ok": False, "error": "จำนวนคงเหลือต้องไม่ต่ำกว่า 0"}
+                new_stock_qty = int(f_qty) if f_qty.is_integer() else f_qty
         except (ValueError, TypeError):
-            return {"ok": False, "error": "จำนวนคงเหลือต้องเป็นตัวเลขจำนวนเต็มตั้งแต่ 0 ขึ้นไป"}
+            return {"ok": False, "error": "จำนวนคงเหลือต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป"}
 
         new_expiry = lot["expiry_date"] if expiry_date is None else (str(expiry_date).strip() if expiry_date else "")
         try:
@@ -996,9 +1012,9 @@ def add_drug(data):
             data.get("category", "ทั่วไป"),
             data.get("dosage_form", "เม็ด (Tablet)"),
             data.get("strength", "").strip(),
-            int(data.get("stock_qty") or 0),
+            to_num(data.get("stock_qty"), 0),
             data.get("unit", "เม็ด").strip(),
-            int(data.get("min_threshold") or 10),
+            to_num(data.get("min_threshold"), 10),
             float(data.get("price") or 0.0),
             float(data.get("cost") or 0.0),
             data.get("expiry_date", ""),
@@ -1013,7 +1029,7 @@ def add_drug(data):
         drug_id = cursor.lastrowid
 
         # Automatically create initial lot entry in drug_lots
-        init_stock = int(data.get("stock_qty") or 0)
+        init_stock = to_num(data.get("stock_qty"), 0)
         init_lot = (data.get("lot_number") or "").strip() or f"LOT-{datetime.now(BANGKOK_TZ).strftime('%y%m%d')}"
         init_exp = (data.get("expiry_date") or "").strip()
         init_cost = float(data.get("cost") or 0.0)
@@ -1097,12 +1113,12 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
     Returns: (success: bool, result_dict or error_message)
     """
     try:
-        qty_int = int(quantity)
+        qty_num = float(quantity)
+        if qty_num <= 0:
+            return False, "จำนวนที่ตัดต้องมากกว่า 0"
+        qty = int(qty_num) if qty_num.is_integer() else qty_num
     except (ValueError, TypeError):
-        return False, "จำนวนที่ตัดต้องเป็นตัวเลขจำนวนเต็มบวก"
-
-    if qty_int <= 0:
-        return False, "จำนวนที่ตัดต้องมากกว่า 0"
+        return False, "จำนวนที่ตัดต้องเป็นตัวเลขมากกว่า 0"
 
     with _db_write_lock:
         conn = get_db()
@@ -1134,13 +1150,13 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     if not lot_row:
                         return False, f"ไม่พบข้อมูลล็อตยา #{lot_id} สำหรับยานี้"
                     lot_dict = dict(lot_row)
-                    if lot_dict["stock_qty"] < qty_int:
-                        return False, f"ล็อต '{lot_dict['lot_number']}' มียาคงเหลือเพียง {lot_dict['stock_qty']} {drug['unit']} (ไม่พอตัด {qty_int} {drug['unit']})"
+                    if lot_dict["stock_qty"] < qty:
+                        return False, f"ล็อต '{lot_dict['lot_number']}' มียาคงเหลือเพียง {lot_dict['stock_qty']} {drug['unit']} (ไม่พอตัด {qty} {drug['unit']})"
                     cursor.execute("""
                         UPDATE drug_lots 
                         SET stock_qty = stock_qty - ?, updated_at = ? 
                         WHERE id = ?
-                    """, (qty_int, now, lot_dict["id"]))
+                    """, (qty, now, lot_dict["id"]))
                     target_lot_id = lot_dict["id"]
                     target_lot_number = lot_dict["lot_number"]
                 else:
@@ -1151,14 +1167,15 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                         ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END, expiry_date ASC, id ASC
                     """, (drug_id,))
                     active_lots = [dict(r) for r in cursor.fetchall()]
-                    rem = qty_int
+                    rem = qty
                     for al in active_lots:
                         take = min(al["stock_qty"], rem)
+                        take_clean = int(take) if isinstance(take, float) and take.is_integer() else take
                         cursor.execute("""
                             UPDATE drug_lots 
                             SET stock_qty = stock_qty - ?, updated_at = ? 
                             WHERE id = ?
-                        """, (take, now, al["id"]))
+                        """, (take_clean, now, al["id"]))
                         rem -= take
                         if target_lot_id is None:
                             target_lot_id = al["id"]
@@ -1174,14 +1191,14 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     SET stock_qty = stock_qty - ?, updated_at = ? 
                     WHERE id = ? AND stock_qty >= ?
                     RETURNING stock_qty, (stock_qty + ?) AS balance_before
-                """, (qty_int, now, drug_id, qty_int, qty_int))
+                """, (qty, now, drug_id, qty, qty))
 
                 update_row = cursor.fetchone()
                 if not update_row:
                     cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (drug_id,))
                     cur_row = cursor.fetchone()
                     cur_stock = cur_row[0] if cur_row else 0
-                    return False, f"สต็อกไม่เพียงพอ! มียา '{drug['name']}' เหลืออยู่เพียง {cur_stock} {drug['unit']} (ต้องการตัด {qty_int} {drug['unit']})"
+                    return False, f"สต็อกไม่เพียงพอ! มียา '{drug['name']}' เหลืออยู่เพียง {cur_stock} {drug['unit']} (ต้องการตัด {qty} {drug['unit']})"
 
                 new_stock = update_row[0]
                 current_stock = update_row[1]
@@ -1203,7 +1220,7 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     drug["name"],
                     target_lot_id,
                     target_lot_number,
-                    qty_int,
+                    qty,
                     current_stock,
                     new_stock,
                     channel,
@@ -1273,16 +1290,17 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
         if not drug_ref:
             return False, f"รายการที่ {idx}: ไม่ได้ระบุรหัสยา"
         try:
-            qty_int = int(item.get("quantity", 0))
+            qty_val = float(item.get("quantity", 0))
+            if qty_val <= 0:
+                return False, f"รายการที่ {idx}: จำนวนที่ตัดต้องมากกว่า 0"
+            item_qty = int(qty_val) if qty_val.is_integer() else qty_val
         except (ValueError, TypeError):
-            return False, f"รายการที่ {idx}: จำนวนที่ตัดต้องเป็นตัวเลขจำนวนเต็มบวก"
-        if qty_int <= 0:
-            return False, f"รายการที่ {idx}: จำนวนที่ตัดต้องมากกว่า 0"
+            return False, f"รายการที่ {idx}: จำนวนที่ตัดต้องเป็นตัวเลขมากกว่า 0"
 
-        demand_by_drug[str(drug_ref)] = demand_by_drug.get(str(drug_ref), 0) + qty_int
+        demand_by_drug[str(drug_ref)] = demand_by_drug.get(str(drug_ref), 0.0) + item_qty
         cleaned_items.append({
             "drug_ref": drug_ref,
-            "quantity": qty_int,
+            "quantity": item_qty,
             "lot_id": item.get("lot_id"),
             "notes": str(item.get("notes") or "").strip()
         })
@@ -1306,7 +1324,8 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                     if not row:
                         return False, f"ไม่พบข้อมูลยาในระบบ: {drug_ref}"
                     drug_dict = dict(row)
-                    cur_stock = int(drug_dict.get("stock_qty") or 0)
+                    cur_stock_val = float(drug_dict.get("stock_qty") or 0.0)
+                    cur_stock = int(cur_stock_val) if cur_stock_val.is_integer() else cur_stock_val
                     if cur_stock < total_needed:
                         return False, f"สต็อกไม่เพียงพอ! ยา '{drug_dict['name']}' ในคลังมี {cur_stock} {drug_dict['unit']} (ใบสั่งยานี้ต้องการรวม {total_needed} {drug_dict['unit']})"
                     resolved_drugs[str(drug_ref)] = drug_dict
@@ -1706,12 +1725,12 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
     Returns: (success: bool, result_dict or error_message)
     """
     try:
-        qty_int = int(quantity)
+        qty_num = float(quantity)
+        if qty_num <= 0:
+            return False, "จำนวนที่รับเข้าต้องมากกว่า 0"
+        qty = int(qty_num) if qty_num.is_integer() else qty_num
     except (ValueError, TypeError):
-        return False, "จำนวนที่รับเข้าต้องเป็นตัวเลขจำนวนเต็มบวก"
-
-    if qty_int <= 0:
-        return False, "จำนวนที่รับเข้าต้องมากกว่า 0"
+        return False, "จำนวนที่รับเข้าต้องเป็นตัวเลขมากกว่า 0"
 
     with _db_write_lock:
         conn = get_db()
@@ -1739,12 +1758,13 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
                     unit_cost = float(cost_per_unit) if cost_per_unit is not None and str(cost_per_unit).strip() != "" else float(drug.get("cost") or 0.0)
                 except (ValueError, TypeError):
                     unit_cost = float(drug.get("cost") or 0.0)
-                total_cost = round(unit_cost * qty_int, 2)
+                total_cost = unit_cost * qty
 
-                current_stock = int(drug.get("stock_qty") or 0)
+                current_stock_val = float(drug.get("stock_qty") or 0.0)
+                current_stock = int(current_stock_val) if current_stock_val.is_integer() else current_stock_val
                 current_cost = float(drug.get("cost") or 0.0)
                 if current_stock > 0 and current_cost > 0:
-                    weighted_unit_cost = round(((current_stock * current_cost) + (qty_int * unit_cost)) / (current_stock + qty_int), 2)
+                    weighted_unit_cost = ((current_stock * current_cost) + (qty * unit_cost)) / (current_stock + qty)
                 else:
                     weighted_unit_cost = unit_cost
 
@@ -1777,7 +1797,7 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
                             updated_at = ?, 
                             is_active = 1 
                         WHERE id = ?
-                    """, (qty_int, qty_int, unit_cost, incoming_exp, now, lot_id))
+                    """, (qty, qty, unit_cost, incoming_exp, now, lot_id))
                 else:
                     lot_qr = f"{drug['code']}#{lot_no}"
                     cursor.execute("""
@@ -1785,7 +1805,7 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
                             drug_id, lot_number, stock_qty, initial_qty, cost_per_unit,
                             expiry_date, location, qr_payload, notes, created_at, updated_at, is_active
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                    """, (drug_id, lot_no, qty_int, qty_int, unit_cost, incoming_exp, drug.get("location", ""), lot_qr, notes or "", now, now))
+                    """, (drug_id, lot_no, qty, qty, unit_cost, incoming_exp, drug.get("location", ""), lot_qr, notes or "", now, now))
                     lot_id = cursor.lastrowid
 
                 # 3. Update drugs master total stock and weighted cost
@@ -1796,7 +1816,7 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
                         updated_at = ?
                     WHERE id = ?
                     RETURNING stock_qty, (stock_qty - ?) AS balance_before
-                """, (qty_int, weighted_unit_cost, now, drug_id, qty_int))
+                """, (qty, weighted_unit_cost, now, drug_id, qty))
 
                 row_update = cursor.fetchone()
                 new_stock = row_update[0]
@@ -1818,7 +1838,7 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
                     drug["name"],
                     lot_no,
                     lot_id,
-                    qty_int,
+                    qty,
                     current_stock,
                     new_stock,
                     unit_cost,
@@ -1945,11 +1965,12 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                 new_qty = old_log["quantity"]
                 if quantity is not None:
                     try:
-                        new_qty = int(quantity)
-                        if new_qty <= 0:
+                        q_val = float(quantity)
+                        if q_val <= 0:
                             return False, "จำนวนรับเข้าต้องมากกว่า 0"
+                        new_qty = int(q_val) if q_val.is_integer() else q_val
                     except (ValueError, TypeError):
-                        return False, "จำนวนรับเข้าต้องเป็นตัวเลขจำนวนเต็มบวก"
+                        return False, "จำนวนรับเข้าต้องเป็นตัวเลขมากกว่า 0"
 
                 # Check drug stock adjustment if quantity changed
                 diff = new_qty - old_log["quantity"]
@@ -1957,7 +1978,8 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                     cursor.execute("SELECT stock_qty, name FROM drugs WHERE id = ?", (drug_id,))
                     d_row = cursor.fetchone()
                     if d_row:
-                        cur_stock = int(d_row[0] or 0)
+                        cur_stock_val = float(d_row[0] or 0.0)
+                        cur_stock = int(cur_stock_val) if cur_stock_val.is_integer() else cur_stock_val
                         if cur_stock + diff < 0:
                             return False, f"ไม่สามารถลดยอดรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือ {cur_stock} หน่วย ไม่เพียงพอสำหรับการปรับลดยอด {abs(diff)} หน่วย"
                         now_str = get_now_str()
@@ -1968,7 +1990,7 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                         """, (diff, now_str, drug_id))
 
                 new_cost = old_log["cost_per_unit"] if cost_per_unit is None else float(cost_per_unit or 0.0)
-                new_total_cost = round(new_qty * new_cost, 2)
+                new_total_cost = new_qty * new_cost
                 new_lot = old_log["lot_number"] if lot_number is None else str(lot_number).strip()
                 new_exp = old_log["expiry_date"] if expiry_date is None else str(expiry_date).strip()
                 new_sup = old_log["supplier"] if supplier is None else str(supplier).strip()
@@ -2049,7 +2071,8 @@ def void_stock_in_log(log_id, reason="ยกเลิกรายการรั
                     cursor.execute("SELECT stock_qty, name FROM drugs WHERE id = ?", (drug_id,))
                     d_row = cursor.fetchone()
                     if d_row:
-                        cur_stock = int(d_row[0] or 0)
+                        cur_stock_val = float(d_row[0] or 0.0)
+                        cur_stock = int(cur_stock_val) if cur_stock_val.is_integer() else cur_stock_val
                         if cur_stock < qty:
                             return False, f"ไม่สามารถยกเลิกรายการรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือเพียง {cur_stock} หน่วย (น้อยกว่ายอดรับเข้า {qty} หน่วย เนื่องจากอาจถูกตัดจ่ายไปแล้ว ระบบบล็อกไว้เพื่อป้องกันสต็อกติดลบ)"
                         
@@ -2436,12 +2459,7 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
             fval = float(val)
             if fval.is_integer():
                 return f"{int(fval):,}"
-            s = f"{fval:,.2f}"
-            if s.endswith(".00"):
-                return s[:-3]
-            if s.endswith("0"):
-                return s[:-1]
-            return s
+            return f"{fval:,.2f}"
         except (ValueError, TypeError):
             return str(val)
 
@@ -2556,7 +2574,7 @@ def get_daily_requisition_data(date_str: str = None):
             "year_be": "2568",
             "items": sample_items,
             "total_items": len(sample_items),
-            "total_dispensed_qty": sum(int(it["qty_dispensed"]) for it in sample_items),
+            "total_dispensed_qty": sum(float(it["qty_dispensed"]) for it in sample_items),
             "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
             "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
             "requester_title": "พยาบาลวิชาชีพชำนาญการ",
@@ -2708,7 +2726,14 @@ def get_daily_requisition_data(date_str: str = None):
     items = list(items_map.values())
     conn.close()
 
-    total_dispensed = sum(int(it["qty_dispensed"]) for it in items if str(it["qty_dispensed"]).isdigit())
+    def _parse_disp(v):
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
+
+    tot_val = sum(_parse_disp(it.get("qty_dispensed")) for it in items)
+    total_dispensed = int(tot_val) if tot_val.is_integer() else tot_val
 
     return {
         "date": date_str,

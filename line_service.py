@@ -237,7 +237,7 @@ class PharmacyLineBot:
         normalized_text = text.translate(str.maketrans('๐๑๒๓๔๕๖๗๘๙', '0123456789')).strip()
 
         # 3. Deduction Pattern: [เบิก/ตัด] [ชื่อยา/รหัสยา] [จำนวน] [หน่วย]
-        dispense_pattern = r'^(?:เบิก|ตัด|จ่าย|ใช้)?\s*(.+?)(?:\s+[xX*]\s*|\s*[*]\s*|\s+)(\d+)\s*(?:เม็ด|แคปซูล|ขวด|แผง|กล่อง|ซอง|หลอด)?$'
+        dispense_pattern = r'^(?:เบิก|ตัด|จ่าย|ใช้)?\s*(.+?)(?:\s+[xX*]\s*|\s*[*]\s*|\s+)(\d+(?:\.\d+)?)\s*(?:เม็ด|แคปซูล|ขวด|แผง|กล่อง|ซอง|หลอด|หน่วย)?$'
         match = re.match(dispense_pattern, normalized_text)
         if match:
             # Authorization Guard: Verify user has staff privileges before deducting stock
@@ -251,7 +251,11 @@ class PharmacyLineBot:
                     return
 
             drug_query = match.group(1).strip()
-            qty = int(match.group(2))
+            try:
+                q_num = float(match.group(2))
+                qty = int(q_num) if q_num.is_integer() else q_num
+            except (ValueError, TypeError):
+                qty = 1
 
             drug = database.find_drug_by_name_or_alias(drug_query)
             if not drug:

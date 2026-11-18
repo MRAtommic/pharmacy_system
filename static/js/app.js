@@ -31,6 +31,16 @@ const paginationState = {
     stockIn: { currentPage: 1, pageSize: 10 }
 };
 
+// Precise Quantity Formatter: Displays exact numbers without unwanted rounding or truncation
+function formatQty(qty) {
+    if (qty === null || qty === undefined || qty === '' || isNaN(qty)) return '0';
+    const num = Number(qty);
+    if (Number.isInteger(num)) {
+        return num.toLocaleString('th-TH');
+    }
+    return num.toLocaleString('th-TH', { maximumFractionDigits: 6 });
+}
+
 function changePage(targetKey, page) {
     if (!paginationState[targetKey]) return;
     paginationState[targetKey].currentPage = page;
@@ -525,9 +535,9 @@ function renderDrugsTable(drugs) {
             if (d.stock_qty <= 0) {
                 stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill out-of-stock"><i class="fas fa-circle-xmark"></i> หมดสต็อก</span></div>`;
             } else if (isLow) {
-                stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill low-stock" title="ต่ำกว่าจุดเตือน ${d.min_threshold} ${d.unit}"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${d.stock_qty} ${d.unit})</span>${valText}</div>`;
+                stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill low-stock" title="ต่ำกว่าจุดเตือน ${formatQty(d.min_threshold)} ${d.unit}"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${formatQty(d.stock_qty)} ${d.unit})</span>${valText}</div>`;
             } else {
-                stockHtml = `<div class="stock-normal-cell"><div class="stock-num-line"><span class="stock-qty-number">${d.stock_qty.toLocaleString()}</span> <span class="stock-qty-unit">${escapeHtml(d.unit)}</span></div>${valText}</div>`;
+                stockHtml = `<div class="stock-normal-cell"><div class="stock-num-line"><span class="stock-qty-number">${formatQty(d.stock_qty)}</span> <span class="stock-qty-unit">${escapeHtml(d.unit)}</span></div>${valText}</div>`;
             }
 
             let expiryHtml = `<span class="expiry-empty">-</span>`;
@@ -665,9 +675,9 @@ function renderDrugsTable(drugs) {
                         </div>
                         <div class="mobile-card-status">
                             ${isExpired ? `<span class="expiry-alert-pill expired"><i class="fas fa-ban"></i> หมดอายุ</span>` :
-                              isLow ? `<span class="stock-alert-pill low-stock"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${d.stock_qty})</span>` :
+                              isLow ? `<span class="stock-alert-pill low-stock"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${formatQty(d.stock_qty)})</span>` :
                               isExpiringSoon ? `<span class="expiry-alert-pill expiring"><i class="fas fa-hourglass-half"></i> อีก ${d.days_left} วัน</span>` :
-                              `<span class="stock-normal-pill"><strong>${d.stock_qty.toLocaleString()}</strong> <small>${escapeHtml(d.unit)}</small></span>`
+                              `<span class="stock-normal-pill"><strong>${formatQty(d.stock_qty)}</strong> <small>${escapeHtml(d.unit)}</small></span>`
                             }
                         </div>
                     </div>
@@ -735,7 +745,7 @@ function renderDrugsTable(drugs) {
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
                                     <span class="lot-code-pill">${escapeHtml(lot.lot_number)}</span>
                                     <span style="font-size: 0.8rem; font-weight: 700; color: ${lot.stock_qty <= 0 ? 'var(--rose-600)' : 'var(--text-primary)'};">
-                                        ${lot.stock_qty.toLocaleString()} ${escapeHtml(d.unit)}
+                                        ${formatQty(lot.stock_qty)} ${escapeHtml(d.unit)}
                                     </span>
                                 </div>
                                 <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
@@ -810,7 +820,7 @@ function renderLotsSubtable(drug, lots) {
                             </div>
                         </td>
                         <td>
-                            <strong style="color: ${lot.stock_qty <= 0 ? 'var(--rose-600)' : 'var(--text-primary)'}; font-size: 0.9rem;">${lot.stock_qty.toLocaleString()}</strong> 
+                            <strong style="color: ${lot.stock_qty <= 0 ? 'var(--rose-600)' : 'var(--text-primary)'}; font-size: 0.9rem;">${formatQty(lot.stock_qty)}</strong> 
                             <small style="color: var(--text-muted);">${escapeHtml(drug.unit)}</small>
                         </td>
                         <td>
@@ -1072,9 +1082,9 @@ async function saveDrug(e) {
         category: getVal('drugCategoryInput', 'ทั่วไป'),
         dosage_form: getVal('drugDosageInput', 'เม็ด (Tablet)'),
         strength: getVal('drugStrengthInput'),
-        stock_qty: parseInt(getVal('drugStockInput', '0')) || 0,
+        stock_qty: parseFloat(getVal('drugStockInput', '0')) || 0,
         unit: getVal('drugUnitInput', 'เม็ด'),
-        min_threshold: parseInt(getVal('drugMinInput', '10')) || 10,
+        min_threshold: parseFloat(getVal('drugMinInput', '10')) || 10,
         price: parseFloat(getVal('drugPriceInput', '0')) || 0,
         cost: parseFloat(getVal('drugCostInput', '0')) || 0,
         lot_number: getVal('drugLotInput'),
@@ -1144,7 +1154,7 @@ let isCameraScanLocked = false;
 function onDispenseQtyChange() {
     if (!selectedDrugForDispense) return;
     const drug = selectedDrugForDispense;
-    const qty = parseInt(document.getElementById('dispenseQtyInput')?.value) || 0;
+    const qty = parseFloat(document.getElementById('dispenseQtyInput')?.value) || 0;
     const currentStock = Number(drug.stock_qty) || 0;
     const alertEl = document.getElementById('dispenseHighQtyAlert');
     const alertText = document.getElementById('dispenseHighQtyAlertText');
@@ -1326,14 +1336,14 @@ function openHighQtyConfirmModal(drug, qty, currentStock) {
     if (!modal) return;
 
     document.getElementById('confirmDrugName').innerText = `${drug.name} (${drug.code})`;
-    document.getElementById('confirmDispenseQty').innerText = `-${qty.toLocaleString()} ${drug.unit}`;
-    document.getElementById('confirmCurrentStock').innerText = `${currentStock.toLocaleString()} ${drug.unit}`;
+    document.getElementById('confirmDispenseQty').innerText = `-${formatQty(qty)} ${drug.unit}`;
+    document.getElementById('confirmCurrentStock').innerText = `${formatQty(currentStock)} ${drug.unit}`;
     
     const ratioNotice = document.getElementById('confirmStockRatioNotice');
     if (ratioNotice) {
-        const percent = currentStock > 0 ? Math.round((qty / currentStock) * 100) : 0;
+        const percent = currentStock > 0 ? ((qty / currentStock) * 100).toFixed(1) : 0;
         let reasons = [];
-        if (qty >= 100) reasons.push(`ตัดจ่ายตั้งแต่ ${qty.toLocaleString()} ${drug.unit} ขึ้นไป`);
+        if (qty >= 100) reasons.push(`ตัดจ่ายตั้งแต่ ${formatQty(qty)} ${drug.unit} ขึ้นไป`);
         if (percent >= 50) reasons.push(`สูงถึง ${percent}% ของยาทั้งคลัง`);
         ratioNotice.innerHTML = `⚠️ ${reasons.join(' • ')}`;
     }
@@ -1374,7 +1384,7 @@ async function submitDispense(e) {
     if (!selectedDrugForDispense) return;
 
     const drug = selectedDrugForDispense;
-    const qty = parseInt(document.getElementById('dispenseQtyInput')?.value) || 1;
+    const qty = parseFloat(document.getElementById('dispenseQtyInput')?.value) || 1;
     const currentStock = Number(drug.stock_qty) || 0;
     const lotId = document.getElementById('dispenseLotSelect')?.value || null;
 
@@ -1936,7 +1946,7 @@ async function handleSaveLotEdit(event) {
     const drugId = parseInt(document.getElementById('editLotDrugId').value, 10);
     const lotId = parseInt(document.getElementById('editLotId').value, 10);
     const lotNumber = (document.getElementById('editLotNumberInput').value || '').trim();
-    const stockQty = parseInt(document.getElementById('editLotQtyInput').value, 10);
+    const stockQty = parseFloat(document.getElementById('editLotQtyInput').value);
     const expiryDate = document.getElementById('editLotExpiryInput').value || '';
     const costPerUnit = document.getElementById('editLotCostInput').value;
     const notes = (document.getElementById('editLotNotesInput').value || '').trim();
@@ -4026,7 +4036,7 @@ function onStockInDrugChange(event) {
 }
 
 function calcStockInTotal() {
-    const qty = parseInt(document.getElementById('stockInQtyInput')?.value || 0);
+    const qty = parseFloat(document.getElementById('stockInQtyInput')?.value || 0);
     const cost = parseFloat(document.getElementById('stockInCostInput')?.value || 0);
     const total = qty * cost;
 
@@ -4056,8 +4066,8 @@ async function submitStockIn(e) {
         return;
     }
 
-    const qty = parseInt(document.getElementById('stockInQtyInput')?.value || 0);
-    if (qty <= 0) {
+    const qty = parseFloat(document.getElementById('stockInQtyInput')?.value || 0);
+    if (isNaN(qty) || qty <= 0) {
         showToast('จำนวนรับเข้าต้องมากกว่า 0', 'warning');
         return;
     }
@@ -4602,8 +4612,8 @@ function closeEditStockInModal() {
 }
 
 function calcEditStockInImpact() {
-    const origQty = parseInt(document.getElementById('editStockInOriginalQty')?.value || '0', 10);
-    const newQty = parseInt(document.getElementById('editStockInQty')?.value || '0', 10);
+    const origQty = parseFloat(document.getElementById('editStockInOriginalQty')?.value || '0');
+    const newQty = parseFloat(document.getElementById('editStockInQty')?.value || '0');
     const cost = parseFloat(document.getElementById('editStockInCost')?.value || '0') || 0;
     
     const totalCostInp = document.getElementById('editStockInTotalCost');
@@ -4611,7 +4621,7 @@ function calcEditStockInImpact() {
         totalCostInp.value = '฿' + (newQty * cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
-    const curStock = parseInt(document.getElementById('editPreviewCurrentStock')?.textContent || '0', 10);
+    const curStock = parseFloat(document.getElementById('editPreviewCurrentStock')?.textContent || '0');
     const diff = newQty - origQty;
     const hintEl = document.getElementById('editStockInImpactHint');
     const saveBtn = document.getElementById('btnSaveEditStockIn');
@@ -4654,7 +4664,7 @@ async function saveEditStockIn(event) {
     }
 
     const payload = {
-        quantity: parseInt(document.getElementById('editStockInQty')?.value || '1', 10),
+        quantity: parseFloat(document.getElementById('editStockInQty')?.value || '1'),
         lot_number: document.getElementById('editStockInLot')?.value.trim() || '',
         expiry_date: document.getElementById('editStockInExpiry')?.value || '',
         cost_per_unit: parseFloat(document.getElementById('editStockInCost')?.value || '0') || 0,
@@ -5458,7 +5468,7 @@ function updateRxCartQty(drugId, newQty) {
     const item = rxCart.find(it => Number(it.drug.id) === Number(drugId));
     if (!item) return;
 
-    let qty = parseInt(newQty, 10);
+    let qty = parseFloat(newQty);
     if (isNaN(qty) || qty <= 0) qty = 1;
 
     const curStock = Number(item.drug.stock_qty || 0);
@@ -5606,7 +5616,7 @@ function renderRxCartModal() {
                         <button type="button" class="rx-qty-btn" onclick="updateRxCartQty(${d.id}, ${it.quantity - 1})" title="ลดจำนวน">
                             <i class="fas fa-minus" style="font-size: 0.7rem;"></i>
                         </button>
-                        <input type="number" class="rx-qty-input" value="${it.quantity}" min="1" max="${curStock}" onchange="updateRxCartQty(${d.id}, this.value)">
+                        <input type="number" class="rx-qty-input" value="${it.quantity}" min="0.001" step="any" max="${curStock}" onchange="updateRxCartQty(${d.id}, this.value)">
                         <button type="button" class="rx-qty-btn" onclick="updateRxCartQty(${d.id}, ${it.quantity + 1})" title="เพิ่มจำนวน">
                             <i class="fas fa-plus" style="font-size: 0.7rem;"></i>
                         </button>

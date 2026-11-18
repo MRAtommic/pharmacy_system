@@ -179,10 +179,18 @@ def stock_card_view():
             tx["particulars_html"] = f'รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{qty_out}</span>..'
             tx["lot_exp_html"] = lot_exp_display if lot else "-"
 
-        if tx.get("total_price"):
-            tx["total_price_formatted"] = f"{round(tx['total_price']):,}"
-        elif tx.get("price"):
-            tx["price_formatted"] = f"{round(tx['price']):,}"
+        tot_p = tx.get("total_price")
+        p = tx.get("price")
+        if tot_p is not None and tot_p != "":
+            try:
+                tx["total_price_formatted"] = f"{float(tot_p):,.2f}"
+            except (ValueError, TypeError):
+                tx["total_price_formatted"] = str(tot_p)
+        elif p is not None and p != "":
+            try:
+                tx["price_formatted"] = f"{float(p):,.2f}"
+            except (ValueError, TypeError):
+                tx["price_formatted"] = str(p)
 
     opening_date_short = ""
     used_rows = 1 + len(transactions)
@@ -864,11 +872,12 @@ def edit_drug(drug_id):
     data = request.json or {}
     if "stock_qty" in data and data["stock_qty"] is not None:
         try:
-            sq = int(data["stock_qty"])
+            sq = float(data["stock_qty"])
             if sq < 0:
                 return jsonify({"ok": False, "error": "จำนวนสต็อกต้องไม่ติดลบ"}), 400
+            data["stock_qty"] = int(sq) if sq.is_integer() else sq
         except (ValueError, TypeError):
-            return jsonify({"ok": False, "error": "จำนวนสต็อกต้องเป็นตัวเลขจำนวนเต็ม"}), 400
+            return jsonify({"ok": False, "error": "จำนวนสต็อกต้องเป็นตัวเลข"}), 400
 
     updated = database.update_drug(drug_id, data)
     if not updated:
@@ -963,12 +972,12 @@ def dispense_stock():
     data = request.json or {}
     drug_id = data.get("drug_id")
     try:
-        quantity = int(data.get("quantity") or 1)
+        q_val = float(data.get("quantity") or 1)
+        if q_val <= 0:
+            return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องมากกว่า 0"}), 400
+        quantity = int(q_val) if q_val.is_integer() else q_val
     except (ValueError, TypeError):
-        return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องเป็นตัวเลขจำนวนเต็มบวก"}), 400
-
-    if quantity <= 0:
-        return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องมากกว่า 0"}), 400
+        return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องเป็นตัวเลขมากกว่า 0"}), 400
 
     channel = data.get("channel") or "WEB_MANUAL"
     # Auto-fill dispensed_by with logged-in user email/name if not provided
@@ -1173,12 +1182,12 @@ def stock_in_endpoint():
         return jsonify({"ok": False, "error": "กรุณาระบุรหัสยาหรือเลือกรายการยา"}), 400
 
     try:
-        quantity = int(data.get("quantity") or 0)
+        q_val = float(data.get("quantity") or 0)
+        if q_val <= 0:
+            return jsonify({"ok": False, "error": "จำนวนรับเข้าต้องมากกว่า 0"}), 400
+        quantity = int(q_val) if q_val.is_integer() else q_val
     except (ValueError, TypeError):
-        return jsonify({"ok": False, "error": "จำนวนรับเข้าต้องเป็นตัวเลข"}), 400
-
-    if quantity <= 0:
-        return jsonify({"ok": False, "error": "จำนวนรับเข้าต้องมากกว่า 0"}), 400
+        return jsonify({"ok": False, "error": "จำนวนรับเข้าต้องเป็นตัวเลขมากกว่า 0"}), 400
 
     u = current_user()
     actor_email = u.get('email', '')
@@ -1940,9 +1949,17 @@ def number_to_thai_text(n):
     units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
     digits = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน']
     try:
-        n_int = int(n)
-        if n_int == 0:
+        f = float(n)
+        if f == 0:
             return 'ศูนย์'
+        if f < 0:
+            return 'ลบ' + number_to_thai_text(-f)
+            
+        n_int = int(f)
+        dec_part = ""
+        if not f.is_integer():
+            dec_part = str(f).split(".")[1]
+
         s = str(n_int)
         l = len(s)
         res = []
@@ -1959,7 +1976,11 @@ def number_to_thai_text(n):
                 res.append('สิบ')
             else:
                 res.append(units[d] + digits[p])
-        return ''.join(res)
+        int_text = ''.join(res) or 'ศูนย์'
+        if dec_part:
+            dec_text = ''.join(units[int(c)] if c != '0' else 'ศูนย์' for c in dec_part)
+            return f"{int_text}จุด{dec_text}"
+        return int_text
     except Exception:
         return str(n)
 
@@ -2094,7 +2115,8 @@ def view_single_requisition(log_id):
     patient_name = patient_raw if patient_raw and patient_raw != "-" else "-"
     requester_dept = "หน่วยบริการตรวจรักษา / หอผู้ป่วย"
 
-    qty = int(log.get("quantity", 0))
+    qty_val = float(log.get("quantity", 0) or 0)
+    qty = int(qty_val) if qty_val.is_integer() else qty_val
     unit = log.get("unit", "หน่วย")
     qty_thai = number_to_thai_text(qty) + f" {unit}ถ้วน"
 
@@ -2183,7 +2205,8 @@ def view_batch_requisition():
 
     requisition_no = f"REQ-BATCH-{batch_code}"
 
-    total_qty = sum(l.get("quantity", 0) for l in logs)
+    total_qty_val = sum(float(l.get("quantity", 0) or 0) for l in logs)
+    total_qty = int(total_qty_val) if total_qty_val.is_integer() else total_qty_val
     primary_unit = logs[0].get("unit", "หน่วย") if logs else "หน่วย"
     qty_thai = number_to_thai_text(total_qty) + f" {primary_unit}ถ้วน"
 
@@ -2191,7 +2214,8 @@ def view_batch_requisition():
     total_price = 0.0
     for it in logs:
         p = float(it.get("price") or 0.0)
-        q = int(it.get("quantity") or 0)
+        q_val = float(it.get("quantity") or 0)
+        q = int(q_val) if q_val.is_integer() else q_val
         st = p * q
         it["price_val"] = p
         it["price_formatted"] = f"{p:,.2f}"
@@ -2263,14 +2287,16 @@ def view_prescription_batch_requisition(batch_id):
     requester_dept = "แผนกตรวจรักษา / หอผู้ป่วยสามัญ"
     channel_label = "ใบสั่งยาอิเล็กทรอนิกส์ (Rx Cart)"
 
-    total_qty = sum(int(l.get("quantity") or 0) for l in logs)
+    total_qty_val = sum(float(l.get("quantity") or 0) for l in logs)
+    total_qty = int(total_qty_val) if total_qty_val.is_integer() else total_qty_val
     primary_unit = logs[0].get("unit", "หน่วย") if logs else "หน่วย"
     qty_thai = number_to_thai_text(total_qty) + f" {primary_unit}ถ้วน"
 
     total_price = 0.0
     for it in logs:
         p = float(it.get("price") or 0.0)
-        q = int(it.get("quantity") or 0)
+        q_val = float(it.get("quantity") or 0)
+        q = int(q_val) if q_val.is_integer() else q_val
         st = p * q
         it["price_val"] = p
         it["price_formatted"] = f"{p:,.2f}"

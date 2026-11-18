@@ -854,7 +854,7 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">จำนวนสต็อกเริ่มต้น *</label>
-                            <input type="number" id="drugStockInput" class="form-input" min="0" value="100" required>
+                            <input type="number" id="drugStockInput" class="form-input" min="0" step="any" value="100" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">หน่วยนับ *</label>
@@ -862,15 +862,15 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">จุดเตือนสต็อกขั้นต่ำ</label>
-                            <input type="number" id="drugMinInput" class="form-input" min="1" value="20">
+                            <input type="number" id="drugMinInput" class="form-input" min="0" step="any" value="20">
                         </div>
                         <div class="form-group">
                             <label class="form-label">ราคาจำหน่ายต่อหน่วย (บาท)</label>
-                            <input type="number" id="drugPriceInput" class="form-input" step="0.25" value="5.0">
+                            <input type="number" id="drugPriceInput" class="form-input" step="any" value="5.0">
                         </div>
                         <div class="form-group">
                             <label class="form-label">ราคาทุนต่อหน่วย (บาท)</label>
-                            <input type="number" id="drugCostInput" class="form-input" step="0.25" value="0.0">
+                            <input type="number" id="drugCostInput" class="form-input" step="any" value="0.0">
                         </div>
                         <div class="form-group">
                             <label class="form-label">เลขล็อต (Lot / Batch No.)</label>
@@ -936,7 +936,7 @@
                     <div class="form-group">
                         <label class="form-label">จำนวนที่ต้องการตัดจ่าย *</label>
                         <div style="display: flex; gap: 0.5rem; align-items: center;">
-                            <input type="number" id="dispenseQtyInput" class="form-input" min="1" value="1" style="font-size: 1.25rem; font-weight: 700; text-align: center;" required oninput="onDispenseQtyChange()">
+                            <input type="number" id="dispenseQtyInput" class="form-input" min="0.001" step="any" value="1" style="font-size: 1.25rem; font-weight: 700; text-align: center;" required oninput="onDispenseQtyChange()">
                             <span id="dispenseUnitLabel" style="font-weight: 600; color: var(--text-muted); min-width: 45px;">เม็ด</span>
                         </div>
                         <!-- Real-time High Qty Notice -->
@@ -1445,7 +1445,7 @@
                         <div class="form-group">
                             <label class="form-label">จำนวนคงเหลือในล็อตนี้ *</label>
                             <div style="display: flex; align-items: center; gap: 0.45rem;">
-                                <input type="number" id="editLotQtyInput" class="form-input" min="0" required placeholder="0">
+                                <input type="number" id="editLotQtyInput" class="form-input" min="0" step="any" required placeholder="0">
                                 <span id="editLotUnit" style="font-weight: 600; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">หน่วย</span>
                             </div>
                         </div>
@@ -1457,7 +1457,7 @@
 
                         <div class="form-group">
                             <label class="form-label">ราคาทุนต่อหน่วย (บาท)</label>
-                            <input type="number" id="editLotCostInput" class="form-input" step="0.01" min="0" placeholder="0.00">
+                            <input type="number" id="editLotCostInput" class="form-input" step="any" min="0" placeholder="0.00">
                         </div>
 
                         <div class="form-group">
@@ -1714,7 +1714,7 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">จำนวนที่รับเข้า *</label>
-                            <input type="number" id="stockInQtyInput" class="form-input" min="1" placeholder="เช่น 100" required oninput="calcStockInTotal()">
+                            <input type="number" id="stockInQtyInput" class="form-input" min="0.001" step="any" placeholder="เช่น 100" required oninput="calcStockInTotal()">
                         </div>
 
                         <div class="form-group">
@@ -1729,7 +1729,7 @@
 
                         <div class="form-group">
                             <label class="form-label">ราคาทุนต่อหน่วย (บาท)</label>
-                            <input type="number" step="0.01" id="stockInCostInput" class="form-input" placeholder="เช่น 2.50" oninput="calcStockInTotal()">
+                            <input type="number" step="any" id="stockInCostInput" class="form-input" placeholder="เช่น 2.50" oninput="calcStockInTotal()">
                         </div>
                     </div>
 
@@ -1845,7 +1845,7 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label"><i class="fas fa-boxes-stacked"></i> จำนวนที่รับเข้า *</label>
-                            <input type="number" id="editStockInQty" class="form-input" min="1" required oninput="calcEditStockInImpact()">
+                            <input type="number" id="editStockInQty" class="form-input" min="0.001" step="any" required oninput="calcEditStockInImpact()">
                             <small id="editStockInImpactHint" style="font-size: 0.725rem; color: var(--text-muted); display: block; margin-top: 3px;"></small>
                         </div>
                     </div>
@@ -1866,7 +1866,7 @@
                     <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 0.85rem;">
                         <div class="form-group">
                             <label class="form-label">ราคาทุนต่อหน่วย (บาท)</label>
-                            <input type="number" step="0.01" id="editStockInCost" class="form-input" placeholder="0.00" oninput="calcEditStockInImpact()">
+                            <input type="number" step="any" id="editStockInCost" class="form-input" placeholder="0.00" oninput="calcEditStockInImpact()">
                         </div>
                         <div class="form-group">
                             <label class="form-label">รวมมูลค่าทุน</label>
