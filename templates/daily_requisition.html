@@ -688,7 +688,7 @@
                 width: 100% !important;
                 min-height: auto !important;
                 margin: 0 !important;
-                padding: 12mm 12mm 12mm 16mm !important;
+                padding: 0 !important;
                 box-shadow: none !important;
                 page-break-after: avoid;
             }
@@ -704,9 +704,11 @@
                 background: transparent !important;
             }
 
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; break-inside: avoid; }
             @page {
                 size: A4 portrait;
-                margin: 0;
+                margin: 12mm 12mm 12mm 16mm;
             }
         }
     </style>
@@ -747,7 +749,7 @@
                         <option value="">-- วันที่มีข้อมูลในระบบ ({{ available_dates | length }} วัน) --</option>
                         {% for ad in available_dates %}
                         <option value="{{ ad.date }}" {% if ad.date == selected_date %}selected{% endif %}>
-                            {{ ad.date }} {% if ad.is_sample %}(ตัวอย่างตามภาพแบบฟอร์ม){% else %}({{ ad.count }} รายการเบิกจ่าย){% endif %}
+                            {{ ad.date }} ({{ ad.count }} รายการ)
                         </option>
                         {% endfor %}
                     </select>

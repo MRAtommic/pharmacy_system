@@ -32,6 +32,14 @@ const paginationState = {
 };
 
 // Precise Quantity Formatter: Displays exact numbers without unwanted rounding or truncation
+// "≈ 10.62 กล่อง" for drugs that have a pack size
+function packApprox(d) {
+    const ps = Number(d && d.pack_size);
+    if (!(ps > 1)) return '';
+    const n = Math.round((Number(d.stock_qty) || 0) / ps * 100) / 100;
+    return `<span class="stock-qty-unit">≈ ${formatQty(n)} ${escapeHtml(d.pack_unit || 'กล่อง')}</span>`;
+}
+
 function formatQty(qty) {
     if (qty === null || qty === undefined || qty === '' || isNaN(qty)) return '0';
     const num = Number(qty);
@@ -138,7 +146,7 @@ function renderPaginationBar(containerId, targetKey, totalItems) {
         <div class="pharmacy-pagination">
             <div class="pagination-header-row">
                 <div class="pagination-status-pill">
-                    <span class="pagination-page-pill"><i class="fas fa-layer-group"></i> หน้า <strong>${curPage}</strong>/${totalPages}</span>
+                    <span class="pagination-page-pill">หน้า <strong>${curPage}</strong>/${totalPages}</span>
                     <span class="pagination-count-text">แสดง <strong>${startItem} - ${endItem}</strong> จาก <strong>${totalItems}</strong> รายการ</span>
                 </div>
                 <div class="pagination-size-wrapper">
@@ -527,26 +535,23 @@ function renderDrugsTable(drugs) {
             else if (isLow) rowClass = 'class="clinical-row row-low-stock"';
             else if (isExpiringSoon) rowClass = 'class="clinical-row row-expiring"';
 
-            const valText = (d.price && Number(d.price) > 0)
-                ? `<div class="stock-sub-val">฿${(d.stock_qty * Number(d.price)).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>`
-                : '';
-
+            // Plain wording, no money values / icons: the row should be readable at a glance
             let stockHtml = '';
             if (d.stock_qty <= 0) {
-                stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill out-of-stock"><i class="fas fa-circle-xmark"></i> หมดสต็อก</span></div>`;
+                stockHtml = `<div class="stock-cell is-out"><span class="stock-qty-number">0</span><span class="stock-flag">หมดสต็อก</span></div>`;
             } else if (isLow) {
-                stockHtml = `<div class="stock-status-cell"><span class="stock-alert-pill low-stock" title="ต่ำกว่าจุดเตือน ${formatQty(d.min_threshold)} ${d.unit}"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${formatQty(d.stock_qty)} ${d.unit})</span>${valText}</div>`;
+                stockHtml = `<div class="stock-cell is-low" title="ต่ำกว่าจุดเตือน ${formatQty(d.min_threshold)} ${escapeHtml(d.unit)}"><span class="stock-qty-number">${formatQty(d.stock_qty)}</span><span class="stock-qty-unit">${escapeHtml(d.unit)}</span>${packApprox(d)}<span class="stock-flag">ใกล้หมด</span></div>`;
             } else {
-                stockHtml = `<div class="stock-normal-cell"><div class="stock-num-line"><span class="stock-qty-number">${formatQty(d.stock_qty)}</span> <span class="stock-qty-unit">${escapeHtml(d.unit)}</span></div>${valText}</div>`;
+                stockHtml = `<div class="stock-cell"><span class="stock-qty-number">${formatQty(d.stock_qty)}</span><span class="stock-qty-unit">${escapeHtml(d.unit)}</span>${packApprox(d)}</div>`;
             }
 
             let expiryHtml = `<span class="expiry-empty">-</span>`;
             if (isExpired) {
-                expiryHtml = `<span class="expiry-alert-pill expired" title="หมดอายุแล้ว"><i class="fas fa-ban"></i> หมดอายุ (${escapeHtml(d.expiry_date)})</span>`;
+                expiryHtml = `<span class="expiry-text is-expired" title="${escapeHtml(d.expiry_date)}">หมดอายุแล้ว</span>`;
             } else if (isExpiringSoon) {
-                expiryHtml = `<span class="expiry-alert-pill expiring" title="ใกล้หมดอายุใน 60 วัน"><i class="fas fa-hourglass-half"></i> อีก ${d.days_left} วัน</span>`;
+                expiryHtml = `<span class="expiry-text is-soon" title="${escapeHtml(d.expiry_date)}">อีก ${d.days_left} วัน</span>`;
             } else if (d.expiry_date) {
-                expiryHtml = `<span class="expiry-normal"><i class="far fa-calendar-check"></i> ${escapeHtml(d.expiry_date)}</span>`;
+                expiryHtml = `<span class="expiry-text">${escapeHtml(d.expiry_date)}</span>`;
             }
 
             const thumbHtml = d.image_url
@@ -561,7 +566,7 @@ function renderDrugsTable(drugs) {
             const lotBadgeHtml = `
                 <div style="margin-top: 3px;">
                     <button type="button" class="btn-lot-badge" id="btn-lot-toggle-${d.id}" onclick="toggleDrugLotsSubrow(${d.id}, event)" title="คลิกเพื่อคลี่ดูและจัดการ ${lotCount} ล็อตย่อย">
-                        <i class="fas fa-layer-group"></i> <span>${lotCount} ล็อต</span> <i class="fas fa-chevron-down lot-chevron" id="lot-chevron-${d.id}"></i>
+                        <span>${lotCount} ล็อต</span> <i class="fas fa-chevron-down lot-chevron" id="lot-chevron-${d.id}"></i>
                     </button>
                 </div>
             `;
@@ -574,16 +579,10 @@ function renderDrugsTable(drugs) {
                         ${thumbHtml}
                     </td>
                     <td>
-                        <span class="drug-code-label">${escapeHtml(d.code)}</span>
-                    </td>
-                    <td>
                         <div class="drug-name-cell">
                             <span class="drug-trade-name">${escapeHtml(d.name)}</span>
-                            ${d.generic_name ? `<span class="drug-generic-name">${escapeHtml(d.generic_name)}</span>` : ''}
+                            <span class="drug-generic-name">${escapeHtml(d.code)}${d.generic_name && d.generic_name !== d.name ? ' · ' + escapeHtml(d.generic_name) : ''}</span>
                         </div>
-                    </td>
-                    <td>
-                        <span class="drug-category-tag">${escapeHtml(d.category)}</span>
                     </td>
                     <td>
                         ${stockHtml}
@@ -592,53 +591,40 @@ function renderDrugsTable(drugs) {
                         ${expiryHtml}
                         ${lotBadgeHtml}
                     </td>
-                    <td style="text-align: right; padding-right: 0.85rem;">
+                    <td style="text-align: right;">
                         <div class="table-actions-cluster">
-                            <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" title="${inCart ? 'อยู่ในใบสั่งยาแล้ว' : 'เพิ่มลงในใบสั่งยา (Rx Cart)'}" onclick="addToRxCart(${d.id}); event.stopPropagation();">
-                                <i class="fas ${inCart ? 'fa-check' : 'fa-clipboard-plus'}"></i>
-                                <span>${inCart ? 'ในใบสั่งยา' : '+ สั่งยา'}</span>
+                            <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" title="${inCart ? 'อยู่ในใบสั่งยาแล้ว' : 'เพิ่มลงในใบสั่งยา'}" onclick="addToRxCart(${d.id}); event.stopPropagation();">
+                                <span>${inCart ? '✓ ในใบสั่ง' : 'สั่งยา'}</span>
                             </button>
-                            <button type="button" class="btn-action-dispense" title="ตัดจ่ายยานี้เดี่ยวๆ" onclick="openDispenseModalForDrug(${d.id})">
-                                <i class="fas fa-arrow-right"></i>
+                            <button type="button" class="btn-action-dispense" title="ตัดจ่ายยานี้ทันที" onclick="openDispenseModalForDrug(${d.id})">
                                 <span>ตัดสต็อก</span>
                             </button>
                             <div class="row-action-dropdown" id="dropdown-${d.id}">
-                                <button type="button" class="dropdown-toggle" title="การจัดการอื่นๆ" onclick="toggleRowDropdown(${d.id}, event)">
+                                <button type="button" class="dropdown-toggle" title="เมนูอื่น ๆ" onclick="toggleRowDropdown(${d.id}, event)">
                                     <i class="fas fa-ellipsis-vertical"></i>
                                 </button>
                                 <div class="dropdown-menu" id="dropdown-menu-${d.id}">
-                                    <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">
-                                        <i class="fas fa-plus" style="color: #059669; width:14px;"></i> รับยาเข้าคลัง
-                                    </button>
-                                    <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">
-                                        <i class="fas fa-file-invoice" style="color: #0F766E; width:14px;"></i> บัญชีรับ-จ่าย (Stock Card)
-                                    </a>
-                                    <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">
-                                        <i class="fas fa-qrcode" style="color: #6366F1; width:14px;"></i> พิมพ์ QR Code
-                                    </button>
-                                    <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">
-                                        <i class="fas fa-pen" style="color: var(--brand-500); width:14px;"></i> แก้ไขข้อมูลยา
-                                    </button>
+                                    <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">รับยาเข้า</button>
+                                    <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">สต็อกการ์ด</a>
+                                    <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">พิมพ์ QR</button>
+                                    <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">แก้ไข</button>
                                     <div class="dropdown-divider"></div>
-                                    <button type="button" class="dropdown-item danger" onclick="confirmDeleteDrug(${d.id}); closeAllDropdowns();">
-                                        <i class="fas fa-trash-can" style="width:14px;"></i> ลบรายการยา
-                                    </button>
+                                    <button type="button" class="dropdown-item danger" onclick="confirmDeleteDrug(${d.id}); closeAllDropdowns();">ลบ</button>
                                 </div>
                             </div>
                         </div>
                     </td>
                 </tr>
                 <tr id="lots-subrow-${d.id}" class="drug-lots-subrow" style="display: none;">
-                    <td colspan="7" style="padding: 0;">
+                    <td colspan="5" style="padding: 0;">
                         <div class="drug-lots-panel">
                             <div class="drug-lots-header">
                                 <div class="drug-lots-title">
-                                    <i class="fas fa-boxes-stacked"></i>
-                                    <span>รายการล็อตของ <strong>${escapeHtml(d.name)}</strong> (ทั้งหมด ${lots.length} ล็อต)</span>
+                                    <span>ล็อตของ <strong>${escapeHtml(d.name)}</strong> (${lots.length} ล็อต)</span>
                                 </div>
                                 <div>
                                     <button type="button" class="btn-lot-action-sm emerald" onclick="openStockInModal(${d.id});" title="รับยาเข้าและสร้างล็อตใหม่">
-                                        <i class="fas fa-plus"></i> เพิ่มล็อตใหม่
+                                        เพิ่มล็อต
                                     </button>
                                 </div>
                             </div>
@@ -668,66 +654,46 @@ function renderDrugsTable(drugs) {
 
             return `
                 <div class="drug-mobile-card ${isExpired ? 'card-expired' : isLow ? 'card-low-stock' : isExpiringSoon ? 'card-expiring' : ''}">
-                    <div class="mobile-card-header">
-                        <div class="mobile-card-code">
-                            <span class="drug-code-label">${escapeHtml(d.code)}</span>
-                            <span class="drug-category-tag">${escapeHtml(d.category)}</span>
-                        </div>
-                        <div class="mobile-card-status">
-                            ${isExpired ? `<span class="expiry-alert-pill expired"><i class="fas fa-ban"></i> หมดอายุ</span>` :
-                              isLow ? `<span class="stock-alert-pill low-stock"><i class="fas fa-triangle-exclamation"></i> ใกล้หมด (${formatQty(d.stock_qty)})</span>` :
-                              isExpiringSoon ? `<span class="expiry-alert-pill expiring"><i class="fas fa-hourglass-half"></i> อีก ${d.days_left} วัน</span>` :
-                              `<span class="stock-normal-pill"><strong>${formatQty(d.stock_qty)}</strong> <small>${escapeHtml(d.unit)}</small></span>`
-                            }
-                        </div>
-                    </div>
-
                     <div class="mobile-card-body">
                         ${mobileThumbHtml}
                         <div class="mobile-card-info">
                             <div class="mobile-drug-name">${escapeHtml(d.name)}</div>
-                            ${d.generic_name ? `<div class="mobile-drug-generic">${escapeHtml(d.generic_name)}</div>` : ''}
-                            <div class="mobile-card-meta">
-                                ${d.dosage_form ? `<span class="meta-tag"><i class="fas fa-capsules"></i> ${escapeHtml(d.dosage_form)}</span>` : ''}
-                                <button type="button" class="btn-lot-badge" onclick="toggleDrugLotsCard(${d.id}, event)" style="margin-top:2px;">
-                                    <i class="fas fa-layer-group"></i> <span>${lotCount} ล็อต</span> <i class="fas fa-chevron-down lot-chevron" id="mobile-lot-chevron-${d.id}"></i>
+                            <div class="mobile-drug-generic">${escapeHtml(d.code)}${d.generic_name && d.generic_name !== d.name ? ' · ' + escapeHtml(d.generic_name) : ''}</div>
+                            <div class="stock-cell ${d.stock_qty <= 0 ? 'is-out' : isLow ? 'is-low' : ''}" style="margin-top: 0.35rem;">
+                                <span class="stock-qty-number">${formatQty(d.stock_qty)}</span>
+                                <span class="stock-qty-unit">${escapeHtml(d.unit)}</span>
+                                ${packApprox(d)}
+                                ${d.stock_qty <= 0 ? '<span class="stock-flag">หมดสต็อก</span>' : isLow ? '<span class="stock-flag">ใกล้หมด</span>' : ''}
+                            </div>
+                            <div class="mobile-card-meta" style="margin-top: 0.15rem;">
+                                ${isExpired ? '<span class="expiry-text is-expired">หมดอายุแล้ว</span>'
+                                  : isExpiringSoon ? `<span class="expiry-text is-soon">อีก ${d.days_left} วัน</span>`
+                                  : d.expiry_date ? `<span class="expiry-text">${escapeHtml(d.expiry_date)}</span>` : ''}
+                                <button type="button" class="btn-lot-badge" onclick="toggleDrugLotsCard(${d.id}, event)">
+                                    <span>${lotCount} ล็อต</span> <i class="fas fa-chevron-down lot-chevron" id="mobile-lot-chevron-${d.id}"></i>
                                 </button>
-                                ${d.expiry_date ? `<span class="meta-tag"><i class="far fa-calendar"></i> ${escapeHtml(d.expiry_date)}</span>` : ''}
-                                ${d.price && Number(d.price) > 0 ? `<span class="meta-price">฿${Number(d.price).toFixed(2)}/${escapeHtml(d.unit)}</span>` : ''}
                             </div>
                         </div>
                     </div>
 
                     <div class="mobile-card-actions">
                         <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" onclick="addToRxCart(${d.id})">
-                            <i class="fas ${inCart ? 'fa-check' : 'fa-clipboard-plus'}"></i>
-                            <span>${inCart ? 'ในใบสั่งยา' : '+ ใบสั่งยา'}</span>
+                            <span>${inCart ? '✓ ในใบสั่ง' : 'สั่งยา'}</span>
                         </button>
                         <button type="button" class="btn-action-dispense" onclick="openDispenseModalForDrug(${d.id})">
-                            <i class="fas fa-arrow-right"></i>
                             <span>ตัดสต็อก</span>
                         </button>
                         <div class="row-action-dropdown" id="dropdown-m-${d.id}">
-                            <button type="button" class="dropdown-toggle" title="เมนูเพิ่มเติม" onclick="toggleRowDropdown('m-${d.id}', event)">
+                            <button type="button" class="dropdown-toggle" title="เมนูอื่น ๆ" onclick="toggleRowDropdown('m-${d.id}', event)">
                                 <i class="fas fa-ellipsis-vertical"></i>
                             </button>
                             <div class="dropdown-menu" id="dropdown-menu-m-${d.id}">
-                                <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">
-                                    <i class="fas fa-plus" style="color: #059669; width: 14px;"></i> รับยาเข้าคลัง
-                                </button>
-                                <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">
-                                    <i class="fas fa-file-invoice" style="color: #0F766E; width: 14px;"></i> บัญชีรับ-จ่าย (Stock Card)
-                                </a>
-                                <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">
-                                    <i class="fas fa-qrcode" style="color: #6366F1; width: 14px;"></i> พิมพ์ QR Code
-                                </button>
-                                <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">
-                                    <i class="fas fa-pen" style="color: var(--brand-500); width: 14px;"></i> แก้ไขข้อมูลยา
-                                </button>
+                                <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">รับยาเข้า</button>
+                                <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">สต็อกการ์ด</a>
+                                <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">พิมพ์ QR</button>
+                                <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">แก้ไข</button>
                                 <div class="dropdown-divider"></div>
-                                <button type="button" class="dropdown-item danger" onclick="confirmDeleteDrug(${d.id}); closeAllDropdowns();">
-                                    <i class="fas fa-trash-can" style="width: 14px;"></i> ลบรายการยา
-                                </button>
+                                <button type="button" class="dropdown-item danger" onclick="confirmDeleteDrug(${d.id}); closeAllDropdowns();">ลบ</button>
                             </div>
                         </div>
                     </div>
@@ -985,7 +951,7 @@ function closeImageLightbox(e) {
 
 function openAddDrugModal() {
     const titleEl = document.getElementById('drugModalTitle');
-    if (titleEl) titleEl.innerText = '➕ เพิ่มยาใหม่เข้าคลัง';
+    if (titleEl) titleEl.innerText = 'เพิ่มยาใหม่';
     const form = document.getElementById('drugForm');
     if (form) form.reset();
     renderDrugCategoryInputOptions();
@@ -993,9 +959,26 @@ function openAddDrugModal() {
     if (formId) formId.value = '';
     const lotInput = document.getElementById('drugLotInput');
     if (lotInput) lotInput.value = '';
+    setDrugStockFieldMode(false);
+    onDrugPackSizeChange();
     removeDrugImage(true);
     const modal = document.getElementById('drugModal');
     if (modal) modal.classList.add('active');
+}
+
+// Stock is only typed in when a drug is first created. Afterwards the balance is the sum of its lots and must be
+// changed through "รับยาเข้าคลัง" (receive), dispensing, or editing a lot, so lots and stock-card history stay in sync.
+function setDrugStockFieldMode(isEdit) {
+    const input = document.getElementById('drugStockInput');
+    if (!input) return;
+    input.readOnly = isEdit;
+    input.style.background = isEdit ? 'var(--bg-subtle)' : '';
+    input.style.cursor = isEdit ? 'not-allowed' : '';
+    input.title = isEdit ? 'แก้ยอดคงเหลือผ่านปุ่ม "รับยาเข้าคลัง" หรือแก้ไขล็อตยา เพื่อให้ประวัติสต็อกถูกต้อง' : '';
+    const label = input.closest('.form-group')?.querySelector('.form-label');
+    if (label) label.textContent = isEdit ? 'จำนวนคงเหลือ (แก้ผ่านรับยาเข้า/แก้ไขล็อต)' : 'จำนวนสต็อกเริ่มต้น *';
+    const unitSel = document.getElementById('drugStockUnitSelect');
+    if (unitSel) unitSel.dataset.edit = isEdit ? '1' : '';   // the stock can only be typed when a drug is created
 }
 
 function openEditDrugModal(id) {
@@ -1013,7 +996,7 @@ function openEditDrugModal(id) {
     };
 
     const titleEl = document.getElementById('drugModalTitle');
-    if (titleEl) titleEl.innerText = '✏️ แก้ไขข้อมูลยา';
+    if (titleEl) titleEl.innerText = 'แก้ไขข้อมูลยา';
 
     renderDrugCategoryInputOptions(drug.category || 'ทั่วไป');
     setVal('drugFormId', drug.id);
@@ -1023,7 +1006,10 @@ function openEditDrugModal(id) {
     setVal('drugCategoryInput', drug.category || 'ทั่วไป');
     setVal('drugDosageInput', drug.dosage_form || 'เม็ด (Tablet)');
     setVal('drugStrengthInput', drug.strength || '');
+    setVal('drugPackagingInput', drug.packaging || '');
+    setVal('drugPackSizeInput', drug.pack_size || '');
     setVal('drugStockInput', drug.stock_qty || 0);
+    setDrugStockFieldMode(true);
     setVal('drugUnitInput', drug.unit || 'เม็ด');
     setVal('drugMinInput', drug.min_threshold || 10);
     setVal('drugPriceInput', drug.price || 0);
@@ -1032,6 +1018,7 @@ function openEditDrugModal(id) {
     setVal('drugExpiryInput', drug.expiry_date || '');
     setVal('drugLocationInput', drug.location || '');
     setVal('drugInstructionsInput', drug.instructions || '');
+    onDrugPackSizeChange();
 
     // Image Setup
     const imgUrlInput = document.getElementById('drugImageUrlInput');
@@ -1064,6 +1051,47 @@ function closeDrugModal() {
     if (modal) modal.classList.remove('active');
 }
 
+// ── Packaging: units per box, prices per box, stock typed in boxes ─────────────────────────
+function drugPackSize() {
+    const v = parseFloat(document.getElementById('drugPackSizeInput')?.value);
+    return v > 1 ? v : 0;
+}
+
+function onDrugPackSizeChange() {
+    const ps = drugPackSize();
+    const unit = (document.getElementById('drugUnitInput')?.value || 'หน่วย').trim() || 'หน่วย';
+    document.querySelectorAll('.drug-unit-name').forEach(el => { el.textContent = unit; });
+    document.querySelectorAll('.pack-price-field').forEach(el => { el.style.display = ps ? '' : 'none'; });
+    const sel = document.getElementById('drugStockUnitSelect');
+    if (sel) {
+        sel.options[0].text = unit;
+        sel.options[1].text = 'กล่อง';
+        const show = ps && !sel.dataset.edit;
+        sel.style.display = show ? '' : 'none';
+        if (!show) sel.value = 'unit';
+    }
+    if (ps) {
+        onDrugUnitPriceInput('price');
+        onDrugUnitPriceInput('cost');
+    }
+}
+
+function onDrugUnitPriceInput(which) {      // typed per unit -> show per box
+    const ps = drugPackSize();
+    if (!ps) return;
+    const unitVal = parseFloat(document.getElementById(which === 'price' ? 'drugPriceInput' : 'drugCostInput')?.value);
+    const packEl = document.getElementById(which === 'price' ? 'drugPackPriceInput' : 'drugPackCostInput');
+    if (packEl) packEl.value = isNaN(unitVal) ? '' : Math.round(unitVal * ps * 100) / 100;
+}
+
+function onDrugPackPriceInput(which) {      // typed per box -> store per unit
+    const ps = drugPackSize();
+    if (!ps) return;
+    const packVal = parseFloat(document.getElementById(which === 'price' ? 'drugPackPriceInput' : 'drugPackCostInput')?.value);
+    const unitEl = document.getElementById(which === 'price' ? 'drugPriceInput' : 'drugCostInput');
+    if (unitEl) unitEl.value = isNaN(packVal) ? '' : Math.round(packVal / ps * 1000000) / 1000000;
+}
+
 async function saveDrug(e) {
     e.preventDefault();
     const id = document.getElementById('drugFormId')?.value;
@@ -1082,6 +1110,9 @@ async function saveDrug(e) {
         category: getVal('drugCategoryInput', 'ทั่วไป'),
         dosage_form: getVal('drugDosageInput', 'เม็ด (Tablet)'),
         strength: getVal('drugStrengthInput'),
+        packaging: getVal('drugPackagingInput'),
+        pack_size: parseFloat(getVal('drugPackSizeInput', '')) > 1 ? parseFloat(getVal('drugPackSizeInput', '')) : null,
+        pack_unit: 'กล่อง',
         stock_qty: parseFloat(getVal('drugStockInput', '0')) || 0,
         unit: getVal('drugUnitInput', 'เม็ด'),
         min_threshold: parseFloat(getVal('drugMinInput', '10')) || 10,
@@ -1096,6 +1127,11 @@ async function saveDrug(e) {
     if (!payload.name) {
         alert('กรุณากรอกชื่อยา');
         return;
+    }
+    if (isEdit) {
+        delete payload.stock_qty;   // balance is managed through lots / receiving, never overwritten here
+    } else if (payload.pack_size) {
+        payload.stock_input_unit = document.getElementById('drugStockUnitSelect')?.value || 'unit';
     }
 
     try {
@@ -1209,7 +1245,7 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL', preselectLot
     const lots = drug.lots || [];
 
     if (lotSelect) {
-        let lotOptionsHtml = `<option value="">⚡ ตัดจ่ายระบบ FEFO อัตโนมัติ (แนะนำ - ล็อตหมดอายุก่อน)</option>`;
+        let lotOptionsHtml = `<option value="">อัตโนมัติ (ล็อตหมดอายุก่อน)</option>`;
         if (lots.length > 0) {
             lots.forEach(lot => {
                 const isOutOfStock = lot.stock_qty <= 0;
@@ -1280,7 +1316,7 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL', preselectLot
     const submitBtn = document.getElementById('btnSubmitDispense');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+        submitBtn.innerHTML = 'ยืนยันตัดสต็อก';
         setTimeout(() => {
             const btn = document.getElementById('btnSubmitDispense');
             if (btn && !isDispensing) btn.disabled = false;
@@ -1304,14 +1340,14 @@ function onDispenseLotSelectChange() {
             const lotStock = Number(lot.stock_qty) || 0;
             if (qtyInput) qtyInput.max = lotStock;
             if (hintEl) {
-                hintEl.innerHTML = `<i class="fas fa-box-open"></i> ล็อต <strong>${escapeHtml(lot.lot_number)}</strong> คงเหลือ ${lotStock} ${drug.unit}`;
+                hintEl.innerHTML = `ล็อต <strong>${escapeHtml(lot.lot_number)}</strong> เหลือ ${lotStock} ${escapeHtml(drug.unit)}`;
                 hintEl.style.color = '#0284c7';
             }
         }
     } else {
         if (qtyInput) qtyInput.max = drug.stock_qty;
         if (hintEl) {
-            hintEl.innerHTML = `<i class="fas fa-shield-halved"></i> FEFO (ตัดจ่ายล่วงหน้าจากล็อตหมดอายุก่อนอัตโนมัติ)`;
+            hintEl.innerHTML = `ตัดล็อตที่หมดอายุก่อน`;
             hintEl.style.color = '#047857';
         }
     }
@@ -1327,7 +1363,7 @@ function closeDispenseModal() {
     const submitBtn = document.getElementById('btnSubmitDispense');
     if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+        submitBtn.innerHTML = 'ยืนยันตัดสต็อก';
     }
 }
 
@@ -1480,7 +1516,7 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes, lo
         isDispensing = false;
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-check"></i> ยืนยันการตัดจ่าย';
+            submitBtn.innerHTML = 'ยืนยันตัดสต็อก';
         }
     }
 }
@@ -1569,14 +1605,11 @@ function renderLogsTable(logs) {
 
     if (tbody) {
         tbody.innerHTML = pagedLogs.map(l => {
-            let channelBadge = '<span class="badge badge-teal">Web Counter</span>';
-            if (l.channel === 'WEB_RX_CART') {
-                channelBadge = '<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #047857; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 600;"><i class="fas fa-clipboard-list"></i> ใบสั่งยา</span>';
-            } else if (l.channel.includes('LINE')) {
-                channelBadge = '<span class="badge badge-success"><i class="fab fa-line"></i> LINE Bot</span>';
-            } else if (l.channel.includes('QR')) {
-                channelBadge = '<span class="badge badge-warning"><i class="fas fa-barcode"></i> Scanner</span>';
-            }
+            // Plain words instead of coloured badges
+            let channelBadge = '<span class="log-channel ch-web">หน้าเว็บ</span>';
+            if (l.channel === 'WEB_RX_CART') channelBadge = '<span class="log-channel ch-rx">ใบสั่งยา</span>';
+            else if (l.channel.includes('LINE')) channelBadge = '<span class="log-channel ch-line">LINE</span>';
+            else if (l.channel.includes('QR')) channelBadge = '<span class="log-channel ch-scan">สแกน</span>';
 
             const driveBtn = l.drive_file_link
                 ? `<a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.2rem 0.55rem; font-size: 0.725rem; height: 26px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> ดูรูปสลิป</a>`
@@ -1589,25 +1622,18 @@ function renderLogsTable(logs) {
                    </div>`
                 : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
 
-            let dtHtml = '<span style="color: var(--text-muted);">-</span>';
+            let dtHtml = '<span class="log-muted">-</span>';
             if (l.created_at) {
                 const parts = l.created_at.trim().split(' ');
-                if (parts.length === 2) {
-                    dtHtml = `
-                        <div style="font-weight: 600; color: var(--text-primary); font-size: 0.82rem; line-height: 1.25; white-space: nowrap;">
-                            <i class="far fa-calendar-alt" style="color: var(--teal-600); font-size: 0.72rem; margin-right: 4px;"></i>${escapeHtml(parts[0])}
-                        </div>
-                        <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap;">
-                            <i class="far fa-clock" style="font-size: 0.68rem; margin-right: 4px;"></i>${escapeHtml(parts[1])}
-                        </div>
-                    `;
-                } else {
-                    dtHtml = `<span style="font-family: var(--font-mono); font-size: 0.8rem; white-space: nowrap;"><i class="far fa-clock" style="color: var(--text-muted); margin-right: 4px;"></i>${escapeHtml(l.created_at)}</span>`;
-                }
+                dtHtml = parts.length === 2
+                    ? `<div class="log-date">${escapeHtml(parts[0])}</div><div class="log-muted">${escapeHtml(parts[1].slice(0, 5))}</div>`
+                    : `<div class="log-date">${escapeHtml(l.created_at)}</div>`;
             }
 
+            const who = escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by);
+
             return `
-                <tr>
+                <tr class="${l.is_voided ? 'log-row-voided' : ''}">
                     <td class="col-thumb">
                         ${thumbHtml}
                     </td>
@@ -1615,51 +1641,35 @@ function renderLogsTable(logs) {
                         ${dtHtml}
                     </td>
                     <td class="col-drug">
-                        <div style="font-weight: 700; color: var(--text-primary); font-size: 0.925rem; line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
-                        <div style="display: flex; gap: 0.35rem; align-items: center; margin-top: 3px; flex-wrap: wrap;">
-                            ${l.drug_code ? `<span class="code-pill">${escapeHtml(l.drug_code)}</span>` : ''}
-                            ${l.generic_name ? `<span style="font-size: 0.775rem; color: var(--text-muted);">(${escapeHtml(l.generic_name)})</span>` : ''}
-                            ${l.batch_id ? `<a href="/api/dispense/requisition/batch/${escapeHtml(l.batch_id)}" target="_blank" class="code-pill" style="background: rgba(99, 102, 241, 0.08); color: #4338CA; border-color: rgba(99, 102, 241, 0.25); text-decoration: none; font-size: 0.675rem; font-weight: 600;" title="คลิกเพื่อเปิดใบสั่งยาทางการ (A4) รวมทั้งชุด"><i class="fas fa-clipboard-list"></i> ${escapeHtml(l.batch_id)}</a>` : ''}
-                        </div>
+                        <div class="log-drug-name">${escapeHtml(l.drug_name)}</div>
+                        <div class="log-muted">${escapeHtml(l.drug_code || '')}${l.batch_id ? ` · <a href="/api/dispense/requisition/batch/${escapeHtml(l.batch_id)}" target="_blank" class="log-link" title="เปิดใบสั่งยาทั้งชุด">${escapeHtml(l.batch_id)}</a>` : ''}</div>
                     </td>
                     <td class="col-qty" style="text-align: center;">
-                        ${l.is_voided
-                            ? `<span style="font-weight: 600; color: var(--text-muted); text-decoration: line-through; font-family: var(--font-mono); font-size: 0.85rem;">-${l.quantity}</span><div style="margin-top: 3px;"><span class="badge" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; font-size:0.675rem; padding:1px 5px;"><i class="fas fa-ban"></i> ยกเลิกแล้ว</span></div>`
-                            : `<span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.875rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>
-                               ${l.price && Number(l.price) > 0 ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 3px; font-weight: 500;">฿${(Number(l.price) * l.quantity).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="font-size: 0.65rem;">(@${Number(l.price).toFixed(2)})</span></div>` : ''}`
-                        }
+                        <span class="log-qty is-out">-${l.quantity}</span>
+                        ${l.is_voided ? '<div class="log-voided-tag">ยกเลิกแล้ว</div>' : ''}
                     </td>
-                    <td class="col-balance" style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; text-align: center;">
-                        ${l.balance_before} <i class="fas fa-arrow-right" style="font-size: 0.7rem; color: var(--text-muted); margin: 0 3px;"></i> <strong style="color: var(--emerald-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
+                    <td class="col-balance" style="text-align: center; white-space: nowrap;">
+                        <span class="log-muted">${l.balance_before} →</span> <strong class="log-after">${l.balance_after}</strong>
                     </td>
                     <td class="col-channel" style="text-align: center;">
                         ${channelBadge}
-                        ${l.drive_file_link ? `<div style="margin-top: 4px;"><a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 22px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> สลิป</a></div>` : ''}
+                        ${l.drive_file_link ? `<div><a href="${l.drive_file_link}" target="_blank" class="log-link">สลิป</a></div>` : ''}
                     </td>
                     <td class="col-dispenser">
-                        <div style="font-size: 0.84rem; color: var(--text-primary); font-weight: 600;">
-                            ${escapeHtml((!l.dispensed_by || l.dispensed_by === 'เภสัชกร/เจ้าหน้าที่' || l.dispensed_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.dispensed_by || '-') : l.dispensed_by)}
-                        </div>
-                        ${l.patient_name ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-user" style="font-size: 0.65rem; color: var(--brand-500);"></i> ${escapeHtml(l.patient_name)}</div>` : ''}
-                        ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
-                        ${l.is_voided && l.void_reason ? `
-                            <div style="font-size: 0.72rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 3px 6px; margin-top: 3px; line-height: 1.35; white-space: normal !important; word-break: break-all; overflow-wrap: anywhere;">
-                                <i class="fas fa-circle-exclamation" style="font-size: 0.65rem;"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
-                            </div>` : ''}
+                        <div class="log-person">${who}</div>
+                        ${l.patient_name ? `<div class="log-muted">คนไข้: ${escapeHtml(l.patient_name)}</div>` : ''}
+                        ${l.notes ? `<div class="log-muted">${escapeHtml(l.notes)}</div>` : ''}
+                        ${l.is_voided && l.void_reason ? `<div class="log-void-reason">เหตุผล: ${escapeHtml(l.void_reason)}${l.voided_by ? ' (' + escapeHtml(l.voided_by) + ')' : ''}</div>` : ''}
                     </td>
                     <td class="col-action" style="text-align: center;">
-                        <div style="display: flex; gap: 6px; justify-content: center; align-items: center; flex-wrap: nowrap;">
+                        <div class="log-actions">
                             ${l.batch_id ? `
-                                <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; font-weight: 600; padding: 0.2rem 0.5rem; font-size: 0.725rem; white-space: nowrap;" title="พิมพ์ใบสั่งยา / ใบเบิกจ่ายทางการ A4 รวมทุกรายการในใบสั่งยานี้">
-                                    <i class="fas fa-file-medical"></i> ใบสั่งยา A4
-                                </button>
-                                <button class="btn-requisition btn-requisition-outline" style="${l.is_voided ? 'opacity: 0.6;' : ''} padding: 0.2rem 0.45rem; font-size: 0.7rem; white-space: nowrap;" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกเฉพาะรายการนี้">
-                                    <i class="fas fa-file-invoice"></i> ใบย่อย
-                                </button>
+                                <button class="log-btn" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" title="พิมพ์ใบสั่งยา A4 ทั้งชุด">ใบสั่งยา A4</button>
+                                <button class="log-btn" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกเฉพาะรายการนี้">ใบย่อย</button>
                             ` : `
-                                <button class="btn-requisition" style="${l.is_voided ? 'opacity: 0.6;' : ''} white-space: nowrap;" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยาทางการ (A4)"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
+                                <button class="log-btn" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยา (A4)">ใบเบิก</button>
                             `}
-                            ${!l.is_voided ? `<button class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก" style="padding: 0.2rem 0.5rem; font-size: 0.725rem; height: 26px; color: var(--rose-600); border-color: var(--rose-200); white-space: nowrap;"><i class="fas fa-rotate-left"></i> ยกเลิก</button>` : ''}
+                            ${!l.is_voided ? `<button class="log-btn log-btn-danger" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก">ยกเลิก</button>` : ''}
                         </div>
                     </td>
                 </tr>
@@ -1669,14 +1679,10 @@ function renderLogsTable(logs) {
 
     if (cardsContainer) {
         cardsContainer.innerHTML = pagedLogs.map(l => {
-            let channelBadge = '<span class="badge badge-teal" style="font-size: 0.7rem;">Web</span>';
-            if (l.channel === 'WEB_RX_CART') {
-                channelBadge = '<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #047857; font-size: 0.7rem; font-weight: 600;"><i class="fas fa-clipboard-list"></i> ใบสั่งยา</span>';
-            } else if (l.channel.includes('LINE')) {
-                channelBadge = '<span class="badge badge-success" style="font-size: 0.7rem;"><i class="fab fa-line"></i> LINE</span>';
-            } else if (l.channel.includes('QR')) {
-                channelBadge = '<span class="badge badge-warning" style="font-size: 0.7rem;"><i class="fas fa-barcode"></i> Barcode</span>';
-            }
+            let channelBadge = '<span class="log-channel ch-web">หน้าเว็บ</span>';
+            if (l.channel === 'WEB_RX_CART') channelBadge = '<span class="log-channel ch-rx">ใบสั่งยา</span>';
+            else if (l.channel.includes('LINE')) channelBadge = '<span class="log-channel ch-line">LINE</span>';
+            else if (l.channel.includes('QR')) channelBadge = '<span class="log-channel ch-scan">สแกน</span>';
 
             const driveBtn = l.drive_file_link
                 ? `<a href="${l.drive_file_link}" target="_blank" class="btn btn-outline" style="padding: 0.15rem 0.45rem; font-size: 0.7rem; height: 26px; color: var(--brand-600);"><i class="fab fa-google-drive"></i> รูป</a>`
@@ -1692,7 +1698,7 @@ function renderLogsTable(logs) {
                    </div>`;
 
             return `
-                <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.7; background: #FFF5F5;' : ''}">
+                <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.65;' : ''}">
                     <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.5rem;">
                         ${mobileThumbHtml}
                         <div style="flex: 1; min-width: 0;">
@@ -1702,12 +1708,9 @@ function renderLogsTable(logs) {
                                     ${l.batch_id ? `<span class="code-pill" style="background: rgba(99, 102, 241, 0.08); color: #4338CA; border-color: rgba(99, 102, 241, 0.25); font-size: 0.65rem;"><i class="fas fa-clipboard-list"></i> ${escapeHtml(l.batch_id)}</span>` : ''}
                                 </div>
                                 <div style="text-align: right;">
-                                    ${l.is_voided 
-                                        ? `<span style="text-decoration: line-through; color: var(--text-muted); font-weight:700;">-${l.quantity}</span> <span class="badge" style="background:#FEE2E2; color:#DC2626; font-size:0.65rem;">ยกเลิก</span>`
-                                        : `<span style="font-weight: 700; color: var(--rose-600); font-family: var(--font-mono); font-size: 0.95rem; background: var(--rose-50); border: 1px solid var(--rose-100); padding: 0.2rem 0.55rem; border-radius: 6px;">-${l.quantity}</span>`
-                                    }
-                                    ${l.price && Number(l.price) > 0 ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px; font-weight: 500;">฿${(Number(l.price) * l.quantity).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>` : ''}
-                                </div>
+                                    <span class="log-qty is-out" ${l.is_voided ? 'style="text-decoration: line-through; color: var(--text-muted);"' : ''}>-${l.quantity}</span>
+                                    ${l.is_voided ? '<div class="log-voided-tag">ยกเลิกแล้ว</div>' : ''}
+                                                                    </div>
                             </div>
                             <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
                             ${l.generic_name ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">${escapeHtml(l.generic_name)}</div>` : ''}
@@ -1715,7 +1718,7 @@ function renderLogsTable(logs) {
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.5rem;">
                         <div>
-                            <span>คงเหลือ: ${l.balance_before} ➔ </span><strong style="color: var(--emerald-600); font-family: var(--font-mono); font-weight: 700;">${l.balance_after}</strong>
+                            <span>คงเหลือ: ${l.balance_before} ➔ </span><strong class="log-after">${l.balance_after}</strong>
                         </div>
                         <div style="display: flex; gap: 0.4rem; align-items: center;">
                             ${channelBadge}
@@ -1726,22 +1729,14 @@ function renderLogsTable(logs) {
                         <span><i class="fas fa-user-check"></i> ${escapeHtml(l.dispensed_by || '-')}</span>
                         <span><i class="far fa-clock"></i> ${escapeHtml(l.created_at)}</span>
                     </div>
-                    <div style="display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px dashed var(--border-subtle);">
+                    <div class="log-actions" style="justify-content: flex-end; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
                         ${l.batch_id ? `
-                            <button class="btn-requisition" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')" style="background: #059669; border-color: #059669; color: #fff; padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 6px; font-weight: 600;" title="พิมพ์ใบสั่งยา A4 รวม"><i class="fas fa-file-medical"></i> ใบสั่งยา A4</button>
-                            <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 6px; font-weight: 600;" title="พิมพ์ใบเบิกย่อย"><i class="fas fa-file-invoice"></i> ใบย่อย</button>
+                            <button class="log-btn" onclick="openBatchPrescriptionRequisition('${escapeHtml(l.batch_id)}')">ใบสั่งยา A4</button>
+                            <button class="log-btn" onclick="openSingleRequisition(${l.id})">ใบย่อย</button>
                         ` : `
-                            <button class="btn-requisition" onclick="openSingleRequisition(${l.id})" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 6px; font-weight: 600;" title="พิมพ์ใบเบิกจ่ายยาทางการ"><i class="fas fa-file-invoice"></i> ใบเบิก</button>
+                            <button class="log-btn" onclick="openSingleRequisition(${l.id})">ใบเบิก</button>
                         `}
-                        ${!l.is_voided ? `
-                            <button type="button" class="btn btn-outline" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่าย" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; height: 28px; color: var(--rose-600); border-color: var(--rose-200); border-radius: 6px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
-                                <i class="fas fa-rotate-left"></i> ยกเลิก
-                            </button>
-                        ` : `
-                            <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.725rem; padding: 2px 8px;">
-                                <i class="fas fa-ban"></i> ยกเลิกแล้ว
-                            </span>
-                        `}
+                        ${!l.is_voided ? `<button type="button" class="log-btn log-btn-danger" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})">ยกเลิก</button>` : ''}
                     </div>
                 </div>
             `;
@@ -3363,6 +3358,11 @@ function toggleRowDropdown(drugId, event) {
         const toggleBtn = event.currentTarget;
         const rect = toggleBtn.getBoundingClientRect();
 
+        // The sticky actions <td> is its own stacking context (z-index:3). Lift the cell that owns
+        // the open menu above its siblings, otherwise the next row's sticky cell paints over the menu.
+        const ownerCell = toggleBtn.closest('td');
+        if (ownerCell) ownerCell.classList.add('has-open-menu');
+
         // Use fixed positioning so the dropdown floats freely over table and cannot be clipped by table-wrapper overflow
         menu.style.position = 'fixed';
         menu.style.zIndex = '99999';
@@ -3418,6 +3418,7 @@ function toggleToolsDropdown(event) {
 }
 
 function closeAllDropdowns() {
+    document.querySelectorAll('td.has-open-menu').forEach(td => td.classList.remove('has-open-menu'));
     document.querySelectorAll('.row-action-dropdown:not(#toolsDropdown) .dropdown-menu.open').forEach(m => {
         m.classList.remove('open');
         m.classList.remove('dropup');
@@ -4011,11 +4012,8 @@ function onStockInDrugChange(event) {
         if (stockEl) stockEl.innerText = drug.stock_qty;
         if (unitEl) unitEl.innerText = drug.unit;
 
-        // Auto-fill cost if available
-        const costInput = document.getElementById('stockInCostInput');
-        if (costInput && (!costInput.value || costInput.value === '0')) {
-            costInput.value = drug.cost || '';
-        }
+        // Unit selector (box / tablet) and cost per box when the drug has a pack size
+        setupStockInUnit(drug);
 
         // Auto-fill expiry date if available
         const expiryInput = document.getElementById('stockInExpiryInput');
@@ -4035,6 +4033,68 @@ function onStockInDrugChange(event) {
     calcStockInTotal();
 }
 
+function stockInPackSize(drug) {
+    const v = Number(drug && drug.pack_size);
+    return v > 1 ? v : 0;
+}
+
+function stockInSelectedDrug() {
+    const id = document.getElementById('stockInDrugSelect')?.value;
+    return allDrugs.find(d => Number(d.id) === Number(id)) || null;
+}
+
+function stockInUsesPack() {
+    const sel = document.getElementById('stockInUnitSelect');
+    return !!sel && sel.style.display !== 'none' && sel.value === 'pack';
+}
+
+function updateStockInCostLabel(drug) {
+    const label = document.getElementById('stockInCostLabel');
+    if (!label) return;
+    const unitName = stockInUsesPack() ? (drug.pack_unit || 'กล่อง') : (drug.unit || '');
+    label.textContent = unitName ? `ราคาทุน (บาท / ${unitName})` : 'ราคาทุน (บาท)';
+}
+
+function setupStockInUnit(drug) {
+    const sel = document.getElementById('stockInUnitSelect');
+    const costInput = document.getElementById('stockInCostInput');
+    const ps = stockInPackSize(drug);
+    if (sel) {
+        if (ps) {
+            sel.innerHTML = `<option value="pack">${escapeHtml(drug.pack_unit || 'กล่อง')}</option><option value="unit">${escapeHtml(drug.unit || 'หน่วย')}</option>`;
+            sel.value = 'pack';
+            sel.dataset.mode = 'pack';
+            sel.style.display = '';
+        } else {
+            sel.innerHTML = '';
+            sel.dataset.mode = 'unit';
+            sel.style.display = 'none';
+        }
+    }
+    if (costInput && (!costInput.value || costInput.value === '0')) {
+        const c = Number(drug.cost) || 0;
+        costInput.value = c ? (ps ? Math.round(c * ps * 100) / 100 : c) : '';
+    }
+    updateStockInCostLabel(drug);
+}
+
+function onStockInUnitChange() {
+    const drug = stockInSelectedDrug();
+    const sel = document.getElementById('stockInUnitSelect');
+    const costInput = document.getElementById('stockInCostInput');
+    if (!drug || !sel) return;
+    const ps = stockInPackSize(drug);
+    const prev = sel.dataset.mode || 'pack';
+    const now = sel.value;
+    if (ps && costInput && costInput.value && prev !== now) {      // keep the same price, restated per new unit
+        const v = parseFloat(costInput.value);
+        if (!isNaN(v)) costInput.value = Math.round((now === 'unit' ? v / ps : v * ps) * 1000000) / 1000000;
+    }
+    sel.dataset.mode = now;
+    updateStockInCostLabel(drug);
+    calcStockInTotal();
+}
+
 function calcStockInTotal() {
     const qty = parseFloat(document.getElementById('stockInQtyInput')?.value || 0);
     const cost = parseFloat(document.getElementById('stockInCostInput')?.value || 0);
@@ -4050,7 +4110,10 @@ function calcStockInTotal() {
     const newStockEl = document.getElementById('stockInNewStockDisplay');
     if (newStockEl) {
         if (drug && qty > 0) {
-            newStockEl.innerText = `${drug.stock_qty + qty} ${drug.unit}`;
+            const ps = stockInPackSize(drug);
+            const addUnits = stockInUsesPack() ? qty * ps : qty;
+            const newTotal = Number(drug.stock_qty) + addUnits;
+            newStockEl.innerText = `${formatQty(newTotal)} ${drug.unit}` + (ps ? ` (≈ ${formatQty(Math.round(newTotal / ps * 100) / 100)} ${drug.pack_unit || 'กล่อง'})` : '');
         } else {
             newStockEl.innerText = '-';
         }
@@ -4096,6 +4159,7 @@ async function submitStockIn(e) {
                 lot_number: lotNumber,
                 expiry_date: expiryDate,
                 cost_per_unit: costPerUnit,
+                input_unit: stockInUsesPack() ? 'pack' : 'unit',   // quantity and cost are typed per box when 'pack'
                 supplier: supplier,
                 received_by: receivedBy,
                 notes: notes
@@ -4257,30 +4321,17 @@ function renderStockInTable(logs) {
                        </div>`
                     : `<div class="drug-table-thumb-fallback" title="ยังไม่มีภาพยา"><i class="fas fa-pills"></i></div>`;
 
-                const isGpo = l.supplier && (l.supplier.includes('GPO') || l.supplier.includes('องค์การ'));
-                const supplierBadge = isGpo
-                    ? `<span class="badge" style="background: rgba(14, 165, 233, 0.12); color: #0284C7; font-size: 0.75rem;"><i class="fas fa-building-columns" style="font-size: 0.65rem;"></i> GPO</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier)}</span>`
-                    : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.75rem;"><i class="fas fa-industry" style="font-size: 0.65rem;"></i> บริษัท</span> <span style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(l.supplier || 'บริษัท')}</span>`;
-
-                let inDtHtml = '<span style="color: var(--text-muted);">-</span>';
+                let inDtHtml = '<span class="log-muted">-</span>';
                 if (l.created_at) {
                     const parts = l.created_at.trim().split(' ');
-                    if (parts.length === 2) {
-                        inDtHtml = `
-                            <div style="font-weight: 600; color: var(--text-primary); font-size: 0.82rem; line-height: 1.25; white-space: nowrap;">
-                                <i class="far fa-calendar-alt" style="color: var(--emerald-600); font-size: 0.72rem; margin-right: 4px;"></i>${escapeHtml(parts[0])}
-                            </div>
-                            <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); white-space: nowrap;">
-                                <i class="far fa-clock" style="font-size: 0.68rem; margin-right: 4px;"></i>${escapeHtml(parts[1])}
-                            </div>
-                        `;
-                    } else {
-                        inDtHtml = `<span style="font-family: var(--font-mono); font-size: 0.8rem; white-space: nowrap;"><i class="far fa-clock" style="color: var(--text-muted); margin-right: 4px;"></i>${escapeHtml(l.created_at)}</span>`;
-                    }
+                    inDtHtml = parts.length === 2
+                        ? `<div class="log-date">${escapeHtml(parts[0])}</div><div class="log-muted">${escapeHtml(parts[1].slice(0, 5))}</div>`
+                        : `<div class="log-date">${escapeHtml(l.created_at)}</div>`;
                 }
+                const receiver = escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by);
 
                 return `
-                    <tr style="${l.is_voided ? 'background: rgba(239, 68, 68, 0.03);' : ''}">
+                    <tr class="${l.is_voided ? 'log-row-voided' : ''}">
                         <td class="col-thumb">
                             ${thumbHtml}
                         </td>
@@ -4288,58 +4339,41 @@ function renderStockInTable(logs) {
                             ${inDtHtml}
                         </td>
                         <td>
-                            <div style="font-weight: 700; color: var(--text-primary); font-size: 0.925rem; line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
-                            <div style="display: flex; gap: 0.35rem; align-items: center; margin-top: 3px; flex-wrap: wrap;">
-                                <span class="code-pill">${escapeHtml(l.drug_code || '-')}</span>
-                                ${l.generic_name ? `<span style="font-size: 0.775rem; color: var(--text-muted);">(${escapeHtml(l.generic_name)})</span>` : ''}
-                            </div>
+                            <div class="log-drug-name">${escapeHtml(l.drug_name)}</div>
+                            <div class="log-muted">${escapeHtml(l.drug_code || '-')}</div>
                         </td>
                         <td>
-                            ${l.lot_number ? `<span style="font-family: var(--font-mono); font-size: 0.775rem; background: var(--bg-subtle); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--border-subtle);">${escapeHtml(l.lot_number)}</span>` : '<span style="color: var(--text-muted);">-</span>'}
+                            <span class="log-person">${l.lot_number ? escapeHtml(l.lot_number) : '-'}</span>
                         </td>
                         <td style="text-align: center;">
-                            ${l.is_voided
-                                ? `<span style="font-weight: 600; color: var(--text-muted); text-decoration: line-through; font-family: var(--font-mono); font-size: 0.85rem;">+${l.quantity}</span>
-                                   <div style="margin-top: 3px;"><span class="badge" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; font-size:0.675rem; padding:1px 5px;"><i class="fas fa-ban"></i> ยกเลิกแล้ว</span></div>`
-                                : `<span class="badge badge-stockin"><i class="fas fa-arrow-down"></i> +${l.quantity}</span>`
-                            }
-                        </td>
-                        <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; text-align: center;">
-                            ${l.balance_before} <i class="fas fa-arrow-right" style="font-size: 0.7rem; color: var(--text-muted); margin: 0 3px;"></i> <strong style="color: var(--brand-600);">${l.balance_after}</strong>
-                        </td>
-                        <td style="font-size: 0.85rem; color: var(--text-secondary);">
-                            ${l.cost_per_unit ? `฿${parseFloat(l.cost_per_unit).toFixed(2)}` : '-'}
-                        </td>
-                        <td style="font-size: 0.875rem; font-weight: 700; ${l.is_voided ? 'color: var(--text-muted); text-decoration: line-through;' : 'color: #059669;'}">
-                            ${l.total_cost ? `฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}` : '-'}
-                        </td>
-                        <td style="font-size: 0.8125rem;">
-                            ${supplierBadge}
-                        </td>
-                        <td style="font-size: 0.8125rem; color: var(--text-muted);">
-                            ${escapeHtml(l.expiry_date || '-')}
-                        </td>
-                        <td style="font-size: 0.8125rem; color: var(--text-secondary); word-break: break-word; overflow-wrap: anywhere; min-width: 160px;">
-                            <span style="font-weight: 600;">${escapeHtml((!l.received_by || l.received_by === 'เภสัชกร/เจ้าหน้าที่' || l.received_by === 'เจ้าหน้าที่') ? (window.CURRENT_USER_NAME || l.received_by || '-') : l.received_by)}</span>
-                            ${l.notes ? `<div style="font-size: 0.725rem; color: var(--text-muted); margin-top: 2px;"><i class="fas fa-note-sticky" style="font-size: 0.65rem;"></i> ${escapeHtml(l.notes)}</div>` : ''}
-                            ${l.is_voided && l.void_reason ? `
-                                <div style="font-size: 0.72rem; color: #DC2626; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 4px; padding: 3px 6px; margin-top: 3px; line-height: 1.35; white-space: normal !important; word-break: break-all; overflow-wrap: anywhere;">
-                                    <i class="fas fa-circle-exclamation" style="font-size: 0.65rem;"></i> เหตุผล: ${escapeHtml(l.void_reason)} (${escapeHtml(l.voided_by || '')})
-                                </div>` : ''}
+                            <span class="log-qty is-in">+${l.quantity}</span>
+                            ${l.is_voided ? '<div class="log-voided-tag">ยกเลิกแล้ว</div>' : ''}
                         </td>
                         <td style="text-align: center; white-space: nowrap;">
-                            ${l.is_voided ? `
-                                <span class="badge" style="background: rgba(239, 68, 68, 0.08); color: #DC2626; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 0.725rem; padding: 3px 8px; font-weight: 600;">
-                                    <i class="fas fa-ban"></i> ยกเลิกแล้ว
-                                </span>
-                            ` : `
-                                <div style="display: inline-flex; gap: 4px; align-items: center;">
-                                    <button type="button" class="btn btn-outline btn-xs" onclick="openEditStockInModal(${l.id})" title="แก้ไขรายการรับเข้าย้อนหลัง" style="padding: 3px 8px; font-size: 0.75rem; border-radius: 6px; font-weight: 600; color: #0284C7; border-color: #BAE6FD;">
-                                        <i class="fas fa-pen-to-square"></i> แก้ไข
-                                    </button>
-                                    <button type="button" class="btn btn-outline btn-xs" onclick="voidStockInRecord(${l.id})" title="ยกเลิกรายการรับเข้าและปรับลดยาออกจากสต็อก" style="padding: 3px 8px; font-size: 0.75rem; border-radius: 6px; color: #DC2626; border-color: #FECACA; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
-                                        <i class="fas fa-rotate-left"></i> ยกเลิก
-                                    </button>
+                            <span class="log-muted">${l.balance_before} →</span> <strong class="log-after">${l.balance_after}</strong>
+                        </td>
+                        <td class="log-muted">
+                            ${l.cost_per_unit ? `฿${parseFloat(l.cost_per_unit).toFixed(2)}` : '-'}
+                        </td>
+                        <td class="log-person" style="${l.is_voided ? 'text-decoration: line-through;' : ''}">
+                            ${l.total_cost ? `฿${parseFloat(l.total_cost).toLocaleString('th-TH', { minimumFractionDigits: 2 })}` : '-'}
+                        </td>
+                        <td class="log-channel">
+                            ${escapeHtml(l.supplier || '-')}
+                        </td>
+                        <td class="log-muted">
+                            ${escapeHtml(l.expiry_date || '-')}
+                        </td>
+                        <td style="word-break: break-word; overflow-wrap: anywhere; min-width: 150px;">
+                            <div class="log-person">${receiver}</div>
+                            ${l.notes ? `<div class="log-muted">${escapeHtml(l.notes)}</div>` : ''}
+                            ${l.is_voided && l.void_reason ? `<div class="log-void-reason">เหตุผล: ${escapeHtml(l.void_reason)}${l.voided_by ? ' (' + escapeHtml(l.voided_by) + ')' : ''}</div>` : ''}
+                        </td>
+                        <td style="text-align: center; white-space: nowrap;">
+                            ${l.is_voided ? '<span class="log-voided-tag">ยกเลิกแล้ว</span>' : `
+                                <div class="log-actions">
+                                    <button type="button" class="log-btn" onclick="openEditStockInModal(${l.id})" title="แก้ไขรายการรับเข้าย้อนหลัง">แก้ไข</button>
+                                    <button type="button" class="log-btn log-btn-danger" onclick="voidStockInRecord(${l.id})" title="ยกเลิกรายการรับเข้าและปรับลดยาออกจากสต็อก">ยกเลิก</button>
                                 </div>
                             `}
                         </td>
@@ -4363,20 +4397,18 @@ function renderStockInTable(logs) {
                        </div>`;
 
                 const isGpo = l.supplier && (l.supplier.includes('GPO') || l.supplier.includes('องค์การ'));
-                const supplierBadge = isGpo
-                    ? `<span class="badge" style="background: rgba(14, 165, 233, 0.12); color: #0284C7; font-size: 0.7rem;"><i class="fas fa-building-columns"></i> GPO</span>`
-                    : `<span class="badge" style="background: rgba(16, 185, 129, 0.12); color: #059669; font-size: 0.7rem;"><i class="fas fa-industry"></i> บริษัท</span>`;
+                const supplierBadge = `<span class="log-channel">${isGpo ? 'GPO' : 'บริษัท'}</span>`;
 
                 return `
-                    <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.75; background: #FFF5F5;' : ''}">
+                    <div class="log-mobile-card" style="${l.is_voided ? 'opacity: 0.65;' : ''}">
                         <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.5rem;">
                             ${mobileThumbHtml}
                             <div style="flex: 1; min-width: 0;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
                                     <span class="code-pill">${escapeHtml(l.drug_code || '-')}</span>
                                     ${l.is_voided
-                                        ? `<div><span style="text-decoration: line-through; color: var(--text-muted); font-weight: 600; font-size: 0.85rem;">+${l.quantity}</span> <span class="badge" style="background:#FEE2E2; color:#DC2626; font-size:0.65rem; padding: 1px 4px;"><i class="fas fa-ban"></i> ยกเลิก</span></div>`
-                                        : `<span class="badge badge-stockin">+${l.quantity} หน่วย</span>`
+                                        ? `<div><span style="text-decoration: line-through; color: var(--text-muted); font-weight: 600; font-size: 0.85rem;">+${l.quantity}</span> <span class="log-voided-tag">ยกเลิกแล้ว</span></div>`
+                                        : `<span class="log-qty is-in">+${l.quantity}</span>`
                                     }
                                 </div>
                                 <div style="font-weight: 700; font-size: 1rem; color: var(--text-primary); line-height: 1.35;">${escapeHtml(l.drug_name)}</div>
@@ -4384,7 +4416,7 @@ function renderStockInTable(logs) {
                             </div>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.35rem;">
-                            <span>คงเหลือ: ${l.balance_before} ➔ <strong>${l.balance_after}</strong></span>
+                            <span>คงเหลือ: ${l.balance_before} ➔ <strong class="log-after">${l.balance_after}</strong></span>
                             ${l.lot_number ? `<span>Lot: <code>${escapeHtml(l.lot_number)}</code></span>` : ''}
                         </div>
                         <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
@@ -5720,14 +5752,14 @@ async function submitRxBatchDispense() {
             showToast(data.error || 'เกิดข้อผิดพลาดในการตัดสต็อก', 'error');
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-check-double"></i> ยืนยันตัดจ่ายยาทั้งหมด';
+                submitBtn.innerHTML = 'ยืนยันตัดสต็อก';
             }
         }
     } catch (err) {
         showToast('การเชื่อมต่อล้มเหลว: ' + err.message, 'error');
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = '<i class="fas fa-check-double"></i> ยืนยันตัดจ่ายยาทั้งหมด';
+            submitBtn.innerHTML = 'ยืนยันตัดสต็อก';
         }
     }
 }
@@ -5796,8 +5828,7 @@ function renderCategoryFilterOptions() {
     currentCategories.forEach(cat => {
         html += `<option value="${escapeHtml(cat.name)}">${escapeHtml(cat.name)}</option>`;
     });
-    html += '<option value="__manage__">⚙️ + จัดการหมวดหมู่...</option>';
-    
+    // (Category management opens only from the tag button next to this filter.)
     filterSelect.innerHTML = html;
     
     // Restore previous selection if valid

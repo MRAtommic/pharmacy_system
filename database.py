@@ -78,6 +78,13 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Migration: packaging (e.g. "10x10"), units per pack (100 tablets per box) and the pack's name
+        for col, col_type in [("packaging", "TEXT DEFAULT ''"), ("pack_size", "REAL"), ("pack_unit", "TEXT DEFAULT 'กล่อง'")]:
+            try:
+                conn.execute(f"ALTER TABLE drugs ADD COLUMN {col} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+
         # Table: Drug Lots (Sub-batches per Drug Master)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS drug_lots (
@@ -168,11 +175,28 @@ def init_db():
         """)
 
         # Migration: Ensure void tracking and batch_id columns exist in existing dispensing_logs
-        for col, col_type in [("is_voided", "INTEGER DEFAULT 0"), ("void_reason", "TEXT DEFAULT ''"), ("voided_by", "TEXT DEFAULT ''"), ("voided_at", "TEXT DEFAULT ''"), ("batch_id", "TEXT DEFAULT ''")]:
+        for col, col_type in [("is_voided", "INTEGER DEFAULT 0"), ("void_reason", "TEXT DEFAULT ''"), ("voided_by", "TEXT DEFAULT ''"), ("voided_at", "TEXT DEFAULT ''"), ("batch_id", "TEXT DEFAULT ''"),
+                          # price / cost per unit AT THE TIME of dispensing (old rows stay NULL and fall back to the drug's current values)
+                          ("unit_price", "REAL"), ("unit_cost", "REAL")]:
             try:
                 conn.execute(f"ALTER TABLE dispensing_logs ADD COLUMN {col} {col_type}")
             except sqlite3.OperationalError:
                 pass
+
+        # Table: stock adjustments (manual lot edits / lot deletions) so the stock card can always reconcile
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS stock_adjustments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                drug_id INTEGER,
+                lot_id INTEGER,
+                lot_number TEXT,
+                quantity_delta REAL NOT NULL,
+                reason TEXT DEFAULT '',
+                adjusted_by TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (drug_id) REFERENCES drugs (id) ON DELETE SET NULL
+            )
+        """)
 
         # Migration: Ensure is_staff column exists in line_subscribers
         try:
@@ -659,7 +683,7 @@ def sync_drug_master_fefo(drug_id, conn=None):
     try:
         cur = conn.cursor()
         # Sum total stock across lots
-        cur.execute("SELECT COALESCE(SUM(stock_qty), 0) FROM drug_lots WHERE drug_id = ? AND is_active = 1", (drug_id,))
+        cur.execute("SELECT COALESCE(ROUND(SUM(stock_qty), 6), 0) FROM drug_lots WHERE drug_id = ? AND is_active = 1", (drug_id,))
         total_stock = cur.fetchone()[0]
 
         # Get earliest active lot with stock > 0 for FEFO tracking
@@ -693,7 +717,7 @@ def sync_drug_master_fefo(drug_id, conn=None):
         if should_close:
             conn.close()
 
-def update_lot(lot_id, lot_number=None, stock_qty=None, expiry_date=None, cost_per_unit=None, notes=None):
+def update_lot(lot_id, lot_number=None, stock_qty=None, expiry_date=None, cost_per_unit=None, notes=None, adjusted_by=""):
     """
     Update an existing drug lot record and synchronize the parent drug master (stock_qty, FEFO lot/expiry).
     """
@@ -748,6 +772,14 @@ def update_lot(lot_id, lot_number=None, stock_qty=None, expiry_date=None, cost_p
             WHERE id = ?
         """, (new_lot_number, new_stock_qty, new_expiry, new_cost, new_notes, qr_payload, now, lot_id))
 
+        # A manual change of the lot quantity must be visible in the stock card
+        delta = float(new_stock_qty) - float(lot["stock_qty"] or 0)
+        if abs(delta) > 1e-9:
+            cur.execute("""
+                INSERT INTO stock_adjustments (drug_id, lot_id, lot_number, quantity_delta, reason, adjusted_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (drug_id, lot_id, new_lot_number, delta, "แก้ไขจำนวนในล็อต", adjusted_by or "", now))
+
         # Synchronize drug master record
         sync_drug_master_fefo(drug_id, conn=conn)
 
@@ -759,7 +791,7 @@ def update_lot(lot_id, lot_number=None, stock_qty=None, expiry_date=None, cost_p
     finally:
         conn.close()
 
-def delete_lot(lot_id):
+def delete_lot(lot_id, adjusted_by=""):
     """
     Delete a lot and synchronize parent drug master.
     """
@@ -778,6 +810,12 @@ def delete_lot(lot_id):
         total_lots = cur.fetchone()[0]
         if total_lots <= 1:
             return {"ok": False, "error": "ไม่สามารถลบล็อตสุดท้ายได้ (ยาต้องมีอย่างน้อย 1 ล็อต หากไม่ต้องการใช้ยานี้ ให้ลบที่ตัวยา)"}
+
+        if float(lot.get("stock_qty") or 0) > 0:
+            cur.execute("""
+                INSERT INTO stock_adjustments (drug_id, lot_id, lot_number, quantity_delta, reason, adjusted_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (drug_id, lot_id, lot.get("lot_number") or "", -float(lot["stock_qty"]), "ลบล็อต", adjusted_by or "", get_now_str()))
 
         cur.execute("DELETE FROM drug_lots WHERE id = ?", (lot_id,))
         sync_drug_master_fefo(drug_id, conn=conn)
@@ -983,6 +1021,15 @@ def find_drug_by_name_or_alias(query_str):
     
     return None
 
+def _norm_pack_size(value):
+    """Units per pack (e.g. 100 tablets per box). Anything not greater than 1 means 'no pack' -> None."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return _clean_num(v) if v > 1 else None
+
+
 def add_drug(data):
     """Insert a new drug into inventory."""
     conn = get_db()
@@ -1003,8 +1050,9 @@ def add_drug(data):
             INSERT INTO drugs (
                 code, name, generic_name, category, dosage_form, strength,
                 stock_qty, unit, min_threshold, price, cost, expiry_date,
-                lot_number, location, image_url, qr_payload, instructions, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                lot_number, location, image_url, qr_payload, instructions, created_at, updated_at,
+                packaging, pack_size, pack_unit
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             code,
             data.get("name", "").strip(),
@@ -1024,7 +1072,10 @@ def add_drug(data):
             qr_payload,
             data.get("instructions", ""),
             now,
-            now
+            now,
+            (data.get("packaging") or "").strip(),
+            _norm_pack_size(data.get("pack_size")),
+            (data.get("pack_unit") or "กล่อง").strip() or "กล่อง"
         ))
         drug_id = cursor.lastrowid
 
@@ -1087,6 +1138,18 @@ def update_drug(drug_id, data):
             now,
             drug_id
         ))
+
+        pack_updates = {}
+        if "packaging" in data:
+            pack_updates["packaging"] = (data.get("packaging") or "").strip()
+        if "pack_size" in data:
+            pack_updates["pack_size"] = _norm_pack_size(data.get("pack_size"))
+        if "pack_unit" in data:
+            pack_updates["pack_unit"] = (data.get("pack_unit") or "กล่อง").strip() or "กล่อง"
+        if pack_updates:
+            # the keys above are fixed column names, never user input
+            conn.execute(f"UPDATE drugs SET {', '.join(k + ' = ?' for k in pack_updates)} WHERE id = ?",
+                         (*pack_updates.values(), drug_id))
     conn.close()
     return get_drug_by_id(drug_id)
 
@@ -1119,6 +1182,8 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
         qty = int(qty_num) if qty_num.is_integer() else qty_num
     except (ValueError, TypeError):
         return False, "จำนวนที่ตัดต้องเป็นตัวเลขมากกว่า 0"
+
+    qty_int = qty  # used in the result payload / price calculation below
 
     with _db_write_lock:
         conn = get_db()
@@ -1212,8 +1277,8 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                         drug_id, drug_code, drug_name, lot_id, lot_number, quantity,
                         balance_before, balance_after, channel,
                         dispensed_by, patient_name, drive_file_id,
-                        drive_file_link, notes, synced_to_sheet, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                        drive_file_link, notes, synced_to_sheet, created_at, unit_price, unit_cost
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
                 """, (
                     drug["id"],
                     drug["code"],
@@ -1229,7 +1294,9 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     drive_file_id,
                     drive_file_link,
                     notes,
-                    now
+                    now,
+                    float(drug.get("price") or 0.0),
+                    float(drug.get("cost") or 0.0)
                 ))
                 log_id = cursor.lastrowid
 
@@ -1398,8 +1465,8 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                             drug_id, drug_code, drug_name, lot_id, lot_number, quantity,
                             balance_before, balance_after, channel,
                             dispensed_by, patient_name, drive_file_id,
-                            drive_file_link, notes, synced_to_sheet, created_at, batch_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?)
+                            drive_file_link, notes, synced_to_sheet, created_at, batch_id, unit_price, unit_cost
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, ?, ?)
                     """, (
                         d_id,
                         drug_dict["code"],
@@ -1414,7 +1481,9 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                         patient_name,
                         item_note,
                         now,
-                        batch_id
+                        batch_id,
+                        float(drug_dict.get("price") or 0.0),
+                        float(drug_dict.get("cost") or 0.0)
                     ))
                     log_id = cursor.lastrowid
 
@@ -1480,8 +1549,8 @@ def get_dispensing_logs_by_batch(batch_id):
             COALESCE(drugs.unit, 'หน่วย') AS unit,
             COALESCE(drugs.category, '-') AS category,
             COALESCE(drugs.generic_name, '') AS generic_name,
-            COALESCE(drugs.price, 0.0) AS price,
-            COALESCE(drugs.cost, 0.0) AS cost,
+            COALESCE(dispensing_logs.unit_price, drugs.price, 0.0) AS price,
+            COALESCE(dispensing_logs.unit_cost, drugs.cost, 0.0) AS cost,
             COALESCE(drugs.instructions, '') AS instructions
         FROM dispensing_logs
         LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
@@ -1507,8 +1576,8 @@ def get_dispensing_logs(limit=100, drug_id=None, date_filter=None, channel_filte
             COALESCE(drugs.unit, 'หน่วย') AS unit,
             COALESCE(drugs.category, '-') AS category,
             COALESCE(drugs.generic_name, '') AS generic_name,
-            COALESCE(drugs.price, 0) AS price,
-            COALESCE(drugs.cost, 0) AS cost
+            COALESCE(dispensing_logs.unit_price, drugs.price, 0) AS price,
+            COALESCE(dispensing_logs.unit_cost, drugs.cost, 0) AS cost
         FROM dispensing_logs
         LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
         WHERE 1=1
@@ -1569,7 +1638,8 @@ def get_dispensing_log_by_id(log_id):
             COALESCE(drugs.category, '-') AS category,
             COALESCE(drugs.generic_name, '') AS generic_name,
             COALESCE(drugs.location, 'ตู้ยาคลินิก') AS location,
-            COALESCE(drugs.price, 0) AS price
+            COALESCE(dispensing_logs.unit_price, drugs.price, 0) AS price,
+            COALESCE(dispensing_logs.unit_cost, drugs.cost, 0) AS cost
         FROM dispensing_logs
         LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
         WHERE dispensing_logs.id = ?
@@ -1681,7 +1751,7 @@ def get_dashboard_stats():
         SELECT 
             COUNT(*), 
             COALESCE(SUM(dispensing_logs.quantity), 0),
-            COALESCE(SUM(dispensing_logs.quantity * COALESCE(drugs.price, 0)), 0.0)
+            COALESCE(SUM(dispensing_logs.quantity * COALESCE(dispensing_logs.unit_price, drugs.price, 0)), 0.0)
         FROM dispensing_logs
         LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
         WHERE dispensing_logs.created_at LIKE ? AND (dispensing_logs.is_voided IS NULL OR dispensing_logs.is_voided = 0)
@@ -1731,6 +1801,8 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
         qty = int(qty_num) if qty_num.is_integer() else qty_num
     except (ValueError, TypeError):
         return False, "จำนวนที่รับเข้าต้องเป็นตัวเลขมากกว่า 0"
+
+    qty_int = qty  # used in the result payload below
 
     with _db_write_lock:
         conn = get_db()
@@ -2348,15 +2420,45 @@ def get_audit_logs(limit: int = 200, user_email: str = None, action: str = None,
     conn.close()
     return [dict(r) for r in rows]
 
+def _clean_num(x):
+    """Round away float noise (0.1 + 0.2 -> 0.3) and return an int when the value is whole."""
+    try:
+        v = round(float(x), 6)
+    except (TypeError, ValueError):
+        return x
+    return int(v) if v.is_integer() else v
+
+
+def normalize_ymd(date_str):
+    """Return a Gregorian 'YYYY-MM-DD' string for a valid date, or None.
+
+    Accepts Buddhist-era years too (2569-11-19 -> 2026-11-19).
+    """
+    if not date_str:
+        return None
+    try:
+        parts = str(date_str).strip().split("-")
+        if len(parts) != 3:
+            return None
+        y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        if y > 2400:
+            y -= 543
+        return datetime(y, m, d).strftime("%Y-%m-%d")
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = None):
     """
     Retrieve unified chronological Stock Card ledger data for a specific drug.
-    Combines stock-in (receive) and dispensing logs, calculates opening balance (ยอดยกมา),
-    running balance, and details formatted for official hospital ledger card.
+    Combines stock-in (receive), dispensing logs and manual stock adjustments, calculates opening balance
+    (ยอดยกมา), running balance, and details formatted for the official hospital ledger card.
+    Dispensing rows are valued with the cost recorded at the time of dispensing (falls back to the current cost
+    for old rows that pre-date the snapshot).
     """
     conn = get_db()
     cursor = conn.cursor()
-    
+
     # 1. Fetch Drug Info
     cursor.execute("SELECT * FROM drugs WHERE id = ?", (drug_id,))
     drug_row = cursor.fetchone()
@@ -2364,94 +2466,118 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         conn.close()
         return None
     drug = dict(drug_row)
-    
-    start_ts = f"{start_date.strip()} 00:00:00" if start_date and start_date.strip() else None
-    end_ts = f"{end_date.strip()} 23:59:59" if end_date and end_date.strip() else None
-    
-    # 2. Fetch all transactions in period
-    in_query = "SELECT * FROM stock_in_logs WHERE drug_id = ? AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)"
-    in_params = [drug_id]
-    if start_ts:
-        in_query += " AND created_at >= ?"
-        in_params.append(start_ts)
-    if end_ts:
-        in_query += " AND created_at <= ?"
-        in_params.append(end_ts)
-    cursor.execute(in_query, in_params)
-    stock_in_rows = [dict(r) for r in cursor.fetchall()]
 
-    out_query = "SELECT * FROM dispensing_logs WHERE drug_id = ? AND is_voided = 0"
-    out_params = [drug_id]
-    if start_ts:
-        out_query += " AND created_at >= ?"
-        out_params.append(start_ts)
-    if end_ts:
-        out_query += " AND created_at <= ?"
-        out_params.append(end_ts)
-    cursor.execute(out_query, out_params)
-    dispensing_rows = [dict(r) for r in cursor.fetchall()]
+    start_date = normalize_ymd(start_date)
+    end_date = normalize_ymd(end_date)
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
+    start_ts = f"{start_date} 00:00:00" if start_date else None
+    end_ts = f"{end_date} 23:59:59" if end_date else None
 
-    total_in_period = sum(r.get("quantity", 0) for r in stock_in_rows)
-    total_out_period = sum(r.get("quantity", 0) for r in dispensing_rows)
-    
-    # Calculate after end_ts
-    total_in_after = 0
-    total_out_after = 0
+    not_voided = "(is_voided IS NULL OR is_voided = 0)"
+
+    def _fetch(table, extra=""):
+        q = f"SELECT * FROM {table} WHERE drug_id = ? {extra}"
+        params = [drug_id]
+        if start_ts:
+            q += " AND created_at >= ?"
+            params.append(start_ts)
+        if end_ts:
+            q += " AND created_at <= ?"
+            params.append(end_ts)
+        cursor.execute(q, params)
+        return [dict(r) for r in cursor.fetchall()]
+
+    stock_in_rows = _fetch("stock_in_logs", f"AND {not_voided}")
+    dispensing_rows = _fetch("dispensing_logs", f"AND {not_voided}")
+    adjust_rows = _fetch("stock_adjustments")
+
+    total_in_period = sum(r.get("quantity") or 0 for r in stock_in_rows)
+    total_out_period = sum(r.get("quantity") or 0 for r in dispensing_rows)
+    adj_period = sum(r.get("quantity_delta") or 0 for r in adjust_rows)
+
+    # Movements AFTER the period (needed to walk back from today's stock to the opening balance)
+    total_in_after = total_out_after = adj_after = 0
     if end_ts:
-        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE drug_id = ? AND created_at > ? AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)", (drug_id, end_ts))
-        total_in_after = cursor.fetchone()[0] or 0
-        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM dispensing_logs WHERE drug_id = ? AND is_voided = 0 AND created_at > ?", (drug_id, end_ts))
-        total_out_after = cursor.fetchone()[0] or 0
-        
-    current_stock = drug.get("stock_qty", 0)
-    
-    # Opening balance: Current Stock - (Net change during period) - (Net change after period)
-    opening_balance = current_stock - (total_in_period - total_out_period) - (total_in_after - total_out_after)
-    if opening_balance < 0:
+        def _after(table, col, extra=""):
+            cursor.execute(f"SELECT COALESCE(SUM({col}), 0) FROM {table} WHERE drug_id = ? AND created_at > ? {extra}", (drug_id, end_ts))
+            return cursor.fetchone()[0] or 0
+        total_in_after = _after("stock_in_logs", "quantity", f"AND {not_voided}")
+        total_out_after = _after("dispensing_logs", "quantity", f"AND {not_voided}")
+        adj_after = _after("stock_adjustments", "quantity_delta")
+
+    current_stock = drug.get("stock_qty", 0) or 0
+
+    # Opening balance = today's stock minus everything that happened in and after the period
+    opening_balance = current_stock - (total_in_period - total_out_period + adj_period) - (total_in_after - total_out_after + adj_after)
+    opening_clamped = False
+    if opening_balance < -1e-9:
+        # The records cannot explain today's stock (history was lost or edited outside the ledger).
+        # Show 0 but tell the caller so the page can warn instead of hiding it.
         opening_balance = 0
+        opening_clamped = True
+    opening_balance = _clean_num(opening_balance)
+
+    unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
 
     # 3. Build unified transaction items
     items = []
     for r in stock_in_rows:
-        supplier_name = r.get("supplier") or "องค์การเภสัชกรรม (GPO)"
         items.append({
             "id": f"in-{r['id']}",
             "type": "RECEIVE",
             "created_at": r["created_at"],
-            "qty_in": r["quantity"],
+            "qty_in": _clean_num(r["quantity"]),
             "qty_out": None,
-            "supplier": supplier_name,
+            "supplier": r.get("supplier") or "องค์การเภสัชกรรม (GPO)",
             "recipient": "",
             "price": r.get("cost_per_unit") or drug.get("cost") or 0.0,
             "total_price": r.get("total_cost") or ((r.get("cost_per_unit") or 0.0) * r["quantity"]),
             "lot_number": r.get("lot_number") or drug.get("lot_number") or "",
             "expiry_date": r.get("expiry_date") or drug.get("expiry_date") or "",
-            "sign": ""  # Explicitly blank for manual signature
+            "sign": ""
         })
 
     for r in dispensing_rows:
+        row_cost = r.get("unit_cost")
+        if row_cost is None or row_cost <= 0:
+            row_cost = drug.get("cost") or drug.get("price") or 0.0
         items.append({
             "id": f"out-{r['id']}",
             "type": "DISPENSE",
             "created_at": r["created_at"],
             "qty_in": None,
-            "qty_out": r["quantity"],
+            "qty_out": _clean_num(r["quantity"]),
             "supplier": "",
             "recipient": r.get("patient_name") or r.get("notes") or "ผู้ป่วยนอก / ห้องยา",
-            "price": drug.get("cost") or drug.get("price") or 0.0,
-            "total_price": (drug.get("cost") or drug.get("price") or 0.0) * r["quantity"],
+            "price": row_cost,
+            "total_price": row_cost * r["quantity"],
             "lot_number": r.get("lot_number") or drug.get("lot_number") or "",
             "expiry_date": r.get("expiry_date") or drug.get("expiry_date") or "",
-            "sign": ""  # Explicitly blank for manual signature
+            "sign": ""
         })
 
-    # Sort chronologically ASC
-    items.sort(key=lambda x: x["created_at"])
+    for r in adjust_rows:
+        delta = r.get("quantity_delta") or 0
+        items.append({
+            "id": f"adj-{r['id']}",
+            "type": "ADJUST",
+            "created_at": r["created_at"],
+            "qty_in": _clean_num(delta) if delta > 0 else None,
+            "qty_out": _clean_num(-delta) if delta < 0 else None,
+            "supplier": "",
+            "recipient": r.get("reason") or "ปรับยอดล็อต",
+            "price": drug.get("cost") or drug.get("price") or 0.0,
+            "total_price": abs(delta) * (drug.get("cost") or drug.get("price") or 0.0),
+            "lot_number": r.get("lot_number") or "",
+            "expiry_date": "",
+            "sign": ""
+        })
 
-    # Calculate running balance and remaining stock value row by row
-    running_balance = opening_balance
-    unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
-    
+    # Chronological order; inside the same second: receive -> adjust -> dispense (never shows a false negative balance)
+    order = {"RECEIVE": 0, "ADJUST": 1, "DISPENSE": 2}
+    items.sort(key=lambda x: (x["created_at"], order.get(x["type"], 3)))
+
     def format_balance_val(val):
         if val is None or val == "":
             return "-"
@@ -2463,44 +2589,69 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         except (ValueError, TypeError):
             return str(val)
 
+    running_balance = opening_balance
     for item in items:
-        if item["type"] == "RECEIVE":
-            running_balance += item["qty_in"]
-        elif item["type"] == "DISPENSE":
-            running_balance -= item["qty_out"]
+        running_balance = _clean_num(running_balance + (item["qty_in"] or 0) - (item["qty_out"] or 0))
         item["balance"] = running_balance
-        item["balance_value"] = running_balance * unit_cost
+        item["balance_value"] = running_balance * (item["price"] or unit_cost)
         item["balance_value_formatted"] = format_balance_val(item["balance_value"])
 
     opening_value = opening_balance * unit_cost
     opening_value_formatted = format_balance_val(opening_value)
 
+    # Quantities were computed in the drug's base unit (tablets). A drug with a pack size (100 tablets = 1 box)
+    # is shown in packs; values (baht) are unaffected because they were already computed from the base unit.
+    pack_size = drug.get("pack_size") or 0
+    pack_unit = ""
+    pack_note = ""
+    if pack_size and pack_size > 1:
+        pack_unit = (drug.get("pack_unit") or "กล่อง").strip() or "กล่อง"
+        base_unit = (drug.get("unit") or "หน่วย").strip() or "หน่วย"
+
+        def _to_pack(x):
+            return None if x is None else _clean_num(round(float(x) / pack_size, 4))
+
+        for item in items:
+            item["qty_in"] = _to_pack(item["qty_in"])
+            item["qty_out"] = _to_pack(item["qty_out"])
+            item["balance"] = _to_pack(item["balance"])
+        opening_balance = _to_pack(opening_balance)
+        running_balance = _to_pack(running_balance)
+        total_in_period = _to_pack(total_in_period)
+        total_out_period = _to_pack(total_out_period)
+        pack_note = f"หน่วยนับในบัญชี: {pack_unit} (1 {pack_unit} = {_clean_num(pack_size)} {base_unit})"
+
     conn.close()
     return {
+        "pack_size": pack_size or None,
+        "pack_unit": pack_unit,
+        "pack_note": pack_note,
         "drug": drug,
         "opening_balance": opening_balance,
         "opening_value": opening_value,
         "opening_value_formatted": opening_value_formatted,
+        "opening_clamped": opening_clamped,
         "unit_cost": unit_cost,
         "closing_balance": running_balance,
-        "total_in": total_in_period,
-        "total_out": total_out_period,
+        "total_in": _clean_num(total_in_period),
+        "total_out": _clean_num(total_out_period),
         "transactions": items,
         "start_date": start_date or "",
         "end_date": end_date or ""
     }
 
+
 def get_daily_requisition_available_dates():
-    """
-    Returns list of dates that have dispensing logs or stock-in logs, plus the sample date.
-    """
+    """Dates that have (non-cancelled) dispensing or stock-in records, newest first."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT dt, SUM(cnt) as count FROM (
-            SELECT substr(created_at, 1, 10) as dt, count(*) as cnt FROM dispensing_logs GROUP BY dt
+            SELECT substr(created_at, 1, 10) as dt, count(*) as cnt FROM dispensing_logs
+              WHERE (is_voided IS NULL OR is_voided = 0) GROUP BY dt
             UNION ALL
-            SELECT substr(created_at, 1, 10) as dt, count(*) as cnt FROM stock_in_logs GROUP BY dt
+            SELECT substr(created_at, 1, 10) as dt, count(*) as cnt FROM stock_in_logs
+              WHERE (is_voided IS NULL OR is_voided = 0) GROUP BY dt
         )
         WHERE dt IS NOT NULL AND dt != ''
         GROUP BY dt
@@ -2508,232 +2659,99 @@ def get_daily_requisition_available_dates():
     """)
     rows = cursor.fetchall()
     conn.close()
+    return [{"date": r["dt"], "count": r["count"]} for r in rows if r["dt"]]
 
-    result = []
-    found_dates = set()
-    for r in rows:
-        dt = r["dt"]
-        if dt:
-            found_dates.add(dt)
-            result.append({"date": dt, "count": r["count"]})
-
-    if "2025-07-06" not in found_dates:
-        result.append({"date": "2025-07-06", "count": 6, "is_sample": True})
-
-    return result
 
 def get_daily_requisition_data(date_str: str = None):
     """
-    Retrieve aggregated daily requisition data for 'ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา'.
-    Aggregates dispensing logs for the given date, detailing item names, units, 
-    requested qty, dispensed qty, and remaining stock.
-    Supports sample paper date (2025-07-06) and falls back to all logs if no active logs exist.
+    Aggregated daily requisition data for 'ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา'.
+    Uses only real, non-cancelled records of the chosen day. 'คงเหลือ' is the balance recorded at the end of
+    that day (balance_after of the last movement), not today's stock.
     """
-    if not date_str or not date_str.strip():
-        now_dt = datetime.now(BANGKOK_TZ)
-        date_str = now_dt.strftime("%Y-%m-%d")
-    else:
-        date_str = date_str.strip()
+    date_str = normalize_ymd(date_str) or datetime.now(BANGKOK_TZ).strftime("%Y-%m-%d")
 
-    # Format Thai date components
     thai_months = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
                    "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"]
     thai_months_short = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
                          "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
-    
-    try:
-        parts = date_str.split("-")
-        y = int(parts[0])
-        m = int(parts[1])
-        d = int(parts[2])
-        day_str = str(d)
-        month_name = thai_months[m] if 1 <= m <= 12 else str(m)
-        month_short = thai_months_short[m] if 1 <= m <= 12 else str(m)
-        year_be = str(y + 543)
-    except Exception:
-        day_str = ""
-        month_name = ""
-        month_short = ""
-        year_be = ""
-
-    # Special handling for Sample / Example Date from official paper photo (6 ก.ค. 2568 / 2025-07-06)
-    if date_str in ("2025-07-06", "2568-07-06"):
-        sample_items = [
-            {"drug_id": None, "name": "Medroxyprogesterone", "unit": "30", "qty_requested": 10, "qty_dispensed": 10, "remaining_stock": 20, "notes": ""},
-            {"drug_id": None, "name": "Ammocab(syr)", "unit": "50", "qty_requested": 60, "qty_dispensed": 50, "remaining_stock": 0, "notes": ""},
-            {"drug_id": None, "name": "Bromhexine 60ml", "unit": "50", "qty_requested": 50, "qty_dispensed": 50, "remaining_stock": 0, "notes": ""},
-            {"drug_id": None, "name": "Paracetamol (120mg/5ml)", "unit": "50", "qty_requested": 50, "qty_dispensed": 5, "remaining_stock": 0, "notes": ""},
-            {"drug_id": None, "name": "Face mask", "unit": "10", "qty_requested": 3, "qty_dispensed": 3, "remaining_stock": 7, "notes": ""},
-            {"drug_id": None, "name": "Dicyclomine 10mg", "unit": "1", "qty_requested": 1, "qty_dispensed": 1, "remaining_stock": 0, "notes": ""},
-        ]
-        return {
-            "date": "2025-07-06",
-            "day": "6",
-            "month_thai": "กรกฎาคม",
-            "month_short": "ก.ค.",
-            "year_be": "2568",
-            "items": sample_items,
-            "total_items": len(sample_items),
-            "total_dispensed_qty": sum(float(it["qty_dispensed"]) for it in sample_items),
-            "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
-            "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
-            "requester_title": "พยาบาลวิชาชีพชำนาญการ",
-            "dispenser_name": "นางสาววราภรณ์ สีหนาจ",
-            "dispenser_title": "พยาบาลวิชาชีพชำนาญการ",
-            "authorizer_name": "นายชุมสาย วิชาชัย",
-            "authorizer_title": "ผอ.รพ.สต.ดอนนาลับ",
-            "receiver_name": "นางกัลตะนา เมืองจันทร์",
-            "receiver_title": "พสอ.",
-            "is_sample": True,
-            "has_records": True
-        }
+    y, m, d = (int(p) for p in date_str.split("-"))
+    day_str, month_name, month_short, year_be = str(d), thai_months[m], thai_months_short[m], str(y + 543)
 
     conn = get_db()
     cursor = conn.cursor()
-
     start_ts = f"{date_str} 00:00:00"
     end_ts = f"{date_str} 23:59:59"
 
-    # 1. Fetch Stock In logs (ยอดเบิกยาเข้าคลังในวันนั้น)
-    query_stock_in = """
-        SELECT 
-            stock_in_logs.id,
-            stock_in_logs.drug_id,
-            COALESCE(drugs.name, stock_in_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
-            COALESCE(drugs.generic_name, '') as generic_name,
-            COALESCE(drugs.unit, 'หน่วย') as unit,
-            COALESCE(drugs.stock_qty, stock_in_logs.balance_after, 0) as current_stock,
-            stock_in_logs.quantity,
-            stock_in_logs.notes,
-            stock_in_logs.created_at
+    cursor.execute("""
+        SELECT stock_in_logs.id, stock_in_logs.drug_id,
+               COALESCE(drugs.name, stock_in_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') AS drug_name,
+               COALESCE(drugs.generic_name, '') AS generic_name,
+               COALESCE(drugs.unit, 'หน่วย') AS unit,
+               stock_in_logs.quantity, stock_in_logs.balance_after, stock_in_logs.created_at
         FROM stock_in_logs
         LEFT JOIN drugs ON stock_in_logs.drug_id = drugs.id
         WHERE stock_in_logs.created_at >= ? AND stock_in_logs.created_at <= ?
           AND (stock_in_logs.is_voided IS NULL OR stock_in_logs.is_voided = 0)
-        ORDER BY stock_in_logs.id ASC
-    """
-    cursor.execute(query_stock_in, (start_ts, end_ts))
+        ORDER BY stock_in_logs.created_at ASC, stock_in_logs.id ASC
+    """, (start_ts, end_ts))
     raw_stock_ins = [dict(r) for r in cursor.fetchall()]
 
-    # 2. Fetch Dispensing logs (ยอดจ่ายยาในวันนั้น)
-    query_active = """
-        SELECT 
-            dispensing_logs.id,
-            dispensing_logs.drug_id,
-            COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
-            COALESCE(drugs.generic_name, '') as generic_name,
-            COALESCE(drugs.unit, 'หน่วย') as unit,
-            COALESCE(drugs.stock_qty, 0) as current_stock,
-            dispensing_logs.quantity,
-            dispensing_logs.patient_name,
-            dispensing_logs.notes,
-            dispensing_logs.created_at,
-            dispensing_logs.is_voided
+    cursor.execute("""
+        SELECT dispensing_logs.id, dispensing_logs.drug_id,
+               COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') AS drug_name,
+               COALESCE(drugs.generic_name, '') AS generic_name,
+               COALESCE(drugs.unit, 'หน่วย') AS unit,
+               dispensing_logs.quantity, dispensing_logs.balance_after, dispensing_logs.created_at
         FROM dispensing_logs
         LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
-        WHERE dispensing_logs.is_voided = 0
-          AND dispensing_logs.created_at >= ?
-          AND dispensing_logs.created_at <= ?
-        ORDER BY dispensing_logs.id ASC
-    """
-    cursor.execute(query_active, (start_ts, end_ts))
+        WHERE (dispensing_logs.is_voided IS NULL OR dispensing_logs.is_voided = 0)
+          AND dispensing_logs.created_at >= ? AND dispensing_logs.created_at <= ?
+        ORDER BY dispensing_logs.created_at ASC, dispensing_logs.id ASC
+    """, (start_ts, end_ts))
     raw_disp = [dict(r) for r in cursor.fetchall()]
-
-    # Fallback: if no active dispensing logs and no stock-in logs, check all dispensing logs
-    if not raw_disp and not raw_stock_ins:
-        query_all = """
-            SELECT 
-                dispensing_logs.id,
-                dispensing_logs.drug_id,
-                COALESCE(drugs.name, dispensing_logs.drug_name, 'เวชภัณฑ์ไม่ระบุชื่อ') as drug_name,
-                COALESCE(drugs.generic_name, '') as generic_name,
-                COALESCE(drugs.unit, 'หน่วย') as unit,
-                COALESCE(drugs.stock_qty, 0) as current_stock,
-                dispensing_logs.quantity,
-                dispensing_logs.patient_name,
-                dispensing_logs.notes,
-                dispensing_logs.created_at,
-                dispensing_logs.is_voided
-            FROM dispensing_logs
-            LEFT JOIN drugs ON dispensing_logs.drug_id = drugs.id
-            WHERE dispensing_logs.created_at >= ?
-              AND dispensing_logs.created_at <= ?
-            ORDER BY dispensing_logs.id ASC
-        """
-        cursor.execute(query_all, (start_ts, end_ts))
-        raw_disp = [dict(r) for r in cursor.fetchall()]
+    conn.close()
 
     items_map = {}
 
-    # 3. Process Stock In (จำนวนเบิกเข้าคลัง)
-    for sin in raw_stock_ins:
-        name_cand = (sin.get("generic_name") or sin.get("drug_name") or "").strip()
-        if name_cand in ("22", "?", ""):
-            if sin.get("drug_name") and sin.get("drug_name") not in ("22", "?", ""):
-                name_cand = sin.get("drug_name")
-            else:
-                continue
-
-        key = sin["drug_id"] if sin["drug_id"] else name_cand
-        qty = sin.get("quantity") or 0
+    def _bucket(row):
+        name = (row.get("generic_name") or row.get("drug_name") or "").strip()
+        key = row["drug_id"] if row["drug_id"] else name
         if key not in items_map:
-            display_name = sin["generic_name"] if sin["generic_name"] else sin["drug_name"]
             items_map[key] = {
-                "drug_id": sin["drug_id"],
-                "name": display_name,
-                "unit": sin["unit"] or "หน่วย",
-                "qty_requested": qty,
-                "qty_dispensed": "",
-                "remaining_stock": sin["current_stock"],
-                "notes": ""
-            }
-        else:
-            if items_map[key]["qty_requested"] == "":
-                items_map[key]["qty_requested"] = qty
-            else:
-                items_map[key]["qty_requested"] += qty
-
-    # 4. Process Dispensing (จำนวนจ่ายยา)
-    for log in raw_disp:
-        name_cand = (log.get("generic_name") or log.get("drug_name") or "").strip()
-        if name_cand in ("22", "?", ""):
-            if log.get("drug_name") and log.get("drug_name") not in ("22", "?", ""):
-                name_cand = log.get("drug_name")
-            else:
-                continue
-
-        key = log["drug_id"] if log["drug_id"] else name_cand
-        qty = log.get("quantity") or 0
-        if key not in items_map:
-            display_name = log["generic_name"] if log["generic_name"] else log["drug_name"]
-            items_map[key] = {
-                "drug_id": log["drug_id"],
-                "name": display_name,
-                "unit": log["unit"] or "หน่วย",
+                "drug_id": row["drug_id"],
+                "name": row["generic_name"] or row["drug_name"],
+                "unit": row["unit"] or "หน่วย",
                 "qty_requested": "",
-                "qty_dispensed": qty,
-                "remaining_stock": log["current_stock"],
-                "notes": ""
+                "qty_dispensed": "",
+                "remaining_stock": "",
+                "notes": "",
+                "_last": ("", 0),
             }
-        else:
-            if items_map[key]["qty_dispensed"] == "":
-                items_map[key]["qty_dispensed"] = qty
-            else:
-                items_map[key]["qty_dispensed"] += qty
-            if log.get("current_stock") is not None:
-                items_map[key]["remaining_stock"] = log["current_stock"]
+        return items_map[key]
+
+    def _touch(it, row):
+        # remember the balance recorded by the latest movement of the day
+        marker = (row["created_at"], row["id"])
+        if row.get("balance_after") is not None and marker >= it["_last"]:
+            it["remaining_stock"] = _clean_num(row["balance_after"])
+            it["_last"] = marker
+
+    for sin in raw_stock_ins:
+        it = _bucket(sin)
+        it["qty_requested"] = _clean_num((it["qty_requested"] or 0) + (sin.get("quantity") or 0))
+        _touch(it, sin)
+
+    for log in raw_disp:
+        it = _bucket(log)
+        it["qty_dispensed"] = _clean_num((it["qty_dispensed"] or 0) + (log.get("quantity") or 0))
+        _touch(it, log)
 
     items = list(items_map.values())
-    conn.close()
+    for it in items:
+        it.pop("_last", None)
 
-    def _parse_disp(v):
-        try:
-            return float(v)
-        except (ValueError, TypeError):
-            return 0.0
-
-    tot_val = sum(_parse_disp(it.get("qty_dispensed")) for it in items)
-    total_dispensed = int(tot_val) if tot_val.is_integer() else tot_val
+    tot_val = sum(float(it["qty_dispensed"] or 0) for it in items)
+    total_dispensed = _clean_num(tot_val)
 
     return {
         "date": date_str,
@@ -2744,17 +2762,18 @@ def get_daily_requisition_data(date_str: str = None):
         "items": items,
         "total_items": len(items),
         "total_dispensed_qty": total_dispensed,
-        "hospital_name": "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
-        "requester_name": "นางสาวกรรณิกา ชัยเลิศ",
-        "requester_title": "พยาบาลวิชาชีพชำนาญการ",
-        "dispenser_name": "นางสาววราภรณ์ สีหนาจ",
-        "dispenser_title": "พยาบาลวิชาชีพชำนาญการ",
-        "authorizer_name": "นายชุมสาย วิชาชัย",
-        "authorizer_title": "ผอ.รพ.สต.ดอนนาลับ",
-        "receiver_name": "นางกัลตะนา เมืองจันทร์",
-        "receiver_title": "พสอ.",
+        "hospital_name": Config.ORG_NAME,
+        "requester_name": Config.ORG_REQUESTER_NAME,
+        "requester_title": Config.ORG_REQUESTER_TITLE,
+        "dispenser_name": Config.ORG_DISPENSER_NAME,
+        "dispenser_title": Config.ORG_DISPENSER_TITLE,
+        "authorizer_name": Config.ORG_AUTHORIZER_NAME,
+        "authorizer_title": Config.ORG_AUTHORIZER_TITLE,
+        "receiver_name": Config.ORG_RECEIVER_NAME,
+        "receiver_title": Config.ORG_RECEIVER_TITLE,
         "has_records": len(items) > 0
     }
+
 
 # ─────────────────────────────────────────────────────────────
 # Category Master Management (CRUD)

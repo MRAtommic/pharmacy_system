@@ -704,6 +704,15 @@
             font-weight: 400;
         }
 
+        .pack-note {
+            font-size: 12px;
+            margin: 0 0 4px 2px;
+            color: #222222;
+        }
+        .pack-note:empty {
+            display: none;
+        }
+
         /* ── Print Specific Adjustments ── */
         @media print {
             body {
@@ -738,13 +747,22 @@
                 width: 100% !important;
                 min-height: auto !important;
                 margin: 0 !important;
-                padding: 10mm 10mm 10mm 14mm !important;
+                padding: 0 !important;
                 box-shadow: none !important;
                 page-break-after: avoid;
             }
 
             .ledger-table th {
                 background-color: transparent !important;
+            }
+
+            /* repeat the column titles on every page and never cut a row in half */
+            .ledger-table thead {
+                display: table-header-group;
+            }
+            .ledger-table tr {
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
 
             .ledger-table th, 
@@ -754,7 +772,7 @@
 
             @page {
                 size: A4 portrait;
-                margin: 0;
+                margin: 10mm 10mm 10mm 14mm;
             }
         }
     </style>
@@ -837,6 +855,11 @@
         <div class="sheet-scale-wrapper" id="sheetScaleWrapper">
             <div class="sheet-container" id="stockCardSheet">
         
+        {% if opening_clamped %}
+        <div class="no-print" style="background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:13px;">
+            ยอดยกมาคำนวณได้ติดลบ จึงแสดงเป็น 0 — ประวัติรับ/จ่ายไม่ครบหรือมีการแก้ไขสต็อกนอกระบบ กรุณาตรวจสอบก่อนพิมพ์
+        </div>
+        {% endif %}
         <!-- Header Section -->
         <div class="card-header-block">
             <h1 class="card-title-main">บัญชีรายการรับ-จ่าย/เวชภัณฑ์มิใช่ยา/วัสดุการแพทย์</h1>
@@ -867,6 +890,9 @@
             </div>
         </div>
 
+        <!-- unit of the ledger (only when the drug is counted in boxes) -->
+        <div id="packNote" class="pack-note">{{ pack_note }}</div>
+
         <!-- 📊 Stock Ledger Table Grid -->
         <table class="ledger-table" id="ledgerTable">
             <thead>
@@ -885,12 +911,12 @@
                 <!-- Row 1: Opening Balance (ยอดยกมา) -->
                 <tr class="row-opening-balance">
                     <td colspan="4" class="col-opening-merged">
-                        ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">2568</span>
+                        ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">{{ opening_fiscal_year }}</span>
                     </td>
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
                     <td class="col-price" id="cellOpeningPrice">{{ opening_value_formatted }}</td>
-                    <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp ยอดยกมา">{{ (opening_lot_exp or '-') | safe }}</td>
-                    <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('วราภรณ์') }}</td>
+                    <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp ยอดยกมา">{{ (opening_lot_exp if opening_lot_exp is defined else '-') | safe }}</td>
+                    <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('') }}</td>
                 </tr>
 
                 <!-- Transaction Rows & Template Fillers -->
@@ -1026,8 +1052,15 @@
             }
         }
 
+        // quantities may be fractions of a box (0.07); never show more than 4 decimals
+        function fmtQ(n) {
+            if (n == null || n === '' || isNaN(n)) return '-';
+            return Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 });
+        }
+
         function formatPackagingSize(drug) {
             if (!drug) return "1*500 's";
+            if ((drug.packaging || "").trim()) return drug.packaging.trim();   // e.g. 10x10
             let str = (drug.strength || "").trim();
             if (str) {
                 str = str.replace(/\s*(เม็ด|ขวด|แคปซูล|ซอง|หลอด|ตลับ|กล่อง|ชิ้น|แผง)/g, '').trim();
@@ -1042,6 +1075,8 @@
         function renderStockCard(d) {
             if (!d) return;
             const drug = d.drug || {};
+            const noteEl = document.getElementById('packNote');
+            if (noteEl) noteEl.innerText = d.pack_note || '';
 
             // 1. Update header fields
             const genericEl = document.getElementById('metaGenericName');
@@ -1057,11 +1092,11 @@
 
             // 2. Preserve fiscal year if edited
             const fyEl = document.getElementById('textFiscalYear');
-            const currentFiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : '2568';
+            const currentFiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : {{ (opening_fiscal_year | string) | tojson }};
             
-            // Preserve signature name if edited (defaults to วราภรณ์)
+            // Preserve signature name if edited (defaults to the configured ORG_OPENING_SIGN)
             const signEl = document.getElementById('signOpeningBalance');
-            let currentSign = 'วราภรณ์';
+            let currentSign = {{ (opening_sign | default('')) | tojson }};
             if (signEl !== null) {
                 currentSign = signEl.innerText.trim();
             }
@@ -1075,7 +1110,7 @@
             const openingBal = (d.opening_balance != null) ? Number(d.opening_balance) : 0;
             const openingVal = (d.opening_value != null) ? Number(d.opening_value) : (openingBal * unitCost);
             const openingPriceFormatted = formatBalanceValue(openingVal);
-            const openingBalFormatted = (d.opening_balance != null) ? d.opening_balance.toLocaleString('en-US') : '0';
+            const openingBalFormatted = (d.opening_balance != null) ? fmtQ(d.opening_balance) : '0';
 
             // 3. Build Opening Balance Row
             const drugLot = (d.drug && d.drug.lot_number) ? d.drug.lot_number.trim() : '';
@@ -1088,6 +1123,8 @@
             } else if (drugExp) {
                 openingLotExp = escapeHtml(drugExp);
             }
+
+            if (!openingBal) openingLotExp = '';   // nothing carried over -> no lot / expiry to print
 
             let html = `
                 <tr class="row-opening-balance">
@@ -1127,6 +1164,10 @@
                         particulars = `รับจาก...-..GPO/..<span class="fill-text">${qtyVal}</span>..บริษัท/จ่าย..-..`;
                     }
                     lotExp = lotExpFormatted;
+                } else if (tx.type === 'ADJUST') {
+                    const amount = (tx.qty_in != null) ? tx.qty_in : -(tx.qty_out || 0);
+                    particulars = `ปรับยอด (${escapeHtml(tx.recipient || '')}) <span class="fill-text">${amount > 0 ? '+' : ''}${amount}</span>`;
+                    lotExp = lotStr ? `<span style="font-weight:600;">${escapeHtml(lotStr)}</span>` : '-';
                 } else {
                     const qtyVal = (tx.qty_out != null && tx.qty_out !== '') ? tx.qty_out : '-';
                     particulars = `รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">${qtyVal}</span>..`;
@@ -1136,9 +1177,9 @@
                 const balNum = (tx.balance != null) ? Number(tx.balance) : 0;
                 const balVal = (tx.balance_value != null) ? Number(tx.balance_value) : (balNum * unitCost);
                 const priceDisplay = formatBalanceValue(balVal);
-                const balDisplay = (tx.balance != null) ? tx.balance.toLocaleString('en-US') : '-';
-                const qtyInDisplay = (tx.type === 'RECEIVE' && tx.qty_in != null) ? tx.qty_in.toLocaleString('en-US') : '-';
-                const qtyOutDisplay = (tx.type === 'DISPENSE' && tx.qty_out != null) ? tx.qty_out.toLocaleString('en-US') : '-';
+                const balDisplay = (tx.balance != null) ? fmtQ(tx.balance) : '-';
+                const qtyInDisplay = (tx.qty_in != null) ? fmtQ(tx.qty_in) : '-';
+                const qtyOutDisplay = (tx.qty_out != null) ? fmtQ(tx.qty_out) : '-';
 
                 html += `
                     <tr>
@@ -1205,8 +1246,10 @@
             const endDate = document.getElementById('inputEndDate').value;
             const code = new URLSearchParams(window.location.search).get('code') || '';
             const signEl = document.getElementById('signOpeningBalance');
-            const openingSign = (signEl && signEl.innerText.trim()) ? signEl.innerText.trim() : 'วราภรณ์';
-            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&opening_sign=${encodeURIComponent(openingSign)}`;
+            const openingSign = (signEl && signEl.innerText.trim()) ? signEl.innerText.trim() : {{ (opening_sign | default('')) | tojson }};
+            const fyEl = document.getElementById('textFiscalYear');
+            const fiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : '';
+            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&opening_sign=${encodeURIComponent(openingSign)}&fiscal_year=${encodeURIComponent(fiscalYear)}`;
             if (code) {
                 exportUrl += `&code=${encodeURIComponent(code)}`;
             }

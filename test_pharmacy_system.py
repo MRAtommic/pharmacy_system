@@ -8,10 +8,23 @@ Tests:
 5. Google Sheet Isolation & Safety Verification
 """
 
+import os
 import sys
+import tempfile
 sys.stdout.reconfigure(encoding='utf-8')
+
+# Run against a throw-away database seeded with the sample inventory, so the test never depends on (or changes)
+# the real pharmacy.db. This must happen before `database` / `config` are imported.
+_TMP_DIR = tempfile.mkdtemp(prefix="pharmacy_test_")
+os.environ["DB_PATH"] = os.path.join(_TMP_DIR, "pharmacy_test.db")
+os.environ["UPLOAD_FOLDER"] = os.path.join(_TMP_DIR, "uploads")
+
 import database
 from line_service import line_bot
+import seed_data
+
+database.init_db()
+seed_data.seed()
 
 def test_crud():
     print("Testing Drug CRUD...")

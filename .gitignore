@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .env*
+!.env.example
+.secret_key
 /uploads/
 !static/uploads/
 pharmacy.db-journal
@@ -14,3 +16,7 @@ backup_*/
 .idea/
 
 agy_project/
+
+# local test databases / scratch data (never commit)
+test_*.db
+test_*.db-*

@@ -3,7 +3,9 @@ LINE Bot Messaging Service for Pharmacy System
 Handles text commands ('พารา 2'), photo OCR, and sends rich Medical Flex Messages.
 """
 
+import os
 import re
+import hmac
 import requests
 import json
 import logging
@@ -217,8 +219,15 @@ class PharmacyLineBot:
         pin_match = re.match(r"^(?:รหัส|pin|staff|ลงทะเบียนเจ้าหน้าที่)\s*([0-9]{4,8})$", lower_text)
         if pin_match:
             entered_pin = pin_match.group(1).strip()
-            configured_pin = database.get_app_setting("pharmacy_staff_pin") or "1234"
-            if entered_pin == configured_pin:
+            # No built-in default PIN: set it in the settings table (pharmacy_staff_pin) or env LINE_STAFF_PIN
+            configured_pin = (database.get_app_setting("pharmacy_staff_pin") or os.environ.get("LINE_STAFF_PIN") or "").strip()
+            if not configured_pin:
+                self.reply_message(reply_token, {
+                    "type": "text",
+                    "text": "🔒 ยังไม่ได้ตั้งค่ารหัส PIN เจ้าหน้าที่ในระบบ กรุณาติดต่อผู้ดูแลระบบค่ะ"
+                })
+                return
+            if hmac.compare_digest(entered_pin.encode("utf-8"), configured_pin.encode("utf-8")):
                 if target_id and target_id != "unknown":
                     database.add_or_update_line_subscriber(target_id, display_name=user_name)
                     database.set_line_subscriber_staff(target_id, 1)
@@ -240,15 +249,14 @@ class PharmacyLineBot:
         dispense_pattern = r'^(?:เบิก|ตัด|จ่าย|ใช้)?\s*(.+?)(?:\s+[xX*]\s*|\s*[*]\s*|\s+)(\d+(?:\.\d+)?)\s*(?:เม็ด|แคปซูล|ขวด|แผง|กล่อง|ซอง|หลอด|หน่วย)?$'
         match = re.match(dispense_pattern, normalized_text)
         if match:
-            # Authorization Guard: Verify user has staff privileges before deducting stock
-            if target_id and target_id != "unknown":
-                is_staff = database.is_line_subscriber_staff(target_id)
-                if not is_staff:
-                    self.reply_message(reply_token, {
-                        "type": "text",
-                        "text": "🔒 ฟังก์ชันตัดสต็อกยาผ่าน LINE จำกัดสิทธิ์เฉพาะเจ้าหน้าที่เภสัชกรรม/พยาบาลเท่านั้นค่ะ\n\nหากท่านเป็นเจ้าหน้าที่ กรุณาพิมพ์:\n👉 'รหัส [PIN]' (เช่น 'รหัส 1234')\nเพื่อยืนยันตัวตนก่อนทำรายการค่ะ 🏥"
-                    })
-                    return
+            # Authorization Guard: Verify user has staff privileges before deducting stock.
+            # (Fail closed: an event with no/unknown sender is NOT allowed to dispense.)
+            if not database.is_line_subscriber_staff(target_id):
+                self.reply_message(reply_token, {
+                    "type": "text",
+                    "text": "🔒 ฟังก์ชันตัดสต็อกยาผ่าน LINE จำกัดสิทธิ์เฉพาะเจ้าหน้าที่เภสัชกรรม/พยาบาลเท่านั้นค่ะ\n\nหากท่านเป็นเจ้าหน้าที่ กรุณาพิมพ์:\n👉 'รหัส [PIN]'\nเพื่อยืนยันตัวตนก่อนทำรายการค่ะ 🏥"
+                })
+                return
 
             drug_query = match.group(1).strip()
             try:
@@ -326,6 +334,14 @@ class PharmacyLineBot:
 
     def _handle_image_message(self, reply_token, msg_id, user_name, target_id=None):
         """Process uploaded image (prescription / QR / drug bag)."""
+        # Image messages deduct stock too, so they need the same staff authorization as text commands
+        if not database.is_line_subscriber_staff(target_id):
+            self.reply_message(reply_token, {
+                "type": "text",
+                "text": "🔒 การตัดสต็อกจากรูปภาพจำกัดสิทธิ์เฉพาะเจ้าหน้าที่ค่ะ กรุณายืนยันตัวตนด้วย 'รหัส [PIN]' ก่อนนะคะ"
+            })
+            return
+
         image_bytes = self.get_message_content(msg_id)
         if not image_bytes:
             self.reply_message(reply_token, {"type": "text", "text": "❌ ไม่สามารถดาวน์โหลดรูปภาพจาก LINE ได้ กรุณาลองใหม่อีกครั้งค่ะ"})

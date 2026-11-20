@@ -16,7 +16,8 @@ from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, send_from_directory, redirect, send_file, make_response, session
 from io import BytesIO
-from config import Config
+from markupsafe import escape as _md_escape
+from config import Config, fiscal_year_be
 import database
 from google_sync import google_sync
 from line_service import line_bot
@@ -39,6 +40,8 @@ app.secret_key = Config.SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = Config.COOKIE_SECURE   # set COOKIE_SECURE=1 when served over HTTPS
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024          # reject uploads larger than 16 MB
 app.jinja_env.auto_reload = True
 
 logger = logging.getLogger("pharmacy_app")
@@ -49,12 +52,82 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # ─────────────────────────────────────────────────────────────
 
 from functools import wraps
+import hmac
+import threading
+import time
+
+# Legacy fallback so existing installs keep working. Set STAFF_PASSCODE in .env to replace it.
+_LEGACY_DEFAULT_PASSCODE = 'otwxc8x'
+if not os.environ.get('STAFF_PASSCODE'):
+    logging.getLogger("pharmacy_app").warning(
+        "STAFF_PASSCODE is not set: using the built-in default passcode. Set STAFF_PASSCODE in .env before exposing this server.")
+
+_failed_passcodes = {}          # key -> list of failure timestamps
+_failed_lock = threading.Lock()
+_FAIL_WINDOW_SEC = 300
+_FAIL_LIMIT_PER_IP = 5
+_FAIL_LIMIT_GLOBAL = 40
+
+def _client_ip() -> str:
+    fwd = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+    return fwd or request.remote_addr or 'unknown'
+
+def _passcode_rate_limited() -> bool:
+    now = time.time()
+    with _failed_lock:
+        for k in list(_failed_passcodes):
+            _failed_passcodes[k] = [t for t in _failed_passcodes[k] if now - t < _FAIL_WINDOW_SEC]
+            if not _failed_passcodes[k]:
+                del _failed_passcodes[k]
+        per_ip = len(_failed_passcodes.get(_client_ip(), []))
+        total = sum(len(v) for v in _failed_passcodes.values())
+    return per_ip >= _FAIL_LIMIT_PER_IP or total >= _FAIL_LIMIT_GLOBAL
+
+def _passcode_ok(code) -> bool:
+    """Constant-time passcode check with brute-force throttling. Failed attempts are counted."""
+    code = (code or '').strip()
+    if not code:
+        return False
+    if _passcode_rate_limited():
+        return False
+    expected = os.environ.get('STAFF_PASSCODE') or _LEGACY_DEFAULT_PASSCODE
+    if hmac.compare_digest(code.encode('utf-8'), expected.encode('utf-8')):
+        return True
+    with _failed_lock:
+        _failed_passcodes.setdefault(_client_ip(), []).append(time.time())
+    return False
+
+def _safe_next(url, default='/') -> str:
+    """Only allow same-site relative redirects (blocks //evil.com, /\\evil.com, absolute URLs)."""
+    url = (url or '').strip()
+    if (not url.startswith('/') or url.startswith('//') or '\\' in url
+            or any(ord(c) < 32 for c in url)):
+        return default
+    return url
+
+def _int_arg(name, default, lo=1, hi=1000):
+    """Parse an integer query parameter safely and clamp it to [lo, hi]."""
+    try:
+        val = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        val = default
+    return max(lo, min(hi, val))
+
+def _clean_text(value, max_len=200) -> str:
+    """Trim, drop control characters and cap the length of free text coming from the browser."""
+    text = "".join(ch for ch in str(value or "") if ch == "\n" or ord(ch) >= 32).strip()
+    return text[:max_len]
+
+def _clean_channel(value, default: str) -> str:
+    """Channel labels are short UPPER_SNAKE tokens (WEB_MANUAL, QR_SCAN, ...). Anything else falls back to default."""
+    v = str(value or "").strip().upper()
+    return v if re.fullmatch(r"[A-Z0-9_]{1,30}", v) else default
 
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         code = (request.args.get('code') or request.args.get('passcode') or '').strip()
-        if code and code in ['otwxc8x', os.environ.get('STAFF_PASSCODE', 'otwxc8x')]:
+        if code and not session.get('user_email') and _passcode_ok(code):
             if not session.get('user_email'):
                 session['user_email'] = 'admin@pharmacore.clinic'
                 session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
@@ -95,6 +168,10 @@ def disable_cache_for_dev(response):
     # Skip no-cache for file downloads — browsers refuse to save attachments with no-store
     if request.path.startswith("/api/export"):
         return response
+    # Static assets: allow caching but always revalidate (ETag) so edits show up without re-downloading every time
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+        return response
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
@@ -116,9 +193,73 @@ def mobile_scanner():
     u = current_user()
     return render_template("index.html", initial_view="scanner", base_url=Config.BASE_URL, current_user=u)
 
+def html_escape(value) -> str:
+    """HTML-escape any value to a plain str (safe to embed in markup that is later rendered with |safe)."""
+    return str(_md_escape("" if value is None else value))
+
+def _save_workbook_safe(wb, target):
+    """Save an openpyxl workbook after turning every 'formula' cell back into plain text.
+
+    Names, lots, suppliers, notes ... come from users; openpyxl would store a value starting with '=' as a live
+    formula (e.g. =HYPERLINK(...)). None of our exports use formulas, so every formula cell is text.
+    """
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.data_type = "s"
+    wb.save(target)
+
+
+def summarize_quantities(logs):
+    """Total quantity per unit, e.g. [('เม็ด', 10), ('ขวด', 2)]. Different units are never added together."""
+    totals = {}
+    for l in logs:
+        unit = (l.get("unit") or "หน่วย").strip() or "หน่วย"
+        totals[unit] = totals.get(unit, 0) + float(l.get("quantity") or 0)
+    return [(u, database._clean_num(v)) for u, v in totals.items()]
+
+
+def _requisition_totals(logs):
+    """Line amounts and totals for a requisition. Cancelled lines are listed but never counted."""
+    total_price = 0.0
+    for it in logs:
+        price = float(it.get("price") or 0.0)
+        qty = database._clean_num(it.get("quantity") or 0)
+        sub_total = price * qty
+        it["price_val"] = price
+        it["price_formatted"] = f"{price:,.2f}"
+        it["subtotal_val"] = sub_total
+        it["subtotal_formatted"] = f"{sub_total:,.2f}"
+        if not it.get("is_voided"):
+            total_price += sub_total
+    active = [l for l in logs if not l.get("is_voided")]
+    units = summarize_quantities(active)
+    if len(units) <= 1:
+        unit = units[0][0] if units else "หน่วย"
+        qty = units[0][1] if units else 0
+        qty_thai = number_to_thai_text(qty) + f" {unit}ถ้วน"
+    else:
+        qty, unit = None, ""
+        qty_thai = " และ ".join(f"{number_to_thai_text(q)}{u}" for u, q in units) + "ถ้วน"
+    return {
+        "total_price": total_price,
+        "total_price_formatted": f"{total_price:,.2f}",
+        "total_price_thai": thai_baht_text(total_price),
+        "qty_units": units,
+        "total_qty": qty,
+        "primary_unit": unit,
+        "total_qty_thai": qty_thai,
+        "active_count": len(active),
+    }
+
+
 def format_packaging_size(drug):
     if not drug:
         return "1*500 's"
+    packaging = (drug.get("packaging") or "").strip()
+    if packaging:          # e.g. "10x10" typed in the drug form wins over any guess from the strength
+        return packaging
     strength = (drug.get("strength") or "").strip()
     if strength:
         cleaned = re.sub(r'\s*(เม็ด|ขวด|แคปซูล|ซอง|หลอด|ตลับ|กล่อง|ชิ้น|แผง)', '', strength).strip()
@@ -143,8 +284,8 @@ def stock_card_view():
         selected_drug_id = drugs[0]["id"] if drugs else None
 
     now = datetime.now()
-    default_start = request.args.get("start_date") or f"{now.year}-{now.month:02d}-01"
-    default_end = request.args.get("end_date") or now.strftime("%Y-%m-%d")
+    default_start = database.normalize_ymd(request.args.get("start_date")) or f"{now.year}-{now.month:02d}-01"
+    default_end = database.normalize_ymd(request.args.get("end_date")) or now.strftime("%Y-%m-%d")
 
     card_data = database.get_stock_card_data(selected_drug_id, default_start, default_end) if selected_drug_id else None
     
@@ -154,8 +295,9 @@ def stock_card_view():
 
     for tx in transactions:
         tx["date_short"] = format_thai_date_short(tx["created_at"])
-        lot = (tx.get("lot_number") or "").strip()
-        exp = (tx.get("expiry_date") or "").strip()
+        # These strings are rendered with |safe in the template, so every DB value is HTML-escaped here
+        lot = html_escape((tx.get("lot_number") or "").strip())
+        exp = html_escape((tx.get("expiry_date") or "").strip())
 
         if lot and exp:
             lot_exp_display = f'<div style="line-height:1.25;"><div style="font-weight:600;">{lot}</div><div style="font-size:0.85em; color:#475569;">{exp}</div></div>'
@@ -168,14 +310,19 @@ def stock_card_view():
 
         if tx["type"] == "RECEIVE":
             is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
-            qty_in = tx.get("qty_in") or tx.get("quantity") or "-"
+            qty_in = html_escape(tx.get("qty_in") or tx.get("quantity") or "-")
             if is_gpo:
                 tx["particulars_html"] = f'รับจาก..<span class="fill-text">{qty_in}</span>..GPO/..-..บริษัท/จ่าย..-..'
             else:
                 tx["particulars_html"] = f'รับจาก...-..GPO/..<span class="fill-text">{qty_in}</span>..บริษัท/จ่าย..-..'
             tx["lot_exp_html"] = lot_exp_display
+        elif tx["type"] == "ADJUST":
+            amount = tx.get("qty_in") if tx.get("qty_in") is not None else -(tx.get("qty_out") or 0)
+            sign = "+" if amount > 0 else ""
+            tx["particulars_html"] = f'ปรับยอด ({html_escape(tx.get("recipient") or "")}) <span class="fill-text">{sign}{html_escape(amount)}</span>'
+            tx["lot_exp_html"] = lot_exp_display if lot else "-"
         else:
-            qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
+            qty_out = html_escape(tx.get("qty_out") or tx.get("quantity") or "-")
             tx["particulars_html"] = f'รับจาก...-..GPO/..-..บริษัท/จ่าย..<span class="fill-text">{qty_out}</span>..'
             tx["lot_exp_html"] = lot_exp_display if lot else "-"
 
@@ -197,8 +344,8 @@ def stock_card_view():
     empty_rows_count = max(0, 24 - used_rows)
     opening_value_formatted = card_data.get("opening_value_formatted", "0") if card_data else "0"
 
-    opening_lot = (selected_drug.get("lot_number") or "").strip() if selected_drug else ""
-    opening_exp = (selected_drug.get("expiry_date") or "").strip() if selected_drug else ""
+    opening_lot = html_escape((selected_drug.get("lot_number") or "").strip()) if selected_drug else ""
+    opening_exp = html_escape((selected_drug.get("expiry_date") or "").strip()) if selected_drug else ""
     if opening_lot and opening_exp:
         opening_lot_exp = f'<div style="line-height:1.25;"><div style="font-weight:600;">{opening_lot}</div><div style="font-size:0.85em; color:#475569;">{opening_exp}</div></div>'
     elif opening_lot:
@@ -207,6 +354,8 @@ def stock_card_view():
         opening_lot_exp = opening_exp
     else:
         opening_lot_exp = "-"
+    if card_data and not card_data.get("opening_balance"):
+        opening_lot_exp = ""      # nothing carried over -> no lot / expiry to print
 
     return render_template(
         "stock_card.html",
@@ -221,8 +370,11 @@ def stock_card_view():
         transactions=transactions,
         empty_rows_count=empty_rows_count,
         packaging=format_packaging_size(selected_drug),
-        opening_sign="วราภรณ์",
-        hospital_name="โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี",
+        opening_sign=Config.ORG_OPENING_SIGN,
+        opening_clamped=bool(card_data and card_data.get("opening_clamped")),
+        pack_note=(card_data or {}).get("pack_note", ""),
+        hospital_name=Config.ORG_NAME,
+        opening_fiscal_year=fiscal_year_be(default_start) - 1,   # balance carried over from the previous fiscal year
         current_user=u,
         base_url=Config.BASE_URL
     )
@@ -259,7 +411,8 @@ def export_stock_card_excel():
 
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
-    opening_sign = request.args.get("opening_sign") or "วราภรณ์"
+    opening_sign = request.args.get("opening_sign") or Config.ORG_OPENING_SIGN
+    fiscal_year_text = (request.args.get("fiscal_year") or "").strip() or str(fiscal_year_be(start_date) - 1)
     data = database.get_stock_card_data(drug_id, start_date, end_date)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
@@ -290,7 +443,7 @@ def export_stock_card_excel():
     ws["A1"].alignment = align_center
 
     ws.merge_cells("A2:H2")
-    ws["A2"] = "โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี"
+    ws["A2"] = Config.ORG_NAME
     ws["A2"].font = font_bold
     ws["A2"].alignment = align_center
 
@@ -298,6 +451,12 @@ def export_stock_card_excel():
     ws["A3"] = f"ชื่อสามัญ: {drug.get('generic_name') or drug.get('name')}     ขนาดบรรจุ: {format_packaging_size(drug)}     ลักษณะ: {drug.get('dosage_form', 'tablet')}"
     ws["A3"].font = font_regular
     ws["A3"].alignment = align_left
+
+    if data.get("pack_note"):
+        ws.merge_cells("A4:H4")
+        ws["A4"] = data["pack_note"]
+        ws["A4"].font = font_regular
+        ws["A4"].alignment = align_left
 
     headers = ["วัน/เดือน/ปี", "รายการ", "รับ", "จ่าย", "คงเหลือ", "ราคา", "lot/exp.", "ลงชื่อ"]
     for col_num, header in enumerate(headers, 1):
@@ -309,7 +468,7 @@ def export_stock_card_excel():
 
     r_idx = 6
     ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=4)
-    ws.cell(row=r_idx, column=1, value="ยอดยกมา จากปีงบประมาณ 2568").alignment = align_center
+    ws.cell(row=r_idx, column=1, value=f"ยอดยกมา จากปีงบประมาณ {fiscal_year_text}").alignment = align_center
     ws.cell(row=r_idx, column=1).font = font_bold
     unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
     opening_val = data.get("opening_value")
@@ -331,9 +490,11 @@ def export_stock_card_excel():
         opening_lot_exp_val = opening_exp
     else:
         opening_lot_exp_val = "-"
+    if not data.get("opening_balance"):
+        opening_lot_exp_val = ""      # nothing carried over -> no lot / expiry
     cell_op_lot = ws.cell(row=r_idx, column=7, value=opening_lot_exp_val)
-    cell_op_lot.alignment = align_center
-    cell_op_lot.alignment.wrap_text = True
+    # openpyxl style objects are immutable: assign a new Alignment instead of mutating one
+    cell_op_lot.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.cell(row=r_idx, column=8, value=opening_sign).alignment = align_center
     for c in range(1, 9):
         ws.cell(row=r_idx, column=c).border = border_thin
@@ -350,6 +511,9 @@ def export_stock_card_excel():
                 part = f"รับจาก...{qty_in}...GPO/...-.....บริษัท/จ่าย...-....."
             else:
                 part = f"รับจาก...-.....GPO/...{qty_in}...บริษัท/จ่าย...-....."
+        elif tx["type"] == "ADJUST":
+            amount = tx.get("qty_in") if tx.get("qty_in") is not None else -(tx.get("qty_out") or 0)
+            part = f"ปรับยอด ({tx.get('recipient') or ''}) {'+' if amount > 0 else ''}{amount}"
         else:
             qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
             part = f"รับจาก...-.....GPO/...-.....บริษัท/จ่าย...{qty_out}....."
@@ -364,8 +528,8 @@ def export_stock_card_excel():
 
         ws.cell(row=r_idx, column=1, value=d_short).alignment = align_center
         ws.cell(row=r_idx, column=2, value=part).alignment = align_left
-        ws.cell(row=r_idx, column=3, value=tx["qty_in"] if tx["type"] == "RECEIVE" else "-").alignment = align_center
-        ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["type"] == "DISPENSE" else "-").alignment = align_center
+        ws.cell(row=r_idx, column=3, value=tx["qty_in"] if tx["qty_in"] is not None else "-").alignment = align_center
+        ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["qty_out"] is not None else "-").alignment = align_center
         ws.cell(row=r_idx, column=5, value=tx["balance"]).alignment = align_center
         ws.cell(row=r_idx, column=6, value=bal_val).alignment = align_right
         lot = (tx.get("lot_number") or "").strip()
@@ -395,7 +559,7 @@ def export_stock_card_excel():
     ws.column_dimensions['H'].width = 14
 
     output = io.BytesIO()
-    wb.save(output)
+    _save_workbook_safe(wb, output)
     output.seek(0)
 
     filename = f"stock_card_{drug.get('code', 'drug')}_{datetime.now().strftime('%Y%m%d')}.xlsx"
@@ -411,7 +575,7 @@ def export_stock_card_excel():
 def daily_requisition_view():
     u = current_user()
     now_dt = datetime.now()
-    default_date = request.args.get("date") or now_dt.strftime("%Y-%m-%d")
+    default_date = database.normalize_ymd(request.args.get("date")) or now_dt.strftime("%Y-%m-%d")
 
     data = database.get_daily_requisition_data(default_date)
     available_dates = database.get_daily_requisition_available_dates()
@@ -445,6 +609,8 @@ def daily_requisition_view():
 @login_required
 def api_daily_requisition_data():
     date_val = request.args.get("date")
+    if date_val and not database.normalize_ymd(date_val):
+        return jsonify({"ok": False, "error": "รูปแบบวันที่ไม่ถูกต้อง (ใช้ YYYY-MM-DD)"}), 400
     data = database.get_daily_requisition_data(date_val)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลสำหรับวันที่ระบุ"}), 404
@@ -455,6 +621,8 @@ def api_daily_requisition_data():
 @login_required
 def export_daily_requisition_excel():
     date_val = request.args.get("date")
+    if date_val and not database.normalize_ymd(date_val):
+        return jsonify({"ok": False, "error": "รูปแบบวันที่ไม่ถูกต้อง (ใช้ YYYY-MM-DD)"}), 400
     data = database.get_daily_requisition_data(date_val)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลสำหรับวันที่ระบุ"}), 404
@@ -600,7 +768,7 @@ def export_daily_requisition_excel():
     ws.column_dimensions['G'].width = 16
 
     output = io.BytesIO()
-    wb.save(output)
+    _save_workbook_safe(wb, output)
     output.seek(0)
 
     filename = f"daily_requisition_{data['date'].replace('-', '')}.xlsx"
@@ -614,10 +782,10 @@ def export_daily_requisition_excel():
 @app.route("/login")
 def login_page():
     code = (request.args.get('code') or request.args.get('passcode') or '').strip()
-    next_url = request.args.get('next') or '/'
+    next_url = _safe_next(request.args.get('next'))
     if session.get('user_email'):
         return redirect(next_url)
-    if code and code in ['otwxc8x', os.environ.get('STAFF_PASSCODE', 'otwxc8x')]:
+    if code and _passcode_ok(code):
         session['user_email'] = 'admin@pharmacore.clinic'
         session['user_name'] = 'ผู้ดูแลระบบคลังยา (Admin)'
         session['user_picture'] = '/static/uploads/drugs/app_icon_192.png'
@@ -630,7 +798,9 @@ def login_page():
 def passcode_login():
     data = request.get_json(silent=True) or request.form
     code = (data.get("passcode") or data.get("code") or "").strip()
-    if code and code in ["otwxc8x", os.environ.get("STAFF_PASSCODE", "otwxc8x")]:
+    if _passcode_rate_limited():
+        return jsonify({"ok": False, "error": "ลองรหัสผิดหลายครั้งเกินไป กรุณารอ 5 นาทีแล้วลองใหม่"}), 429
+    if _passcode_ok(code):
         session["user_email"] = "admin@pharmacore.clinic"
         session["user_name"] = "ผู้ดูแลระบบคลังยา (Admin)"
         session["user_picture"] = "/static/uploads/drugs/app_icon_192.png"
@@ -676,6 +846,7 @@ def download_apk():
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/drugs", methods=["GET"])
+@login_required
 def list_drugs():
     search = request.args.get("q", "").strip()
     category = request.args.get("category", "").strip()
@@ -696,12 +867,14 @@ def list_drugs():
     return jsonify({"ok": True, "drugs": drugs, "count": len(drugs)})
 
 @app.route("/api/drugs/expiring", methods=["GET"])
+@login_required
 def list_expiring_drugs():
-    days = int(request.args.get("days", Config.EXPIRY_ALERT_DAYS or 60))
+    days = _int_arg("days", Config.EXPIRY_ALERT_DAYS or 60, lo=1, hi=3650)
     drugs = database.get_expiring_drugs(days=days)
     return jsonify({"ok": True, "days": days, "drugs": drugs, "count": len(drugs)})
 
 @app.route("/api/drugs/<int:drug_id>", methods=["GET"])
+@login_required
 def get_drug(drug_id):
     drug = database.get_drug_by_id(drug_id)
     if not drug:
@@ -738,28 +911,41 @@ def update_lot_endpoint(lot_id):
     cost_per_unit = data.get("cost_per_unit")
     notes = data.get("notes")
 
+    before = database.get_lot_by_id(lot_id) or {}
     res = database.update_lot(
         lot_id,
         lot_number=lot_number,
         stock_qty=stock_qty,
         expiry_date=expiry_date,
         cost_per_unit=cost_per_unit,
-        notes=notes
+        notes=notes,
+        adjusted_by=current_user().get("name") or current_user().get("email") or ""
     )
     if not res.get("ok"):
         return jsonify(res), 400
+    after = database.get_lot_by_id(lot_id) or {}
+    # Lot edits change stock without a dispense/receive record, so they must at least leave an audit entry
+    audit('UPDATE_LOT', 'drug_lot', lot_id, f"{before.get('lot_number', '')} → {after.get('lot_number', '')}",
+          f"แก้ไขล็อต | จำนวน: {before.get('stock_qty')} → {after.get('stock_qty')} | "
+          f"EXP: {before.get('expiry_date') or '-'} → {after.get('expiry_date') or '-'}")
+    trigger_bg_sheet_sync()
     return jsonify(res)
 
 @app.route("/api/lots/<int:lot_id>", methods=["DELETE"])
 @login_required
 def delete_lot_endpoint(lot_id):
     """Delete a specific drug lot."""
-    res = database.delete_lot(lot_id)
+    before = database.get_lot_by_id(lot_id) or {}
+    res = database.delete_lot(lot_id, adjusted_by=current_user().get("name") or current_user().get("email") or "")
     if not res.get("ok"):
         return jsonify(res), 400
+    audit('DELETE_LOT', 'drug_lot', lot_id, before.get('lot_number', ''),
+          f"ลบล็อต | จำนวนที่เหลือในล็อต: {before.get('stock_qty')} | EXP: {before.get('expiry_date') or '-'}")
+    trigger_bg_sheet_sync()
     return jsonify(res)
 
 @app.route("/api/drugs/scan-lookup", methods=["GET"])
+@login_required
 def scan_lookup():
     code = request.args.get("code", "").strip()
     lot_param = request.args.get("lot", "").strip()
@@ -839,6 +1025,13 @@ def create_drug():
     if not name:
         return jsonify({"ok": False, "error": "กรุณาระบุชื่อยา"}), 400
 
+    pack_size = database._norm_pack_size(data.get("pack_size"))
+    if pack_size and str(data.get("stock_input_unit") or "").lower() == "pack":
+        try:
+            data["stock_qty"] = round(float(data.get("stock_qty") or 0) * pack_size, 6)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "จำนวนสต็อกต้องเป็นตัวเลข"}), 400
+
     try:
         new_drug = database.add_drug(data)
     except sqlite3.IntegrityError:
@@ -870,14 +1063,25 @@ def create_drug():
 @login_required
 def edit_drug(drug_id):
     data = request.json or {}
+    current = database.get_drug_by_id(drug_id)
+    if not current:
+        return jsonify({"ok": False, "error": "ไม่พบข้อมูลยาที่ต้องการแก้ไข"}), 404
+
     if "stock_qty" in data and data["stock_qty"] is not None:
         try:
             sq = float(data["stock_qty"])
-            if sq < 0:
-                return jsonify({"ok": False, "error": "จำนวนสต็อกต้องไม่ติดลบ"}), 400
-            data["stock_qty"] = int(sq) if sq.is_integer() else sq
         except (ValueError, TypeError):
             return jsonify({"ok": False, "error": "จำนวนสต็อกต้องเป็นตัวเลข"}), 400
+        if sq < 0:
+            return jsonify({"ok": False, "error": "จำนวนสต็อกต้องไม่ติดลบ"}), 400
+        if abs(sq - float(current.get("stock_qty") or 0)) > 1e-9:
+            # The balance is the sum of the drug's lots and every change must leave a history record.
+            # Overwriting it here would be silently reverted by the next transaction and break the stock card.
+            return jsonify({
+                "ok": False,
+                "error": "ไม่สามารถแก้ยอดคงเหลือตรง ๆ ได้ กรุณาใช้ปุ่ม 'รับยาเข้าคลัง' (เพิ่มยอด) หรือ 'แก้ไขล็อตยา' (ปรับยอดรายล็อต) เพื่อให้ประวัติสต็อกถูกต้อง"
+            }), 400
+        data.pop("stock_qty")   # unchanged value: ignore
 
     updated = database.update_drug(drug_id, data)
     if not updated:
@@ -902,11 +1106,13 @@ def remove_drug(drug_id):
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/categories", methods=["GET"])
+@login_required
 def api_get_categories():
     categories = database.get_categories()
     return jsonify({"ok": True, "categories": categories})
 
 @app.route("/api/categories", methods=["POST"])
+@login_required
 def api_add_category():
     data = request.get_json(silent=True) or {}
     name = data.get("name", "").strip()
@@ -920,6 +1126,7 @@ def api_add_category():
     return jsonify({"ok": True, "category": res, "message": "เพิ่มหมวดหมู่สำเร็จ"})
 
 @app.route("/api/categories/<int:cat_id>", methods=["PUT"])
+@login_required
 def api_update_category(cat_id):
     data = request.get_json(silent=True) or {}
     name = data.get("name", "").strip()
@@ -933,6 +1140,7 @@ def api_update_category(cat_id):
     return jsonify({"ok": True, "category": res, "message": "แก้ไขหมวดหมู่สำเร็จ"})
 
 @app.route("/api/categories/<int:cat_id>", methods=["DELETE"])
+@login_required
 def api_delete_category(cat_id):
     fallback = request.args.get("fallback", "ทั่วไป")
     ok, msg = database.delete_category(cat_id, fallback)
@@ -979,17 +1187,19 @@ def dispense_stock():
     except (ValueError, TypeError):
         return jsonify({"ok": False, "error": "จำนวนที่ตัดต้องเป็นตัวเลขมากกว่า 0"}), 400
 
-    channel = data.get("channel") or "WEB_MANUAL"
-    # Auto-fill dispensed_by with logged-in user email/name if not provided
+    channel = _clean_channel(data.get("channel"), "WEB_MANUAL")
+    # Auto-fill dispensed_by with logged-in user email/name if not provided.
+    # The typed name is kept on purpose (staff share one passcode login), but the real signed-in account is always
+    # recorded separately in the audit trail, so a typed name can never hide who performed the action.
     u = current_user()
     actor_email = u.get('email', '')
     actor_name = u.get('name', '')
     default_dispenser = actor_name or actor_email or "ผู้ดูแลระบบคลังยา (Admin)"
-    dispensed_by = (data.get("dispensed_by") or "").strip()
+    dispensed_by = _clean_text(data.get("dispensed_by"), 100)
     if not dispensed_by or dispensed_by in ("เภสัชกร/เจ้าหน้าที่", "เจ้าหน้าที่"):
         dispensed_by = default_dispenser
-    patient_name = data.get("patient_name") or ""
-    notes = data.get("notes") or ""
+    patient_name = _clean_text(data.get("patient_name"), 150)
+    notes = _clean_text(data.get("notes"), 500)
     lot_id = data.get("lot_id")
 
     if not drug_id:
@@ -1066,11 +1276,11 @@ def batch_dispense():
     u = current_user()
     actor_email = u.get('email', '')
     actor_name = u.get('name', '')
-    dispensed_by = (data.get("dispensed_by") or (f"{actor_name}" if actor_name else "เภสัชกร/เจ้าหน้าที่")).strip()
-    patient_name = (data.get("patient_name") or "").strip()
-    requester_dept = (data.get("requester_dept") or "แผนกตรวจรักษา / หอผู้ป่วย").strip()
-    notes = (data.get("notes") or "").strip()
-    channel = data.get("channel") or "WEB_RX_CART"
+    dispensed_by = _clean_text(data.get("dispensed_by") or (f"{actor_name}" if actor_name else "เภสัชกร/เจ้าหน้าที่"), 100)
+    patient_name = _clean_text(data.get("patient_name"), 150)
+    requester_dept = _clean_text(data.get("requester_dept") or "แผนกตรวจรักษา / หอผู้ป่วย", 150)
+    notes = _clean_text(data.get("notes"), 500)
+    channel = _clean_channel(data.get("channel"), "WEB_RX_CART")
 
     success, result = database.deduct_stock_batch(
         items=items,
@@ -1151,8 +1361,9 @@ def void_dispense(log_id):
     })
 
 @app.route("/api/dispense/logs", methods=["GET"])
+@login_required
 def list_logs():
-    limit = int(request.args.get("limit", 100))
+    limit = _int_arg("limit", 100, lo=1, hi=1000)
     date_filter = request.args.get("date")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -1203,6 +1414,22 @@ def stock_in_endpoint():
         received_by = default_receiver
     notes = (data.get("notes") or "").strip()
 
+    if str(data.get("input_unit") or "").lower() == "pack":
+        drug_row = (database.get_drug_by_id(int(drug_id)) if str(drug_id or "").isdigit()
+                    else database.get_drug_by_code(str(drug_code or "").strip()))
+        pack_size = (drug_row or {}).get("pack_size") or 0
+        if not pack_size or pack_size <= 1:
+            return jsonify({"ok": False, "error": "ยานี้ยังไม่ได้ตั้ง 'จำนวนต่อกล่อง' จึงรับเข้าเป็นกล่องไม่ได้"}), 400
+        pack_unit = (drug_row.get("pack_unit") or "กล่อง").strip() or "กล่อง"
+        notes = (notes + f" [รับ {quantity:g} {pack_unit}]").strip()
+        quantity = round(float(quantity) * pack_size, 6)
+        quantity = int(quantity) if float(quantity).is_integer() else quantity
+        if cost_per_unit not in (None, ""):
+            try:
+                cost_per_unit = round(float(cost_per_unit) / pack_size, 6)   # cost was typed per pack
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "ราคาทุนต้องเป็นตัวเลข"}), 400
+
     success, result = database.stock_in(
         drug_id_or_code=target,
         quantity=quantity,
@@ -1244,8 +1471,9 @@ def stock_in_endpoint():
     })
 
 @app.route("/api/stock-in/logs", methods=["GET"])
+@login_required
 def list_stock_in_logs():
-    limit = int(request.args.get("limit", 100))
+    limit = _int_arg("limit", 100, lo=1, hi=1000)
     date_filter = request.args.get("date")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -1296,7 +1524,7 @@ def update_stock_in_endpoint(log_id):
     return jsonify({"ok": True, "log": result, "message": f"แก้ไขรายการรับเข้ายา '{result.get('drug_name')}' เรียบร้อยแล้ว"})
 
 @app.route("/api/stock-in/<int:log_id>/void", methods=["POST"])
-@app.route("/api/stock-in/<int:log_id>", methods=["DELETE", "POST"])
+@app.route("/api/stock-in/<int:log_id>", methods=["DELETE"])   # POST on this URL belongs to the edit endpoint above
 @app.route("/api/stock-in/<int:log_id>/delete", methods=["POST", "DELETE"])
 @login_required
 def void_stock_in_endpoint(log_id):
@@ -1323,11 +1551,13 @@ def void_stock_in_endpoint(log_id):
     })
 
 @app.route("/api/analytics/summary", methods=["GET"])
+@login_required
 def analytics_summary():
     summary = database.get_analytics_summary()
     return jsonify({"ok": True, "analytics": summary})
 
 @app.route("/api/dashboard/stats", methods=["GET"])
+@login_required
 def dashboard_stats():
     stats = database.get_dashboard_stats()
     stats["google_sheet_connected"] = google_sync.is_connected
@@ -1339,11 +1569,13 @@ def dashboard_stats():
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/google/config", methods=["GET"])
+@login_required
 def get_google_config():
     info = google_sync.get_connection_info()
     return jsonify({"ok": True, "config": info})
 
 @app.route("/api/google/config", methods=["POST"])
+@login_required
 def update_google_config():
     data = request.json or {}
     sheet_input = data.get("spreadsheet_id")
@@ -1361,6 +1593,7 @@ def update_google_config():
     return jsonify({"ok": True, "config": info, "message": "อัปเดตการเชื่อมต่อ Google Drive & Sheets เรียบร้อยแล้ว"})
 
 @app.route("/api/google/auto-create-sheet", methods=["POST"])
+@login_required
 def auto_create_google_sheet():
     sheet_id, err = google_sync.ensure_pharmacy_spreadsheet()
     if err:
@@ -1374,6 +1607,7 @@ def auto_create_google_sheet():
     return jsonify({"ok": True, "config": google_sync.get_connection_info(), "message": "สร้าง Google Sheet สำหรับคลังยาสำเร็จแล้ว"})
 
 @app.route("/api/google/disconnect", methods=["POST"])
+@login_required
 def disconnect_google_endpoint():
     google_sync.disconnect_google()
     return jsonify({"ok": True, "message": "ตัดการเชื่อมต่อ Google สำเร็จแล้ว"})
@@ -1383,31 +1617,32 @@ def disconnect_google_endpoint():
 # ─────────────────────────────────────────────────────────────
 
 def _determine_redirect_uri():
-    host = request.headers.get("x-forwarded-host") or request.host or ""
-    proto = request.headers.get("x-forwarded-proto") or ("https" if request.is_secure else "http")
-    
-    # If accessing via ngrok domain
-    if "ngrok" in host:
-        return f"https://{host}/api/auth/google/callback"
-    
-    # If direct local access
-    if "localhost" in host or "127.0.0.1" in host:
-        return "http://localhost:5005/api/auth/google/callback"
+    """Google OAuth redirect URI.
 
-    # If accessing via Cloudflare / openchat
-    if "openchat.sbs" in host:
-        return "https://openchat.sbs/api/auth/google/callback"
+    The Host header is attacker-controlled, so it is only trusted when it is localhost, the host of BASE_URL,
+    or listed in OAUTH_TRUSTED_HOSTS. Otherwise the configured BASE_URL is used. Setting OAUTH2_REDIRECT_URI
+    explicitly in .env always wins.
+    """
+    path = "/api/auth/google/callback"
+    explicit = os.environ.get("OAUTH2_REDIRECT_URI", "").strip()
+    if explicit:
+        return explicit
 
-    # If Config.OAUTH2_REDIRECT_URI is set and does not point to openchat
-    if Config.OAUTH2_REDIRECT_URI and "openchat.sbs" not in Config.OAUTH2_REDIRECT_URI:
-        return Config.OAUTH2_REDIRECT_URI
+    host_header = (request.headers.get("x-forwarded-host") or request.host or "").split(",")[0].strip().lower()
+    hostname = host_header.split(":")[0]
+    proto = (request.headers.get("x-forwarded-proto") or ("https" if request.is_secure else "http")).split(",")[0].strip()
 
-    if host:
-        return f"{proto}://{host}/api/auth/google/callback"
+    if hostname in ("localhost", "127.0.0.1"):
+        return f"http://localhost:{Config.PORT}{path}"
 
-    return "https://encrypt-unvocal-hankering.ngrok-free.dev/api/auth/google/callback"
+    base_host = (urllib.parse.urlparse(Config.BASE_URL).hostname or "").lower()
+    if hostname and (hostname == base_host or hostname in Config.OAUTH_TRUSTED_HOSTS):
+        return f"{proto if proto in ('http', 'https') else 'https'}://{host_header}{path}"
+
+    return f"{Config.BASE_URL}{path}"
 
 @app.route("/api/auth/google/login")
+@login_required
 def google_oauth_login():
     """Start Google OAuth flow to grant Drive & Sheets access automatically."""
     client_id = Config.GOOGLE_OAUTH2_CLIENT_ID
@@ -1447,7 +1682,7 @@ def google_user_login():
 
     redirect_uri = _determine_user_login_redirect_uri()
     state_token  = secrets.token_urlsafe(32)
-    next_url     = request.args.get('next', '/')
+    next_url     = _safe_next(request.args.get('next'))
     database.set_app_setting(f"login_state_{state_token}", f"{redirect_uri}|||{next_url}")
 
     params = {
@@ -1495,6 +1730,19 @@ def _finish_user_login(code, redirect_uri, next_url):
 
         if not email:
             return redirect("/login?error=no_email")
+        if user_info.get("verified_email") is False:
+            return redirect("/login?error=" + urllib.parse.quote("อีเมล Google นี้ยังไม่ได้ยืนยัน"))
+
+        # Access control: only allow-listed accounts may sign in (when an allow-list is configured)
+        if Config.ALLOWED_LOGIN_EMAILS or Config.ALLOWED_LOGIN_DOMAINS:
+            domain = email.rsplit("@", 1)[-1].lower()
+            if email.lower() not in Config.ALLOWED_LOGIN_EMAILS and domain not in Config.ALLOWED_LOGIN_DOMAINS:
+                logger.warning(f"Google login rejected (not in allow-list): {email}")
+                return redirect("/login?error=" + urllib.parse.quote("บัญชีนี้ไม่ได้รับอนุญาตให้เข้าใช้งานระบบ"))
+        else:
+            logger.warning(
+                "ALLOWED_LOGIN_EMAILS / ALLOWED_LOGIN_DOMAINS not set: ANY Google account can sign in. "
+                "Set one of them in .env to restrict access.")
 
         # Upsert user record in SQLite
         database.add_or_update_user(email, name, picture, sub)
@@ -1519,11 +1767,12 @@ def _finish_user_login(code, redirect_uri, next_url):
         )
         logger.info(f"✅ User authenticated: {email} ({name}) from {ip}")
 
-        return redirect(next_url if (next_url and next_url.startswith('/')) else '/')
+        return redirect(_safe_next(next_url))
 
     except Exception as e:
         logger.error(f"Google user login callback error: {e}")
-        return redirect("/login?error=" + urllib.parse.quote(str(e)))
+        # Details stay in the server log; don't echo internal error text into a URL
+        return redirect("/login?error=" + urllib.parse.quote("เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่"))
 
 # ─────────────────────────────────────────────────────────────
 # Audit Log API
@@ -1532,7 +1781,7 @@ def _finish_user_login(code, redirect_uri, next_url):
 @app.route("/api/audit/logs", methods=["GET"])
 @login_required
 def get_audit_logs_api():
-    limit       = int(request.args.get("limit", 200))
+    limit       = _int_arg("limit", 200, lo=1, hi=2000)
     user_email  = request.args.get("user_email")
     action      = request.args.get("action")
     date_filter = request.args.get("date")
@@ -1568,14 +1817,23 @@ def google_oauth_callback():
 
     # 1. Check if this is a user login authentication flow
     saved_login = database.get_app_setting(f"login_state_{state}") if state else None
-    if saved_login or request.path.endswith("user-callback"):
-        parts = saved_login.split("|||", 1) if saved_login else ["", "/"]
+    if request.path.endswith("user-callback") and not saved_login:
+        # A login callback must carry a state we issued (prevents login-CSRF / forged callbacks)
+        return redirect("/login?error=" + urllib.parse.quote("เซสชันการเข้าสู่ระบบหมดอายุ กรุณาลองใหม่"))
+    if saved_login:
+        database.set_app_setting(f"login_state_{state}", "")   # single use: a state can't be replayed
+        parts = saved_login.split("|||", 1)
         redirect_uri = parts[0] if parts[0] else _determine_user_login_redirect_uri()
         next_url = parts[1] if len(parts) > 1 else "/"
         return _finish_user_login(code, redirect_uri, next_url)
 
-    # 2. Workspace Drive & Sheets setup
-    saved_redirect_uri = database.get_app_setting(f"oauth_state_{state}") or _determine_redirect_uri()
+    # 2. Workspace Drive & Sheets setup — signed-in staff only, and only with a state we issued
+    if not session.get("user_email"):
+        return redirect("/login?error=" + urllib.parse.quote("กรุณาเข้าสู่ระบบก่อนเชื่อมต่อ Google Drive/Sheets"))
+    saved_redirect_uri = database.get_app_setting(f"oauth_state_{state}") if state else None
+    if not saved_redirect_uri:
+        return redirect("/?google_error=" + urllib.parse.quote("คำขอเชื่อมต่อหมดอายุหรือไม่ถูกต้อง กรุณาลองใหม่"))
+    database.set_app_setting(f"oauth_state_{state}", "")   # single use
 
     try:
         # Exchange code for token with Google
@@ -1614,17 +1872,13 @@ def google_oauth_callback():
         logger.error(f"Google OAuth callback error: {e}")
         return redirect(f"/?google_error={urllib.parse.quote(str(e))}")
 
-@app.route("/api/google/disconnect", methods=["POST"])
-def google_disconnect():
-    google_sync.disconnect_google()
-    return jsonify({"ok": True, "message": "ตัดการเชื่อมต่อ Google เรียบร้อยแล้ว"})
-
 
 # ─────────────────────────────────────────────────────────────
 # Image Upload & OCR Analysis (Prescription / QR scan)
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/scan-image", methods=["POST"])
+@login_required
 def scan_image():
     """
     Accepts uploaded photo of prescription, label, or QR code.
@@ -1655,6 +1909,7 @@ def allowed_image_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTS
 
 @app.route("/api/upload/drug-image", methods=["POST"])
+@login_required
 def upload_drug_image():
     """Upload drug image and return accessible static URL."""
     file = request.files.get("image") or request.files.get("file")
@@ -1662,6 +1917,14 @@ def upload_drug_image():
         return jsonify({"ok": False, "error": "ไม่พบไฟล์ภาพที่อัปโหลด"}), 400
     if not allowed_image_file(file.filename):
         return jsonify({"ok": False, "error": "รองรับเฉพาะไฟล์รูปภาพ (PNG, JPG, JPEG, WEBP, GIF)"}), 400
+
+    # The extension alone proves nothing: make sure the bytes really are an image
+    try:
+        from PIL import Image
+        Image.open(file.stream).verify()
+        file.stream.seek(0)
+    except Exception:
+        return jsonify({"ok": False, "error": "ไฟล์ที่อัปโหลดไม่ใช่รูปภาพที่ถูกต้อง"}), 400
 
     try:
         import uuid
@@ -1676,6 +1939,7 @@ def upload_drug_image():
         return jsonify({"ok": False, "error": f"เกิดข้อผิดพลาดในการบันทึกรูปภาพ: {str(e)}"}), 500
 
 @app.route("/api/sync-sheet", methods=["POST"])
+@login_required
 def trigger_sheet_sync():
     """Manually force re-sync with Google Sheets (both inventory and dispensing logs)."""
     drugs = database.get_all_drugs()
@@ -1691,6 +1955,7 @@ def trigger_sheet_sync():
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/export/inventory", methods=["GET"])
+@login_required
 def export_inventory_excel():
     """Export all drug inventory to a styled Excel (.xlsx) file."""
     try:
@@ -1781,7 +2046,7 @@ def export_inventory_excel():
     ws.auto_filter.ref = f"A2:K{len(drugs) + 2}"
 
     buf = BytesIO()
-    wb.save(buf)
+    _save_workbook_safe(wb, buf)
     xlsx_bytes = buf.getvalue()
     filename = f"pharmacore_inventory_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     resp = make_response(xlsx_bytes)
@@ -1792,6 +2057,7 @@ def export_inventory_excel():
 
 
 @app.route("/api/export/logs", methods=["GET"])
+@login_required
 def export_logs_excel():
     """Export dispensing logs to a styled Excel (.xlsx) file."""
     try:
@@ -1904,7 +2170,7 @@ def export_logs_excel():
     ws.auto_filter.ref = f"A2:I{len(logs) + 2}"
 
     buf = BytesIO()
-    wb.save(buf)
+    _save_workbook_safe(wb, buf)
     xlsx_bytes = buf.getvalue()
     filename = f"pharmacore_logs_{file_suffix}.xlsx"
     resp = make_response(xlsx_bytes)
@@ -1945,98 +2211,84 @@ def format_thai_date_short(dt_str):
     except Exception:
         return str(dt_str)
 
-def number_to_thai_text(n):
-    units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
-    digits = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน']
-    try:
-        f = float(n)
-        if f == 0:
-            return 'ศูนย์'
-        if f < 0:
-            return 'ลบ' + number_to_thai_text(-f)
-            
-        n_int = int(f)
-        dec_part = ""
-        if not f.is_integer():
-            dec_part = str(f).split(".")[1]
+_TH_UNITS = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
+_TH_POS = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน']
 
-        s = str(n_int)
-        l = len(s)
-        res = []
-        for i, c in enumerate(s):
-            d = int(c)
-            p = l - i - 1
-            if d == 0:
-                continue
-            if p == 0 and d == 1 and l > 1 and s[-2] != '0':
-                res.append('เอ็ด')
-            elif p == 1 and d == 2:
-                res.append('ยี่สิบ')
-            elif p == 1 and d == 1:
-                res.append('สิบ')
-            else:
-                res.append(units[d] + digits[p])
-        int_text = ''.join(res) or 'ศูนย์'
-        if dec_part:
-            dec_text = ''.join(units[int(c)] if c != '0' else 'ศูนย์' for c in dec_part)
-            return f"{int_text}จุด{dec_text}"
-        return int_text
-    except Exception:
+
+def _thai_chunk(n: int, has_higher: bool = False) -> str:
+    """Thai words for 0 < n < 1,000,000.
+
+    'เอ็ด' is used for a final digit 1 whenever something precedes it (11, 21, 101, 1001 ... and the 1 after
+    'ล้าน' in 1,000,001), 'ยี่สิบ' for 20-29 and a bare 'สิบ' for 10-19.
+    """
+    s = str(n)
+    length = len(s)
+    out = []
+    for i, ch in enumerate(s):
+        d = int(ch)
+        pos = length - i - 1
+        if d == 0:
+            continue
+        if pos == 0 and d == 1 and (length > 1 or has_higher):
+            out.append('เอ็ด')
+        elif pos == 1 and d == 2:
+            out.append('ยี่สิบ')
+        elif pos == 1 and d == 1:
+            out.append('สิบ')
+        else:
+            out.append(_TH_UNITS[d] + _TH_POS[pos])
+    return ''.join(out)
+
+
+def _thai_int_text(n: int) -> str:
+    """Thai words for any non-negative integer (handles 'ล้าน' recursively: สิบล้าน, ร้อยล้าน, ล้านล้าน ...)."""
+    if n <= 0:
+        return ''
+    if n < 1_000_000:
+        return _thai_chunk(n)
+    millions, rest = divmod(n, 1_000_000)
+    return _thai_int_text(millions) + 'ล้าน' + (_thai_chunk(rest, has_higher=True) if rest else '')
+
+
+def number_to_thai_text(n):
+    """Spell a quantity in Thai (101 -> หนึ่งร้อยเอ็ด, 2.5 -> สองจุดห้า). Float noise is rounded to 6 decimals."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        dec = Decimal(str(round(float(n), 6)))
+    except (InvalidOperation, ValueError, TypeError):
         return str(n)
+    if dec == 0:
+        return 'ศูนย์'
+    if dec < 0:
+        return 'ลบ' + number_to_thai_text(-dec)
+    text = format(dec, 'f')
+    int_part, _, frac_part = text.partition('.')
+    frac_part = frac_part.rstrip('0')
+    words = _thai_int_text(int(int_part)) or 'ศูนย์'
+    if frac_part:
+        words += 'จุด' + ''.join(_TH_UNITS[int(c)] if c != '0' else 'ศูนย์' for c in frac_part)
+    return words
+
 
 def thai_baht_text(amount):
-    """Convert monetary amount to formal Thai Baht text (e.g. 150.50 -> หนึ่งร้อยห้าสิบบาทห้าสิบสตางค์)."""
+    """Formal Thai baht text, e.g. 150.50 -> หนึ่งร้อยห้าสิบบาทห้าสิบสตางค์, 1.999 -> สองบาทถ้วน.
+
+    The amount is rounded to whole satang first (half-up) so the satang part can never reach 100.
+    """
+    from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
     try:
-        amount = float(amount)
-    except (ValueError, TypeError):
+        dec = Decimal(str(float(amount))).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
         return 'ศูนย์บาทถ้วน'
-    if amount == 0:
+    if dec == 0:
         return 'ศูนย์บาทถ้วน'
-    if amount < 0:
-        return 'ลบ' + thai_baht_text(-amount)
-
-    units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
-    digits = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน']
-
-    def convert_upto_million(n):
-        if n == 0: return ''
-        s = str(n)
-        l = len(s)
-        res = []
-        for i, c in enumerate(s):
-            d = int(c)
-            p = l - i - 1
-            if d == 0: continue
-            if p == 0 and d == 1 and l > 1:
-                res.append('เอ็ด')
-            elif p == 1 and d == 2:
-                res.append('ยี่สิบ')
-            elif p == 1 and d == 1:
-                res.append('สิบ')
-            else:
-                res.append(units[d] + digits[p])
-        return ''.join(res)
-
-    def convert_integer(n):
-        if n == 0: return ''
-        if n < 1000000:
-            return convert_upto_million(n)
-        millions = n // 1000000
-        remainder = n % 1000000
-        return convert_integer(millions) + 'ล้าน' + convert_upto_million(remainder)
-
-    baht = int(amount)
-    satang = int(round((amount - baht) * 100))
-    result = ''
-    if baht > 0:
-        result += convert_integer(baht) + 'บาท'
-    else:
-        result += 'ศูนย์บาท'
-    if satang == 0:
-        result += 'ถ้วน'
-    else:
-        result += convert_upto_million(satang) + 'สตางค์'
-    return result
+    if dec < 0:
+        return 'ลบ' + thai_baht_text(-dec)
+    baht = int(dec)
+    satang = int((dec - baht) * 100)
+    text = (_thai_int_text(baht) + 'บาท') if baht > 0 else 'ศูนย์บาท'
+    text += 'ถ้วน' if satang == 0 else _thai_chunk(satang) + 'สตางค์'
+    return text
 
 
 def sanitize_formal_signatory_name(name: str) -> str:
@@ -2154,6 +2406,8 @@ def view_single_requisition(log_id):
         total_qty=qty,
         primary_unit=unit,
         total_qty_thai=qty_thai,
+        qty_units=[(unit, qty)],
+        active_count=0 if log.get("is_voided") else 1,
         total_price=total_price,
         total_price_formatted=total_price_formatted,
         total_price_thai=total_price_thai,
@@ -2175,7 +2429,7 @@ def view_batch_requisition():
     requester_input = request.args.get("requester", "").strip()
 
     logs = database.get_dispensing_logs(
-        limit=1000,
+        limit=100000,
         date_filter=date_filter,
         channel_filter=channel_filter,
         start_date=start_date,
@@ -2203,28 +2457,15 @@ def view_batch_requisition():
         thai_date = format_thai_date_full(today_s)
         batch_code = datetime.now().strftime("%Y%m%d")
 
-    requisition_no = f"REQ-BATCH-{batch_code}"
+    import hashlib
+    batch_code = re.sub(r"[^0-9A-Za-z_]", "", batch_code)
+    filter_sig = "|".join(str(x or "") for x in (date_filter, start_date, end_date, channel_filter, requester_input))
+    requisition_no = f"REQ-BATCH-{batch_code}-{hashlib.md5(filter_sig.encode('utf-8')).hexdigest()[:4].upper()}"
 
-    total_qty_val = sum(float(l.get("quantity", 0) or 0) for l in logs)
-    total_qty = int(total_qty_val) if total_qty_val.is_integer() else total_qty_val
-    primary_unit = logs[0].get("unit", "หน่วย") if logs else "หน่วย"
-    qty_thai = number_to_thai_text(total_qty) + f" {primary_unit}ถ้วน"
-
-    # Price calculations
-    total_price = 0.0
-    for it in logs:
-        p = float(it.get("price") or 0.0)
-        q_val = float(it.get("quantity") or 0)
-        q = int(q_val) if q_val.is_integer() else q_val
-        st = p * q
-        it["price_val"] = p
-        it["price_formatted"] = f"{p:,.2f}"
-        it["subtotal_val"] = st
-        it["subtotal_formatted"] = f"{st:,.2f}"
-        total_price += st
-
-    total_price_formatted = f"{total_price:,.2f}"
-    total_price_thai = thai_baht_text(total_price)
+    _t = _requisition_totals(logs)
+    total_qty, primary_unit, qty_thai = _t["total_qty"], _t["primary_unit"], _t["total_qty_thai"]
+    total_price, total_price_formatted, total_price_thai = _t["total_price"], _t["total_price_formatted"], _t["total_price_thai"]
+    qty_units, active_count = _t["qty_units"], _t["active_count"]
 
     dispenser_query = request.args.get("dispenser", "").strip()
     u = current_user()
@@ -2256,6 +2497,8 @@ def view_batch_requisition():
         total_qty=total_qty,
         primary_unit=primary_unit,
         total_qty_thai=qty_thai,
+        qty_units=qty_units,
+        active_count=active_count,
         total_price=total_price,
         total_price_formatted=total_price_formatted,
         total_price_thai=total_price_thai,
@@ -2287,25 +2530,10 @@ def view_prescription_batch_requisition(batch_id):
     requester_dept = "แผนกตรวจรักษา / หอผู้ป่วยสามัญ"
     channel_label = "ใบสั่งยาอิเล็กทรอนิกส์ (Rx Cart)"
 
-    total_qty_val = sum(float(l.get("quantity") or 0) for l in logs)
-    total_qty = int(total_qty_val) if total_qty_val.is_integer() else total_qty_val
-    primary_unit = logs[0].get("unit", "หน่วย") if logs else "หน่วย"
-    qty_thai = number_to_thai_text(total_qty) + f" {primary_unit}ถ้วน"
-
-    total_price = 0.0
-    for it in logs:
-        p = float(it.get("price") or 0.0)
-        q_val = float(it.get("quantity") or 0)
-        q = int(q_val) if q_val.is_integer() else q_val
-        st = p * q
-        it["price_val"] = p
-        it["price_formatted"] = f"{p:,.2f}"
-        it["subtotal_val"] = st
-        it["subtotal_formatted"] = f"{st:,.2f}"
-        total_price += st
-
-    total_price_formatted = f"{total_price:,.2f}"
-    total_price_thai = thai_baht_text(total_price)
+    _t = _requisition_totals(logs)
+    total_qty, primary_unit, qty_thai = _t["total_qty"], _t["primary_unit"], _t["total_qty_thai"]
+    total_price, total_price_formatted, total_price_thai = _t["total_price"], _t["total_price_formatted"], _t["total_price_thai"]
+    qty_units, active_count = _t["qty_units"], _t["active_count"]
 
     dispenser_query = request.args.get("dispenser", "").strip()
     dispensed_by_raw = first_log.get("dispensed_by") or ""
@@ -2338,6 +2566,8 @@ def view_prescription_batch_requisition(batch_id):
         total_qty=total_qty,
         primary_unit=primary_unit,
         total_qty_thai=qty_thai,
+        qty_units=qty_units,
+        active_count=active_count,
         total_price=total_price,
         total_price_formatted=total_price_formatted,
         total_price_thai=total_price_thai,
@@ -2470,7 +2700,7 @@ def export_stock_in_excel():
     ws.auto_filter.ref = f"A2:N{len(logs) + 2}"
 
     buf = BytesIO()
-    wb.save(buf)
+    _save_workbook_safe(wb, buf)
     xlsx_bytes = buf.getvalue()
     filename = f"pharmacore_stockin_{file_suffix}.xlsx"
     resp = make_response(xlsx_bytes)
@@ -2492,7 +2722,20 @@ def line_webhook():
     if request.method == "GET":
         return "Pharmacy LINE Bot Webhook Active", 200
 
-    body = request.get_data(as_text=True)
+    # Only LINE may call this endpoint: verify the X-Line-Signature HMAC of the raw body
+    import base64, hashlib
+    secret = (Config.LINE_CHANNEL_SECRET or "").encode("utf-8")
+    if not secret:
+        logger.warning("LINE webhook rejected: LINE_CHANNEL_SECRET is not configured")
+        return "LINE not configured", 403
+    raw = request.get_data()
+    expected = base64.b64encode(hmac.new(secret, raw, hashlib.sha256).digest())
+    given = (request.headers.get("X-Line-Signature") or "").encode("utf-8")
+    if not hmac.compare_digest(expected, given):
+        logger.warning("LINE webhook rejected: invalid signature")
+        return "Invalid signature", 403
+
+    body = raw.decode("utf-8", errors="replace")
     try:
         events = json.loads(body).get("events", [])
         for ev in events:
@@ -2507,6 +2750,7 @@ def line_webhook():
 # ─────────────────────────────────────────────────────────────
 
 @app.route("/api/line/config", methods=["GET"])
+@login_required
 def get_line_config():
     subscribers = database.get_line_subscribers()
     target_id = Config.PHARMACY_LINE_TARGET_ID or database.get_app_setting("line_notify_target") or ""
@@ -2528,6 +2772,7 @@ def get_line_config():
     })
 
 @app.route("/api/line/config", methods=["POST"])
+@login_required
 def update_line_config():
     data = request.json or {}
     target_id = data.get("target_id")
@@ -2544,11 +2789,15 @@ def update_line_config():
     return jsonify({"ok": True, "message": "อัปเดตการตั้งค่า LINE เรียบร้อยแล้ว"})
 
 @app.route("/api/line/send-expiry-alert", methods=["POST"])
+@login_required
 def trigger_line_expiry_alert():
     """Manual or API trigger to send expiration alert to LINE."""
     data = request.json or {}
     days_input = data.get("days")
-    days = int(days_input) if days_input else int(database.get_app_setting("expiry_alert_days") or Config.EXPIRY_ALERT_DAYS or 60)
+    try:
+        days = int(days_input) if days_input else int(database.get_app_setting("expiry_alert_days") or Config.EXPIRY_ALERT_DAYS or 60)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "จำนวนวันต้องเป็นตัวเลข"}), 400
     target_id = data.get("target_id")
     force = data.get("force", True)
 
@@ -2592,10 +2841,7 @@ def system_status():
         "status": "healthy",
         "app": "Pharmacy Stock Management System",
         "version": "1.1.0",
-        "port": Config.PORT,
-        "database": Config.DB_PATH,
         "google_sheets_connected": google_sync.is_connected,
-        "google_spreadsheet_id": google_sync.spreadsheet_id,
         "line_bot_configured": bool(Config.LINE_CHANNEL_ACCESS_TOKEN),
         "expiry_alert_configured": True
     })

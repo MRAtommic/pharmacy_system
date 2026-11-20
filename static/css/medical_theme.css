@@ -317,10 +317,10 @@ body {
   gap: 0.35rem;
 }
 
-@media (max-width: 900px) {
-  .header-utilities-cluster {
-    display: none !important;
-  }
+/* LINE / Google / Audit entries are reachable from ONE place: the avatar menu (on every screen size).
+   The cluster stays in the DOM because the status code reads its dots, but it is never shown. */
+.header-utilities-cluster {
+  display: none !important;
 }
 
 .header-utility-btn {
@@ -1654,6 +1654,11 @@ body {
   background: var(--bg-surface) !important;
   z-index: 3;
   box-shadow: -4px 0 8px rgba(0, 0, 0, 0.04);
+}
+
+/* Cell that owns an open ⋯ menu must sit above the following rows' sticky cells (below header z-index:40) */
+#view-inventory .clinical-table td.has-open-menu {
+  z-index: 30 !important;
 }
 
 #view-inventory .clinical-table tbody tr:hover td:last-child {
@@ -4503,7 +4508,7 @@ body {
    ========================================================================== */
 
 .mobile-avatar-status-dot {
-  display: none;
+  display: block;   /* shown on desktop too now that the avatar menu is the single place for system status */
   position: absolute;
   bottom: -1px;
   right: -1px;
@@ -5969,3 +5974,813 @@ body {
   margin-bottom: 0;
 }
 
+
+
+/* ==========================================================================
+   MINIMAL CLINICAL THEME  (override layer — loaded last)
+   Principle: few elements, each one big, clear and calm. One accent colour (teal);
+   red = needs action, amber = watch out; everything else is neutral grey/white.
+   ========================================================================== */
+
+:root {
+  --accent: var(--teal-600);
+  --accent-strong: var(--teal-700);
+  --accent-soft: var(--teal-50);
+}
+
+/* Bigger, calmer type (16px base instead of 14px) */
+body {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+/* Header: quiet, no shadow */
+.header-nav {
+  height: 64px;
+  box-shadow: none;
+}
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.header-rx-btn,
+.header-rx-btn .pill-label {
+  font-size: 1rem;
+}
+.header-rx-btn {
+  height: 42px;
+}
+
+.main-wrapper {
+  max-width: 1280px;
+  padding: 1.5rem 1.5rem 3rem;
+}
+
+/* Tabs: plain text with an underline for the current one */
+.tabs-container {
+  gap: 2rem !important;
+  padding: 0 !important;
+  margin-bottom: 1.5rem !important;
+  background: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border-default) !important;
+}
+.tabs-container .tab-btn {
+  font-size: 1.05rem !important;
+  font-weight: 500 !important;
+  padding: 0.85rem 0.15rem !important;
+  margin-bottom: -1px;
+  background: none !important;
+  border: 0 !important;
+  border-bottom: 3px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
+}
+.tabs-container .tab-btn:hover {
+  color: var(--text-primary) !important;
+}
+.tabs-container .tab-btn.active {
+  color: var(--accent-strong) !important;
+  border-bottom-color: var(--accent) !important;
+  font-weight: 600 !important;
+}
+
+/* Three numbers, nothing else */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.stat-tiles .stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.stat-tiles .stat-tile-label {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+.stat-tiles .stat-tile-num {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.stat-tiles .stat-tile.stat-interactive {
+  cursor: pointer;
+}
+.stat-tiles .stat-tile.stat-interactive:hover {
+  border-color: var(--border-strong);
+}
+.stat-tiles #kpiCardLowStock.has-alerts .stat-tile-num {
+  color: var(--rose-600);
+}
+.stat-tiles #kpiCardExpiring.has-alerts .stat-tile-num {
+  color: var(--amber-600);
+}
+
+/* Search + filters */
+.catalog-toolbar-wrapper {
+  box-shadow: none;
+}
+#drugSearchInput {
+  height: 44px;
+  font-size: 1rem;
+}
+.search-shortcut-hint {
+  display: none !important;
+}
+#categoryFilter,
+.category-select-pill {
+  height: 44px;
+  font-size: 1rem;
+}
+.catalog-filter-chips .filter-chip,
+.filter-chip {
+  font-size: 0.95rem;
+  min-height: 40px;
+  box-shadow: none;
+}
+
+/* Buttons: one height, one weight; the primary action is the only solid one */
+.catalog-action-row .btn {
+  height: 44px !important;
+  padding: 0 1.15rem;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  border-radius: 8px;
+}
+.catalog-action-row .btn.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.catalog-action-row .btn.btn-primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+.catalog-action-row .btn.btn-soft-emerald {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* Drug table: name, stock, expiry, actions */
+.table-wrapper {
+  box-shadow: none;
+}
+#view-inventory .clinical-table th {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  padding: 0.8rem 1rem;
+}
+#view-inventory .clinical-table td {
+  padding: 0.9rem 1rem;
+  vertical-align: middle;
+}
+#view-inventory .drug-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+#view-inventory .drug-trade-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+#view-inventory .drug-generic-name {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+#view-inventory .drug-table-thumb,
+#view-inventory .drug-table-thumb-fallback {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+}
+
+.stock-cell {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.4rem;
+}
+.stock-cell .stock-qty-number {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.stock-cell .stock-qty-unit {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.stock-cell .stock-flag {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.stock-cell.is-low .stock-qty-number,
+.stock-cell.is-low .stock-flag,
+.stock-cell.is-out .stock-qty-number,
+.stock-cell.is-out .stock-flag {
+  color: var(--rose-600);
+}
+
+.expiry-text {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.expiry-text.is-soon {
+  color: var(--amber-600);
+  font-weight: 600;
+}
+.expiry-text.is-expired {
+  color: var(--rose-600);
+  font-weight: 600;
+}
+
+/* No coloured row backgrounds: the coloured words above are the signal */
+#view-inventory .clinical-row.row-low-stock,
+#view-inventory .clinical-row.row-expiring,
+#view-inventory .clinical-row.row-expired {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#view-inventory .btn-lot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0;
+  margin-top: 0.15rem;
+  background: none;
+  border: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+#view-inventory .btn-lot-badge:hover {
+  color: var(--accent-strong);
+}
+
+/* Row actions: one solid button, one text button, one menu */
+#view-inventory .table-actions-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#view-inventory .btn-action-dispense {
+  height: 40px;
+  padding: 0 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
+#view-inventory .btn-action-dispense:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+#view-inventory .btn-action-cart {
+  height: 40px;
+  padding: 0 0.6rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--accent-strong);
+}
+#view-inventory .btn-action-cart:hover {
+  background: var(--accent-soft);
+}
+#view-inventory .btn-action-cart.in-cart {
+  color: var(--text-muted);
+}
+.row-action-dropdown .dropdown-toggle {
+  height: 40px;
+  width: 40px;
+  box-shadow: none;
+}
+.row-action-dropdown .dropdown-item {
+  font-size: 1rem;
+  padding: 0.65rem 1rem;
+}
+
+@media (max-width: 640px) {
+  .stat-tiles {
+    gap: 0.5rem;
+  }
+  .stat-tiles .stat-tile {
+    padding: 0.75rem;
+  }
+  .stat-tiles .stat-tile-label {
+    font-size: 0.8rem;
+  }
+  .stat-tiles .stat-tile-num {
+    font-size: 1.5rem;
+  }
+}
+
+
+/* Mobile drug cards: same calm style as the desktop table */
+.drug-mobile-card {
+  box-shadow: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface) !important;
+}
+.drug-mobile-card.card-low-stock,
+.drug-mobile-card.card-expiring,
+.drug-mobile-card.card-expired {
+  border-left-width: 1px !important;
+  background: var(--bg-surface) !important;
+}
+.drug-mobile-card .mobile-drug-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.drug-mobile-card .mobile-drug-generic {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.drug-mobile-card .mobile-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+.drug-mobile-card .mobile-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.drug-mobile-card .mobile-card-actions .btn-action-dispense {
+  flex: 1;
+  justify-content: center;
+  height: 44px;
+}
+.drug-mobile-card .mobile-card-actions .btn-action-cart {
+  height: 44px;
+}
+.drug-mobile-card .mobile-card-actions .dropdown-toggle {
+  height: 44px;
+  width: 44px;
+}
+
+
+/* History tables (receiving / dispensing logs): tighter cells so the wide tables fit without sideways scrolling */
+#view-stockin .clinical-table,
+#view-logs .clinical-table {
+  font-size: 0.95rem;
+}
+#view-stockin .clinical-table th,
+#view-logs .clinical-table th {
+  padding: 0.7rem 0.6rem;
+  font-size: 0.875rem;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+}
+#view-stockin .clinical-table td,
+#view-logs .clinical-table td {
+  padding: 0.7rem 0.6rem;
+}
+#view-stockin .clinical-table th:first-child,
+#view-stockin .clinical-table td:first-child {
+  width: 56px !important;
+  min-width: 56px !important;
+}
+
+#view-stockin .clinical-table {
+  min-width: 0 !important;
+  width: 100%;
+}
+#view-stockin .clinical-table th {
+  min-width: 0 !important;
+  width: auto !important;
+}
+#view-stockin .clinical-table th:first-child {
+  width: 56px !important;
+}
+
+
+/* ==========================================================================
+   Pop-ups and forms: plain labels, big inputs, one primary button
+   ========================================================================== */
+.modal-box {
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+.modal-header {
+  padding: 1.1rem 1.5rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+}
+.modal-header h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.modal-body {
+  padding: 1.25rem 1.5rem;
+}
+.modal-footer {
+  padding: 1rem 1.5rem;
+  gap: 0.75rem;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
+}
+.modal-box .form-group {
+  margin-bottom: 1rem;
+}
+.modal-box .form-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+.modal-box .form-input,
+.modal-box .form-select {
+  min-height: 44px;
+  font-size: 1rem;
+  border-radius: 8px;
+}
+.modal-box textarea.form-input {
+  min-height: 88px;
+}
+.modal-box .btn {
+  min-height: 44px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.modal-box .btn.btn-primary,
+.modal-box .btn.btn-danger,
+.modal-box .btn.btn-emerald-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.modal-box .btn.btn-primary:hover,
+.modal-box .btn.btn-danger:hover,
+.modal-box .btn.btn-emerald-primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+.modal-box .btn.btn-icon {
+  min-height: 40px;
+  min-width: 40px;
+}
+
+/* History tabs (dispensing / receiving): same calm toolbar as the drug list */
+#view-logs input[type="date"],
+#view-logs select,
+#view-stockin input[type="date"],
+#view-stockin input[type="text"],
+#view-stockin select {
+  min-height: 42px;
+  font-size: 0.95rem;
+}
+#view-logs .btn,
+#view-stockin .btn {
+  min-height: 42px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+#view-logs .dispense-label,
+#view-stockin .stockin-date-label {
+  font-size: 0.9rem;
+}
+
+/* Statistics tab: flat cards, readable headings */
+#view-analytics .chart-card,
+#view-analytics .analytics-card,
+#view-analytics .kpi-card {
+  box-shadow: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+#view-analytics .chart-card-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+#view-analytics .chart-card-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.modal-box .form-select,
+.modal-box .form-input {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.modal-box .form-select {
+  width: 100%;
+}
+
+
+/* ==========================================================================
+   Dispensing history rows: words, not badges. Colour only where action is needed
+   (the cancel button and cancelled rows).
+   ========================================================================== */
+#view-logs .clinical-table td {
+  vertical-align: middle;
+}
+.log-date {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.log-muted {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.log-drug-name,
+.log-person {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.log-qty {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.log-channel {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+.log-link {
+  font-size: 0.875rem;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.log-voided-tag {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.log-void-reason {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.log-row-voided td {
+  opacity: 0.6;
+}
+.log-row-voided td.col-action {
+  opacity: 1;
+}
+
+/* Buttons: outlined grey; only "cancel" is red text */
+.log-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.log-btn {
+  min-height: 38px;
+  padding: 0 0.85rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+}
+.log-btn:hover {
+  background: var(--bg-subtle);
+}
+.log-btn-danger {
+  color: var(--rose-600);
+  border-color: var(--border-default);
+}
+.log-btn-danger:hover {
+  background: var(--rose-50);
+  border-color: var(--rose-100);
+}
+
+/* Table header and thumbnails for the history tab: no tinted band */
+#view-logs .clinical-table th {
+  background: var(--bg-surface) !important;
+  border-bottom: 1px solid var(--border-default);
+}
+#view-logs .drug-table-thumb,
+#view-logs .drug-table-thumb-fallback {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+}
+
+
+/* Pagination: plain text and one highlighted page number */
+.pharmacy-pagination .pagination-page-pill {
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text-secondary) !important;
+}
+.pharmacy-pagination .pagination-page-pill strong {
+  color: var(--text-primary) !important;
+}
+.pharmacy-pagination .pagination-count-text,
+.pharmacy-pagination .pagination-size-label {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+.pharmacy-pagination .page-btn {
+  min-width: 40px;
+  height: 40px;
+  font-size: 0.95rem;
+  box-shadow: none !important;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+}
+.pharmacy-pagination .page-btn.active {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+.pharmacy-pagination .page-btn:disabled {
+  opacity: 0.4;
+}
+
+
+/* History tabs: neutral toolbars, side-by-side row buttons */
+#view-logs .btn-soft-excel,
+#view-logs .btn-batch-requisition,
+#view-stockin .btn-soft-excel,
+#view-stockin .btn-outline {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+}
+#view-logs .btn-soft-excel:hover,
+#view-logs .btn-batch-requisition:hover,
+#view-stockin .btn-soft-excel:hover {
+  background: var(--bg-subtle);
+}
+#view-stockin .btn-emerald-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+#view-logs .btn i,
+#view-stockin .btn i,
+#view-logs .dispense-label i,
+#view-logs .dispense-date-box i,
+#view-stockin .stockin-date-label i,
+#view-stockin .stockin-search-icon {
+  color: var(--text-muted) !important;
+}
+#view-stockin .btn-emerald-primary i {
+  color: #fff !important;
+}
+#view-logs .col-action,
+#view-logs th.col-action {
+  width: 200px !important;
+  min-width: 200px !important;
+}
+#view-logs .log-actions {
+  flex-wrap: nowrap;
+}
+
+#view-logs .btn.btn-soft-excel,
+#view-stockin .btn.btn-soft-excel {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+#view-logs .btn.btn-soft-excel:hover,
+#view-stockin .btn.btn-soft-excel:hover {
+  background: var(--bg-subtle) !important;
+}
+
+
+/* ==========================================================================
+   A little colour, with meaning:
+   teal = main accent / current balance, red = out or cancel, green = in,
+   amber = watch out. Everything else stays neutral.
+   ========================================================================== */
+[data-theme="dark"] {
+  --accent-strong: #5EEAD4;
+  --accent-soft: rgba(45, 212, 191, 0.12);
+}
+
+/* Statistic tiles: a thin colour edge on top */
+.stat-tiles .stat-tile {
+  border-top: 3px solid var(--accent);
+}
+.stat-tiles #kpiCardLowStock {
+  border-top-color: var(--rose-600);
+}
+.stat-tiles #kpiCardExpiring {
+  border-top-color: var(--amber-600);
+}
+
+/* Drug list: stock figure in the accent colour, soft hover */
+.stock-cell:not(.is-low):not(.is-out) .stock-qty-number {
+  color: var(--accent);
+}
+#view-inventory .clinical-row:hover td {
+  background: var(--accent-soft);
+}
+
+/* Table headers: pale accent underline instead of plain grey */
+#view-inventory .clinical-table th,
+#view-logs .clinical-table th,
+#view-stockin .clinical-table th {
+  border-bottom: 2px solid var(--accent-soft) !important;
+}
+
+/* History rows */
+.log-qty.is-out {
+  color: var(--rose-600);
+}
+.log-qty.is-in {
+  color: var(--emerald-600);
+}
+.log-after {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.log-voided-tag {
+  color: var(--rose-600);
+}
+.log-channel::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  vertical-align: middle;
+}
+.log-channel.ch-web::before {
+  background: var(--accent);
+}
+.log-channel.ch-rx::before {
+  background: #3B82F6;
+}
+.log-channel.ch-line::before {
+  background: #06C755;
+}
+.log-channel.ch-scan::before {
+  background: #F59E0B;
+}
+
+/* Buttons: accent outline for the normal action, red text for cancel */
+.log-btn {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+.log-btn:hover {
+  background: var(--accent-soft);
+}
+.log-btn.log-btn-danger {
+  color: var(--rose-600);
+  border-color: var(--rose-100);
+}
+.log-btn.log-btn-danger:hover {
+  background: var(--rose-50);
+}

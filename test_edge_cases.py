@@ -554,6 +554,9 @@ print("\n[TEST 11] 🔒 LINE Bot Staff Authorization & PIN Protection...")
 guest_user_id = "U_guest_unauthorized_9999"
 staff_user_id = "U_staff_authorized_8888"
 
+# There is no built-in default PIN any more: the PIN must be configured explicitly
+database.set_app_setting("pharmacy_staff_pin", "1234")
+
 # Verify initially not staff
 assert database.is_line_subscriber_staff(guest_user_id) is False
 
@@ -578,7 +581,7 @@ try:
     assert database.is_line_subscriber_staff(guest_user_id) is False
     print("  ✓ Wrong PIN rejected cleanly.")
 
-    # 3. Staff enters correct PIN (Default '1234')
+    # 3. Staff enters the configured PIN ('1234' set above)
     last_replies.clear()
     line_bot._handle_text_message(reply_token="token_3", text="รหัส 1234", user_name="Pharmacist Somchai", target_id=staff_user_id)
     assert any("ยืนยันสิทธิ์เจ้าหน้าที่เภสัชกรรมสำเร็จ" in m.get("text", "") for m in last_replies)
