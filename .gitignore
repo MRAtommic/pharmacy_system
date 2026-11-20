@@ -20,3 +20,10 @@ agy_project/
 # local test databases / scratch data (never commit)
 test_*.db
 test_*.db-*
+
+# runtime data - never commit (the app creates the database on first start)
+pharmacy.db
+*.db
+*.sqlite*
+/data/
+static/uploads/drugs/drug_*
