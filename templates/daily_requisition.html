@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา - โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ</title>
+    <title>ใบเบิกเวชภัณฑ์ยาและเวชภัณฑ์มิใช่ยา - {{ hospital_name | default('โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ') }}</title>
     <!-- Google Fonts: Sarabun (Official Thai Government Standard) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -664,7 +664,8 @@
 
             .print-toolbar,
             .mobile-view-bar,
-            .mobile-hint {
+            .mobile-hint,
+            .no-data-notice {
                 display: none !important;
             }
 

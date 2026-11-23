@@ -484,7 +484,7 @@
             <img src="/static/img/garuda.svg" alt="ตราครุฑ" class="garuda-logo">
             <div class="doc-title">ใบเบิกจ่ายยาและเวชภัณฑ์</div>
             <div class="doc-subtitle">งานเภสัชกรรมและคลังยา (Pharmacy & Medical Supply Division)</div>
-            <div class="doc-hospital">ระบบบริหารจัดการคลังยาอิเล็กทรอนิกส์ PharmaCore</div>
+            <div class="doc-hospital">{{ hospital_name | default('โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี') }}</div>
         </div>
 
         {% if is_voided %}

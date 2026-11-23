@@ -2426,6 +2426,7 @@ def view_single_requisition(log_id):
         total_price_thai=total_price_thai,
         print_datetime=print_datetime,
         ref_code=ref_code,
+        hospital_name=Config.ORG_NAME,
         is_voided=bool(log.get("is_voided")),
         void_reason=log.get("void_reason", "")
     )
@@ -2516,7 +2517,8 @@ def view_batch_requisition():
         total_price_formatted=total_price_formatted,
         total_price_thai=total_price_thai,
         print_datetime=print_datetime,
-        ref_code=ref_code
+        ref_code=ref_code,
+        hospital_name=Config.ORG_NAME
     )
 
 
@@ -2586,6 +2588,7 @@ def view_prescription_batch_requisition(batch_id):
         total_price_thai=total_price_thai,
         print_datetime=print_datetime,
         ref_code=ref_code,
+        hospital_name=Config.ORG_NAME,
         is_voided=is_any_voided,
         void_reason="มีรายการยาในใบสั่งนี้ถูกยกเลิก" if is_any_voided else ""
     )
