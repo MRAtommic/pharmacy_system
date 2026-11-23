@@ -822,7 +822,8 @@
                 <div class="quick-presets">
                     <button type="button" class="btn-preset" onclick="setPreset('this_month')">เดือนนี้</button>
                     <button type="button" class="btn-preset" onclick="setPreset('last_30')">30 วัน</button>
-                    <button type="button" class="btn-preset" onclick="setPreset('fiscal_year')">ปีงบ 68</button>
+                    <button type="button" class="btn-preset" onclick="setPreset('fiscal_year', 2568)">ปีงบ 68</button>
+                    <button type="button" class="btn-preset" onclick="setPreset('fiscal_year', 2567)">ปีงบ 67</button>
                     <button type="button" class="btn-preset" onclick="setPreset('all')">ทั้งหมด</button>
                 </div>
             </div>
@@ -855,11 +856,6 @@
         <div class="sheet-scale-wrapper" id="sheetScaleWrapper">
             <div class="sheet-container" id="stockCardSheet">
         
-        {% if opening_clamped %}
-        <div class="no-print" style="background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:13px;">
-            ยอดยกมาคำนวณได้ติดลบ จึงแสดงเป็น 0 — ประวัติรับ/จ่ายไม่ครบหรือมีการแก้ไขสต็อกนอกระบบ กรุณาตรวจสอบก่อนพิมพ์
-        </div>
-        {% endif %}
         <!-- Header Section -->
         <div class="card-header-block">
             <h1 class="card-title-main">บัญชีรายการรับ-จ่าย/เวชภัณฑ์มิใช่ยา/วัสดุการแพทย์</h1>
@@ -957,7 +953,7 @@
     <script>
         const TOTAL_PAGE_ROWS = 24;
 
-        function setPreset(preset) {
+        function setPreset(preset, fy) {
             const now = new Date();
             const y = now.getFullYear();
             const m = String(now.getMonth() + 1).padStart(2, '0');
@@ -965,21 +961,30 @@
             
             const startInput = document.getElementById('inputStartDate');
             const endInput = document.getElementById('inputEndDate');
-            
-            endInput.value = `${y}-${m}-${d}`;
+            const fyEl = document.getElementById('textFiscalYear');
 
             if (preset === 'this_month') {
                 startInput.value = `${y}-${m}-01`;
+                endInput.value = `${y}-${m}-${d}`;
             } else if (preset === 'last_30') {
                 const past = new Date();
                 past.setDate(past.getDate() - 30);
                 startInput.value = `${past.getFullYear()}-${String(past.getMonth()+1).padStart(2,'0')}-${String(past.getDate()).padStart(2,'0')}`;
+                endInput.value = `${y}-${m}-${d}`;
             } else if (preset === 'fiscal_year') {
-                // Thai fiscal year starts on Oct 1
-                const fiscalStartYear = (now.getMonth() >= 9) ? y : y - 1;
-                startInput.value = `${fiscalStartYear}-10-01`;
-                const fyEl = document.getElementById('textFiscalYear');
-                if (fyEl) fyEl.innerText = String(fiscalStartYear + 544);
+                // Thai fiscal year:
+                // Target FY (e.g. 2568 = Oct 1, 2024 to Sep 30, 2025)
+                // Carried over from FY (targetFy - 1 = 2567)
+                const currentFy = (now.getMonth() >= 9) ? (y + 544) : (y + 543);
+                const targetFy = fy || currentFy;
+                const ceStart = targetFy - 544;
+                const ceEnd = targetFy - 543;
+                startInput.value = `${ceStart}-10-01`;
+                endInput.value = `${ceEnd}-09-30`;
+                if (fyEl) {
+                    fyEl.innerText = String(targetFy - 1);
+                    fyEl.dataset.presetFy = String(targetFy - 1);
+                }
             } else if (preset === 'all') {
                 startInput.value = '';
                 endInput.value = '';
@@ -1092,7 +1097,22 @@
 
             // 2. Preserve fiscal year if edited
             const fyEl = document.getElementById('textFiscalYear');
-            const currentFiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : {{ (opening_fiscal_year | string) | tojson }};
+            const drugFy = (d.opening_fiscal_year || (drug && drug.opening_fiscal_year) || '').trim();
+            let currentFiscalYear = '';
+            if (fyEl && fyEl.dataset.userEdited === '1' && fyEl.innerText.trim()) {
+                currentFiscalYear = fyEl.innerText.trim();
+            } else if (fyEl && fyEl.dataset.presetFy) {
+                currentFiscalYear = fyEl.dataset.presetFy;
+            } else if (drugFy) {
+                currentFiscalYear = drugFy;
+            } else if (fyEl && fyEl.innerText.trim()) {
+                currentFiscalYear = fyEl.innerText.trim();
+            } else {
+                currentFiscalYear = {{ (opening_fiscal_year | string) | tojson }};
+            }
+            if (fyEl) {
+                fyEl.innerText = currentFiscalYear;
+            }
             
             // Preserve signature name if edited (defaults to the configured ORG_OPENING_SIGN)
             const signEl = document.getElementById('signOpeningBalance');
@@ -1156,9 +1176,13 @@
                 }
 
                 if (tx.type === 'RECEIVE') {
-                    const isGpo = (tx.supplier && (tx.supplier.toUpperCase().includes('GPO') || tx.supplier.includes('องค์การ')));
+                    const sup = (tx.supplier || '').trim();
+                    const isGpo = (sup.toUpperCase().includes('GPO') || sup.includes('องค์การ'));
+                    const isCarried = (sup.includes('ยอดยกมา') || sup.includes('ยกยอด'));
                     const qtyVal = (tx.qty_in != null && tx.qty_in !== '') ? tx.qty_in : '-';
-                    if (isGpo) {
+                    if (isCarried) {
+                        particulars = `ยอดยกมา (<span class="fill-text">${escapeHtml(sup)}</span>) <span class="fill-text">${qtyVal}</span>`;
+                    } else if (isGpo) {
                         particulars = `รับจาก..<span class="fill-text">${qtyVal}</span>..GPO/..-..บริษัท/จ่าย..-..`;
                     } else {
                         particulars = `รับจาก...-..GPO/..<span class="fill-text">${qtyVal}</span>..บริษัท/จ่าย..-..`;
@@ -1368,6 +1392,13 @@
         });
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(updateSheetScaling, 100);
+            const fySpan = document.getElementById('textFiscalYear');
+            if (fySpan) {
+                fySpan.addEventListener('input', function() {
+                    this.dataset.userEdited = '1';
+                    delete this.dataset.presetFy;
+                });
+            }
         });
         // Initial call in case DOM already parsed
         setTimeout(updateSheetScaling, 100);

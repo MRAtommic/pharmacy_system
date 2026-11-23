@@ -208,11 +208,11 @@
                                     <i class="fas fa-file-excel" style="color: #107C41;"></i>
                                     <span>ส่งออกคลังยา (Excel)</span>
                                 </button>
-                                <a href="/stock-card" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();">
+                                <a href="/stock-card{% if request.args.get('code') %}?code={{ request.args.get('code') }}{% endif %}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();">
                                     <i class="fas fa-file-invoice" style="color: #0F766E;"></i>
                                     <span>พิมพ์บัญชีรับ-จ่าย (Stock Card)</span>
                                 </a>
-                                <a href="/daily-requisition" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();">
+                                <a href="/daily-requisition{% if request.args.get('code') %}?code={{ request.args.get('code') }}{% endif %}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();">
                                     <i class="fas fa-file-medical" style="color: #0284C7;"></i>
                                     <span>พิมพ์ใบเบิกเวชภัณฑ์ยา (ประจำวัน)</span>
                                 </a>
@@ -800,6 +800,22 @@
                                     <option value="unit">เม็ด</option>
                                     <option value="pack">กล่อง</option>
                                 </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                                <span><i class="fas fa-calendar-alt text-brand"></i> ยกยอดมาจากปีงบ *</span>
+                            </label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <select id="drugOpeningFiscalYearInput" class="form-select" style="flex: 1;" onchange="onDrugOpeningFiscalYearSelectChange(this.value)">
+                                    <option value="2568">ปีงบประมาณ 2568</option>
+                                    <option value="2567" selected>ปีงบประมาณ 2567</option>
+                                    <option value="2566">ปีงบประมาณ 2566</option>
+                                    <option value="2565">ปีงบประมาณ 2565</option>
+                                    <option value="2569">ปีงบประมาณ 2569</option>
+                                    <option value="CUSTOM">ระบุปีอื่น...</option>
+                                </select>
+                                <input type="text" id="drugCustomOpeningFiscalYearInput" class="form-input" placeholder="พ.ศ." style="display: none; width: 85px;" maxlength="4" oninput="onCustomOpeningFiscalYearInput(this.value)">
                             </div>
                         </div>
                         <div class="form-group">
@@ -1698,14 +1714,33 @@
                                 <span><i class="fas fa-truck-ramp-box"></i> ผู้จัดจำหน่าย *</span>
                             </label>
 
-                            <!-- Supplier Type Selector: GPO vs บริษัท -->
+                            <!-- Supplier Type Selector: GPO vs บริษัท vs ยอดยกมา -->
                             <div class="supplier-type-toggle">
                                 <button type="button" class="btn btn-supplier-type active" id="btnSupplierTypeGPO" onclick="setStockInSupplierType('GPO')">
                                     <i class="fas fa-building-columns"></i> องค์การเภสัชกรรม (GPO)
                                 </button>
                                 <button type="button" class="btn btn-supplier-type" id="btnSupplierTypeCompany" onclick="setStockInSupplierType('COMPANY')">
-                                    <i class="fas fa-industry"></i> บริษัท (เอกชน / ผู้จำหน่ายอื่น)
+                                    <i class="fas fa-industry"></i> บริษัท (ผู้จำหน่าย)
                                 </button>
+                                <button type="button" class="btn btn-supplier-type" id="btnSupplierTypeCarriedOver" onclick="setStockInSupplierType('CARRIED_OVER')">
+                                    <i class="fas fa-history"></i> ยอดยกมา (ปีก่อน)
+                                </button>
+                            </div>
+
+                            <!-- Carried Over Fiscal Year when "ยอดยกมา" is selected -->
+                            <div id="carriedOverSelectWrapper" style="display: none; margin-top: 0.5rem;">
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                                    <label style="font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap;">ยกยอดมาจากปีงบประมาณ:</label>
+                                    <select id="stockInCarriedYearSelect" class="form-select" onchange="onStockInCarriedYearSelectChange(this.value)" style="flex: 1; min-width: 170px;">
+                                        <option value="2568">ปีงบประมาณ 2568</option>
+                                        <option value="2567" selected>ปีงบประมาณ 2567</option>
+                                        <option value="2566">ปีงบประมาณ 2566</option>
+                                        <option value="2565">ปีงบประมาณ 2565</option>
+                                        <option value="2569">ปีงบประมาณ 2569</option>
+                                        <option value="CUSTOM">ระบุปีอื่น...</option>
+                                    </select>
+                                    <input type="text" id="stockInCustomCarriedYearInput" class="form-input" placeholder="พ.ศ. เช่น 2564" style="display: none; width: 110px;" maxlength="4" oninput="onStockInCustomCarriedYearInput(this.value)">
+                                </div>
                             </div>
 
                             <!-- Company Details when "บริษัท" is selected -->
@@ -1841,8 +1876,25 @@
                                 <i class="fas fa-building-columns"></i> องค์การเภสัชกรรม (GPO)
                             </button>
                             <button type="button" class="btn btn-supplier-type" id="btnEditSupplierTypeCompany" onclick="setEditSupplierType('COMPANY')">
-                                <i class="fas fa-industry"></i> บริษัท (เอกชน / ผู้จำหน่ายอื่น)
+                                <i class="fas fa-industry"></i> บริษัท (ผู้จำหน่าย)
                             </button>
+                            <button type="button" class="btn btn-supplier-type" id="btnEditSupplierTypeCarriedOver" onclick="setEditSupplierType('CARRIED_OVER')">
+                                <i class="fas fa-history"></i> ยอดยกมา (ปีก่อน)
+                            </button>
+                        </div>
+                        <div id="editCarriedOverSelectWrapper" style="display: none; margin-top: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                                <label style="font-size: 0.8125rem; color: var(--text-secondary); white-space: nowrap;">ยกยอดมาจากปีงบประมาณ:</label>
+                                <select id="editStockInCarriedYearSelect" class="form-select" onchange="onEditStockInCarriedYearSelectChange(this.value)" style="flex: 1; min-width: 170px;">
+                                    <option value="2568">ปีงบประมาณ 2568</option>
+                                    <option value="2567" selected>ปีงบประมาณ 2567</option>
+                                    <option value="2566">ปีงบประมาณ 2566</option>
+                                    <option value="2565">ปีงบประมาณ 2565</option>
+                                    <option value="2569">ปีงบประมาณ 2569</option>
+                                    <option value="CUSTOM">ระบุปีอื่น...</option>
+                                </select>
+                                <input type="text" id="editStockInCustomCarriedYearInput" class="form-input" placeholder="พ.ศ. เช่น 2564" style="display: none; width: 110px;" maxlength="4" oninput="onEditStockInCustomCarriedYearInput(this.value)">
+                            </div>
                         </div>
                         <div id="editCompanySelectWrapper" style="display: none; margin-top: 0.5rem;">
                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">

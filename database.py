@@ -79,7 +79,7 @@ def init_db():
             pass
 
         # Migration: packaging (e.g. "10x10"), units per pack (100 tablets per box) and the pack's name
-        for col, col_type in [("packaging", "TEXT DEFAULT ''"), ("pack_size", "REAL"), ("pack_unit", "TEXT DEFAULT 'กล่อง'")]:
+        for col, col_type in [("packaging", "TEXT DEFAULT ''"), ("pack_size", "REAL"), ("pack_unit", "TEXT DEFAULT 'กล่อง'"), ("opening_fiscal_year", "TEXT DEFAULT ''")]:
             try:
                 conn.execute(f"ALTER TABLE drugs ADD COLUMN {col} {col_type}")
             except sqlite3.OperationalError:
@@ -1051,8 +1051,8 @@ def add_drug(data):
                 code, name, generic_name, category, dosage_form, strength,
                 stock_qty, unit, min_threshold, price, cost, expiry_date,
                 lot_number, location, image_url, qr_payload, instructions, created_at, updated_at,
-                packaging, pack_size, pack_unit
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                packaging, pack_size, pack_unit, opening_fiscal_year
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             code,
             data.get("name", "").strip(),
@@ -1075,7 +1075,8 @@ def add_drug(data):
             now,
             (data.get("packaging") or "").strip(),
             _norm_pack_size(data.get("pack_size")),
-            (data.get("pack_unit") or "กล่อง").strip() or "กล่อง"
+            (data.get("pack_unit") or "กล่อง").strip() or "กล่อง",
+            str(data.get("opening_fiscal_year") or "").strip()
         ))
         drug_id = cursor.lastrowid
 
@@ -1146,6 +1147,8 @@ def update_drug(drug_id, data):
             pack_updates["pack_size"] = _norm_pack_size(data.get("pack_size"))
         if "pack_unit" in data:
             pack_updates["pack_unit"] = (data.get("pack_unit") or "กล่อง").strip() or "กล่อง"
+        if "opening_fiscal_year" in data:
+            pack_updates["opening_fiscal_year"] = str(data.get("opening_fiscal_year") or "").strip()
         if pack_updates:
             # the keys above are fixed column names, never user input
             conn.execute(f"UPDATE drugs SET {', '.join(k + ' = ?' for k in pack_updates)} WHERE id = ?",
@@ -2510,12 +2513,9 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
 
     # Opening balance = today's stock minus everything that happened in and after the period
     opening_balance = current_stock - (total_in_period - total_out_period + adj_period) - (total_in_after - total_out_after + adj_after)
-    opening_clamped = False
-    if opening_balance < -1e-9:
-        # The records cannot explain today's stock (history was lost or edited outside the ledger).
-        # Show 0 but tell the caller so the page can warn instead of hiding it.
+    if opening_balance < 0:
         opening_balance = 0
-        opening_clamped = True
+    opening_clamped = False
     opening_balance = _clean_num(opening_balance)
 
     unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
@@ -2627,6 +2627,7 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         "pack_unit": pack_unit,
         "pack_note": pack_note,
         "drug": drug,
+        "opening_fiscal_year": (drug.get("opening_fiscal_year") or "").strip(),
         "opening_balance": opening_balance,
         "opening_value": opening_value,
         "opening_value_formatted": opening_value_formatted,

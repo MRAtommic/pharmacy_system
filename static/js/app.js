@@ -605,7 +605,7 @@ function renderDrugsTable(drugs) {
                                 </button>
                                 <div class="dropdown-menu" id="dropdown-menu-${d.id}">
                                     <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">รับยาเข้า</button>
-                                    <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">สต็อกการ์ด</a>
+                                    <a href="/stock-card?drug_id=${d.id}${(new URLSearchParams(window.location.search).get('code') ? '&code=' + encodeURIComponent(new URLSearchParams(window.location.search).get('code')) : '')}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">สต็อกการ์ด</a>
                                     <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">พิมพ์ QR</button>
                                     <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">แก้ไข</button>
                                     <div class="dropdown-divider"></div>
@@ -689,7 +689,7 @@ function renderDrugsTable(drugs) {
                             </button>
                             <div class="dropdown-menu" id="dropdown-menu-m-${d.id}">
                                 <button type="button" class="dropdown-item" onclick="openStockInModal(${d.id}); closeAllDropdowns();">รับยาเข้า</button>
-                                <a href="/stock-card?drug_id=${d.id}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">สต็อกการ์ด</a>
+                                <a href="/stock-card?drug_id=${d.id}${(new URLSearchParams(window.location.search).get('code') ? '&code=' + encodeURIComponent(new URLSearchParams(window.location.search).get('code')) : '')}" target="_blank" class="dropdown-item" onclick="closeAllDropdowns();" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem; width: 100%; box-sizing: border-box;">สต็อกการ์ด</a>
                                 <button type="button" class="dropdown-item" onclick="openQrModal(${d.id}); closeAllDropdowns();">พิมพ์ QR</button>
                                 <button type="button" class="dropdown-item" onclick="openEditDrugModal(${d.id}); closeAllDropdowns();">แก้ไข</button>
                                 <div class="dropdown-divider"></div>
@@ -959,6 +959,13 @@ function openAddDrugModal() {
     if (formId) formId.value = '';
     const lotInput = document.getElementById('drugLotInput');
     if (lotInput) lotInput.value = '';
+    const fySelect = document.getElementById('drugOpeningFiscalYearInput');
+    if (fySelect) fySelect.value = '2567';
+    const customFyInput = document.getElementById('drugCustomOpeningFiscalYearInput');
+    if (customFyInput) {
+        customFyInput.value = '';
+        customFyInput.style.display = 'none';
+    }
     setDrugStockFieldMode(false);
     onDrugPackSizeChange();
     removeDrugImage(true);
@@ -1018,6 +1025,25 @@ function openEditDrugModal(id) {
     setVal('drugExpiryInput', drug.expiry_date || '');
     setVal('drugLocationInput', drug.location || '');
     setVal('drugInstructionsInput', drug.instructions || '');
+
+    // Opening Fiscal Year (ยอดยกมาจากปีงบประมาณ)
+    const fySelect = document.getElementById('drugOpeningFiscalYearInput');
+    const customFyInput = document.getElementById('drugCustomOpeningFiscalYearInput');
+    const recordedFy = (drug.opening_fiscal_year || '').trim();
+    if (fySelect) {
+        const standardYears = ['2568', '2567', '2566', '2565', '2569'];
+        if (!recordedFy) {
+            fySelect.value = '2567';
+            if (customFyInput) { customFyInput.value = ''; customFyInput.style.display = 'none'; }
+        } else if (standardYears.includes(recordedFy)) {
+            fySelect.value = recordedFy;
+            if (customFyInput) { customFyInput.value = ''; customFyInput.style.display = 'none'; }
+        } else {
+            fySelect.value = 'CUSTOM';
+            if (customFyInput) { customFyInput.value = recordedFy; customFyInput.style.display = 'block'; }
+        }
+    }
+
     onDrugPackSizeChange();
 
     // Image Setup
@@ -1049,6 +1075,18 @@ function openEditDrugModal(id) {
 function closeDrugModal() {
     const modal = document.getElementById('drugModal');
     if (modal) modal.classList.remove('active');
+}
+
+function onDrugOpeningFiscalYearSelectChange(val) {
+    const customInp = document.getElementById('drugCustomOpeningFiscalYearInput');
+    if (customInp) {
+        customInp.style.display = (val === 'CUSTOM') ? 'block' : 'none';
+        if (val === 'CUSTOM') customInp.focus();
+    }
+}
+
+function onCustomOpeningFiscalYearInput(val) {
+    // Keeps value ready for saveDrug
 }
 
 // ── Packaging: units per box, prices per box, stock typed in boxes ─────────────────────────
@@ -1114,6 +1152,7 @@ async function saveDrug(e) {
         pack_size: parseFloat(getVal('drugPackSizeInput', '')) > 1 ? parseFloat(getVal('drugPackSizeInput', '')) : null,
         pack_unit: 'กล่อง',
         stock_qty: parseFloat(getVal('drugStockInput', '0')) || 0,
+        opening_fiscal_year: getVal('drugOpeningFiscalYearInput') === 'CUSTOM' ? getVal('drugCustomOpeningFiscalYearInput') : getVal('drugOpeningFiscalYearInput', '2567'),
         unit: getVal('drugUnitInput', 'เม็ด'),
         min_threshold: parseFloat(getVal('drugMinInput', '10')) || 10,
         price: parseFloat(getVal('drugPriceInput', '0')) || 0,
@@ -4197,18 +4236,29 @@ function setStockInSupplierType(type) {
     currentStockInSupplierType = type;
     const btnGPO = document.getElementById('btnSupplierTypeGPO');
     const btnCompany = document.getElementById('btnSupplierTypeCompany');
+    const btnCarried = document.getElementById('btnSupplierTypeCarriedOver');
     const companyWrap = document.getElementById('companySelectWrapper');
+    const carriedWrap = document.getElementById('carriedOverSelectWrapper');
     const supplierInput = document.getElementById('stockInSupplierInput');
 
+    btnGPO?.classList.toggle('active', type === 'GPO');
+    btnCompany?.classList.toggle('active', type === 'COMPANY');
+    btnCarried?.classList.toggle('active', type === 'CARRIED_OVER');
+
+    if (companyWrap) companyWrap.style.display = (type === 'COMPANY') ? 'block' : 'none';
+    if (carriedWrap) carriedWrap.style.display = (type === 'CARRIED_OVER') ? 'block' : 'none';
+
     if (type === 'GPO') {
-        btnGPO?.classList.add('active');
-        btnCompany?.classList.remove('active');
-        if (companyWrap) companyWrap.style.display = 'none';
         if (supplierInput) supplierInput.value = 'องค์การเภสัชกรรม (GPO)';
+    } else if (type === 'CARRIED_OVER') {
+        const sel = document.getElementById('stockInCarriedYearSelect');
+        const customInp = document.getElementById('stockInCustomCarriedYearInput');
+        let yr = sel ? sel.value : '2567';
+        if (yr === 'CUSTOM' && customInp && customInp.value.trim()) {
+            yr = customInp.value.trim();
+        }
+        if (supplierInput) supplierInput.value = `ยอดยกมา (ปีงบ ${yr})`;
     } else {
-        btnCompany?.classList.add('active');
-        btnGPO?.classList.remove('active');
-        if (companyWrap) companyWrap.style.display = 'block';
         const sel = document.getElementById('stockInCompanySelect');
         const customInp = document.getElementById('stockInCustomCompanyInput');
         if (sel && sel.value === 'CUSTOM') {
@@ -4219,6 +4269,23 @@ function setStockInSupplierType(type) {
             if (supplierInput) supplierInput.value = sel?.value || 'บริษัท';
         }
     }
+}
+
+function onStockInCarriedYearSelectChange(val) {
+    const customInp = document.getElementById('stockInCustomCarriedYearInput');
+    const supplierInput = document.getElementById('stockInSupplierInput');
+    if (customInp) {
+        customInp.style.display = (val === 'CUSTOM') ? 'block' : 'none';
+        if (val === 'CUSTOM') customInp.focus();
+    }
+    let yr = (val === 'CUSTOM') ? (customInp?.value.trim() || '2567') : val;
+    if (supplierInput) supplierInput.value = `ยอดยกมา (ปีงบ ${yr})`;
+}
+
+function onStockInCustomCarriedYearInput(val) {
+    const supplierInput = document.getElementById('stockInSupplierInput');
+    const yr = val.trim() || '2567';
+    if (supplierInput) supplierInput.value = `ยอดยกมา (ปีงบ ${yr})`;
 }
 
 function onStockInCompanySelectChange(val) {
@@ -4498,18 +4565,29 @@ function setEditSupplierType(type) {
     currentEditSupplierType = type;
     const btnGPO = document.getElementById('btnEditSupplierTypeGPO');
     const btnCompany = document.getElementById('btnEditSupplierTypeCompany');
+    const btnCarried = document.getElementById('btnEditSupplierTypeCarriedOver');
     const companyWrap = document.getElementById('editCompanySelectWrapper');
+    const carriedWrap = document.getElementById('editCarriedOverSelectWrapper');
     const supplierInput = document.getElementById('editStockInSupplier');
 
+    btnGPO?.classList.toggle('active', type === 'GPO');
+    btnCompany?.classList.toggle('active', type === 'COMPANY');
+    btnCarried?.classList.toggle('active', type === 'CARRIED_OVER');
+
+    if (companyWrap) companyWrap.style.display = (type === 'COMPANY') ? 'block' : 'none';
+    if (carriedWrap) carriedWrap.style.display = (type === 'CARRIED_OVER') ? 'block' : 'none';
+
     if (type === 'GPO') {
-        btnGPO?.classList.add('active');
-        btnCompany?.classList.remove('active');
-        if (companyWrap) companyWrap.style.display = 'none';
         if (supplierInput) supplierInput.value = 'องค์การเภสัชกรรม (GPO)';
+    } else if (type === 'CARRIED_OVER') {
+        const sel = document.getElementById('editStockInCarriedYearSelect');
+        const customInp = document.getElementById('editStockInCustomCarriedYearInput');
+        let yr = sel ? sel.value : '2567';
+        if (yr === 'CUSTOM' && customInp && customInp.value.trim()) {
+            yr = customInp.value.trim();
+        }
+        if (supplierInput) supplierInput.value = `ยอดยกมา (ปีงบ ${yr})`;
     } else {
-        btnCompany?.classList.add('active');
-        btnGPO?.classList.remove('active');
-        if (companyWrap) companyWrap.style.display = 'block';
         const sel = document.getElementById('editStockInCompanySelect');
         const customInp = document.getElementById('editStockInCustomCompany');
         if (sel && sel.value === 'CUSTOM') {
@@ -4520,6 +4598,23 @@ function setEditSupplierType(type) {
             if (supplierInput) supplierInput.value = sel?.value || 'บริษัท';
         }
     }
+}
+
+function onEditStockInCarriedYearSelectChange(val) {
+    const customInp = document.getElementById('editStockInCustomCarriedYearInput');
+    const supplierInput = document.getElementById('editStockInSupplier');
+    if (customInp) {
+        customInp.style.display = (val === 'CUSTOM') ? 'block' : 'none';
+        if (val === 'CUSTOM') customInp.focus();
+    }
+    let yr = (val === 'CUSTOM') ? (customInp?.value.trim() || '2567') : val;
+    if (supplierInput) supplierInput.value = `ยอดยกมา (ปีงบ ${yr})`;
+}
+
+function onEditStockInCustomCarriedYearInput(val) {
+    const supplierInput = document.getElementById('editStockInSupplier');
+    const yr = val.trim() || '2567';
+    if (supplierInput) supplierInput.value = `ยอดยกมา (ปีงบ ${yr})`;
 }
 
 function onEditCompanySelectChange(val) {
@@ -4592,8 +4687,29 @@ function openEditStockInModal(logId) {
     // Supplier init
     const sup = log.supplier || '';
     const isGpo = sup.includes('GPO') || sup.includes('องค์การ');
+    const isCarried = sup.includes('ยอดยกมา') || sup.includes('ยกยอด');
     if (isGpo) {
         setEditSupplierType('GPO');
+    } else if (isCarried) {
+        setEditSupplierType('CARRIED_OVER');
+        const sel = document.getElementById('editStockInCarriedYearSelect');
+        const customInp = document.getElementById('editStockInCustomCarriedYearInput');
+        const m = sup.match(/\d{4}/);
+        const yr = m ? m[0] : '2567';
+        const standardYears = ['2568', '2567', '2566', '2565', '2569'];
+        if (sel) {
+            if (standardYears.includes(yr)) {
+                sel.value = yr;
+                if (customInp) customInp.style.display = 'none';
+            } else {
+                sel.value = 'CUSTOM';
+                if (customInp) {
+                    customInp.style.display = 'block';
+                    customInp.value = yr;
+                }
+            }
+        }
+        document.getElementById('editStockInSupplier').value = sup;
     } else {
         setEditSupplierType('COMPANY');
         const sel = document.getElementById('editStockInCompanySelect');

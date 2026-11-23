@@ -309,9 +309,13 @@ def stock_card_view():
             lot_exp_display = "-"
 
         if tx["type"] == "RECEIVE":
-            is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
+            sup = (tx.get("supplier") or "").strip()
+            is_gpo = "GPO" in sup or "องค์การ" in sup
+            is_carried = "ยอดยกมา" in sup or "ยกยอด" in sup
             qty_in = html_escape(tx.get("qty_in") or tx.get("quantity") or "-")
-            if is_gpo:
+            if is_carried:
+                tx["particulars_html"] = f'ยอดยกมา ({html_escape(sup)}) <span class="fill-text">{qty_in}</span>'
+            elif is_gpo:
                 tx["particulars_html"] = f'รับจาก..<span class="fill-text">{qty_in}</span>..GPO/..-..บริษัท/จ่าย..-..'
             else:
                 tx["particulars_html"] = f'รับจาก...-..GPO/..<span class="fill-text">{qty_in}</span>..บริษัท/จ่าย..-..'
@@ -357,6 +361,10 @@ def stock_card_view():
     if card_data and not card_data.get("opening_balance"):
         opening_lot_exp = ""      # nothing carried over -> no lot / expiry to print
 
+    param_fy = (request.args.get("fiscal_year") or "").strip()
+    drug_fy = (selected_drug.get("opening_fiscal_year") or "").strip() if selected_drug else ""
+    opening_fy = param_fy or drug_fy or str(fiscal_year_be(default_start) - 1)
+
     return render_template(
         "stock_card.html",
         drugs=drugs,
@@ -371,10 +379,9 @@ def stock_card_view():
         empty_rows_count=empty_rows_count,
         packaging=format_packaging_size(selected_drug),
         opening_sign=Config.ORG_OPENING_SIGN,
-        opening_clamped=bool(card_data and card_data.get("opening_clamped")),
         pack_note=(card_data or {}).get("pack_note", ""),
         hospital_name=Config.ORG_NAME,
-        opening_fiscal_year=fiscal_year_be(default_start) - 1,   # balance carried over from the previous fiscal year
+        opening_fiscal_year=opening_fy,   # balance carried over from fiscal year
         current_user=u,
         base_url=Config.BASE_URL
     )
@@ -412,12 +419,14 @@ def export_stock_card_excel():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
     opening_sign = request.args.get("opening_sign") or Config.ORG_OPENING_SIGN
-    fiscal_year_text = (request.args.get("fiscal_year") or "").strip() or str(fiscal_year_be(start_date) - 1)
     data = database.get_stock_card_data(drug_id, start_date, end_date)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
 
     drug = data["drug"]
+    param_fy = (request.args.get("fiscal_year") or "").strip()
+    drug_fy = (drug.get("opening_fiscal_year") or "").strip() if drug else ""
+    fiscal_year_text = param_fy or drug_fy or str(fiscal_year_be(start_date) - 1)
     transactions = data.get("transactions", [])
     
     import openpyxl
@@ -505,9 +514,13 @@ def export_stock_card_excel():
         r_idx += 1
         d_short = format_thai_date_short(tx["created_at"])
         if tx["type"] == "RECEIVE":
-            is_gpo = "GPO" in (tx.get("supplier") or "") or "องค์การ" in (tx.get("supplier") or "")
+            sup = (tx.get("supplier") or "").strip()
+            is_gpo = "GPO" in sup or "องค์การ" in sup
+            is_carried = "ยอดยกมา" in sup or "ยกยอด" in sup
             qty_in = tx.get("qty_in") or tx.get("quantity") or "-"
-            if is_gpo:
+            if is_carried:
+                part = f"ยอดยกมา ({sup}) {qty_in}"
+            elif is_gpo:
                 part = f"รับจาก...{qty_in}...GPO/...-.....บริษัท/จ่าย...-....."
             else:
                 part = f"รับจาก...-.....GPO/...{qty_in}...บริษัท/จ่าย...-....."
