@@ -960,7 +960,7 @@ function openAddDrugModal() {
     const lotInput = document.getElementById('drugLotInput');
     if (lotInput) lotInput.value = '';
     const fySelect = document.getElementById('drugOpeningFiscalYearInput');
-    if (fySelect) fySelect.value = '2567';
+    if (fySelect) fySelect.value = '2569';
     const customFyInput = document.getElementById('drugCustomOpeningFiscalYearInput');
     if (customFyInput) {
         customFyInput.value = '';
@@ -1031,9 +1031,9 @@ function openEditDrugModal(id) {
     const customFyInput = document.getElementById('drugCustomOpeningFiscalYearInput');
     const recordedFy = (drug.opening_fiscal_year || '').trim();
     if (fySelect) {
-        const standardYears = ['2568', '2567', '2566', '2565', '2569'];
+        const standardYears = ['2570', '2569', '2568', '2567'];
         if (!recordedFy) {
-            fySelect.value = '2567';
+            fySelect.value = '2569';
             if (customFyInput) { customFyInput.value = ''; customFyInput.style.display = 'none'; }
         } else if (standardYears.includes(recordedFy)) {
             fySelect.value = recordedFy;
@@ -4695,8 +4695,8 @@ function openEditStockInModal(logId) {
         const sel = document.getElementById('editStockInCarriedYearSelect');
         const customInp = document.getElementById('editStockInCustomCarriedYearInput');
         const m = sup.match(/\d{4}/);
-        const yr = m ? m[0] : '2567';
-        const standardYears = ['2568', '2567', '2566', '2565', '2569'];
+        const yr = m ? m[0] : '2569';
+        const standardYears = ['2570', '2569', '2568', '2567'];
         if (sel) {
             if (standardYears.includes(yr)) {
                 sel.value = yr;
