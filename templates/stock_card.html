@@ -1125,9 +1125,11 @@
             const tbody = document.getElementById('ledgerTableBody');
             if (!tbody) return;
 
-            const unitCost = (drug.cost != null && drug.cost > 0) 
+            const packSize = (d.pack_size && Number(d.pack_size) > 1) ? Number(d.pack_size) : 1;
+            const rawCost = (drug.cost != null && drug.cost > 0) 
                 ? Number(drug.cost) 
                 : ((drug.price != null && drug.price > 0) ? Number(drug.price) : 0);
+            const unitCost = (packSize > 1 && rawCost < 10) ? (rawCost * packSize) : rawCost;
             const openingBal = (d.opening_balance != null) ? Number(d.opening_balance) : 0;
             const openingVal = (d.opening_value != null) ? Number(d.opening_value) : (openingBal * unitCost);
             const openingPriceFormatted = formatBalanceValue(openingVal);
@@ -1199,8 +1201,9 @@
                     lotExp = lotStr ? `<span style="font-weight:600;">${escapeHtml(lotStr)}</span>` : '-';
                 }
 
+                const txPrice = (tx.price != null && Number(tx.price) > 0) ? Number(tx.price) : unitCost;
                 const balNum = (tx.balance != null) ? Number(tx.balance) : 0;
-                const balVal = (tx.balance_value != null) ? Number(tx.balance_value) : (balNum * unitCost);
+                const balVal = (tx.balance_value != null) ? Number(tx.balance_value) : (balNum * txPrice);
                 const priceDisplay = formatBalanceValue(balVal);
                 const balDisplay = (tx.balance != null) ? fmtQ(tx.balance) : '-';
                 const qtyInDisplay = (tx.qty_in != null) ? fmtQ(tx.qty_in) : '-';

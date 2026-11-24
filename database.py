@@ -2607,6 +2607,9 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
     if pack_size and pack_size > 1:
         pack_unit = (drug.get("pack_unit") or "กล่อง").strip() or "กล่อง"
         base_unit = (drug.get("unit") or "หน่วย").strip() or "หน่วย"
+        if base_unit == pack_unit:
+            d_form = (drug.get("dosage_form") or "").lower()
+            base_unit = "เม็ด" if ("tab" in d_form or "เม็ด" in d_form) else ("แคปซูล" if "cap" in d_form else "หน่วย")
 
         def _to_pack(x):
             return None if x is None else _clean_num(round(float(x) / pack_size, 4))
@@ -2615,10 +2618,24 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
             item["qty_in"] = _to_pack(item["qty_in"])
             item["qty_out"] = _to_pack(item["qty_out"])
             item["balance"] = _to_pack(item["balance"])
+
+            # Recalculate balance_value accurately for pack ledger
+            # Ensure price per pack is used (e.g. 165 baht per box)
+            raw_p = float(item.get("price") or unit_cost or 0.0)
+            pack_price = raw_p if raw_p >= (unit_cost * pack_size * 0.5) else (raw_p * pack_size)
+            item["price"] = pack_price
+            if item["balance"] is not None:
+                item["balance_value"] = _clean_num(round(item["balance"] * pack_price, 2))
+                item["balance_value_formatted"] = format_balance_val(item["balance_value"])
+
         opening_balance = _to_pack(opening_balance)
         running_balance = _to_pack(running_balance)
         total_in_period = _to_pack(total_in_period)
         total_out_period = _to_pack(total_out_period)
+
+        pack_unit_cost = unit_cost if unit_cost >= (unit_cost * pack_size * 0.5) else (unit_cost * pack_size)
+        opening_value = _clean_num(round((opening_balance or 0) * pack_unit_cost, 2))
+        opening_value_formatted = format_balance_val(opening_value)
         pack_note = f"หน่วยนับในบัญชี: {pack_unit} (1 {pack_unit} = {_clean_num(pack_size)} {base_unit})"
 
     conn.close()
