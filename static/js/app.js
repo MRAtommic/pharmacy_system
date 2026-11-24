@@ -212,13 +212,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (googleConnected) {
         setTimeout(() => {
-            showToast(`🎉 เชื่อมต่อ Google สำเร็จแล้ว! สร้างชีตและโฟลเดอร์เรียบร้อย (${googleEmail || 'Google Account'})`, 'success');
+            showToast(`เชื่อมต่อ Google สำเร็จแล้ว (${googleEmail || 'Google Account'})`, 'success');
             openGoogleSettingsModal();
         }, 500);
         window.history.replaceState({}, document.title, window.location.pathname);
     } else if (googleError) {
         setTimeout(() => {
-            showToast(`⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ Google: ${googleError}`, 'error');
+            showToast(`เกิดข้อผิดพลาดในการเชื่อมต่อ Google: ${googleError}`, 'error');
             openGoogleSettingsModal();
         }, 500);
         window.history.replaceState({}, document.title, window.location.pathname);
@@ -250,7 +250,10 @@ function setTheme(theme) {
         themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     }
     if (themeText) {
-        themeText.innerText = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+        themeText.innerText = theme === 'dark' ? 'โหมดสว่าง' : 'โหมดมืด';
+    }
+    if (typeof currentTab !== 'undefined' && currentTab === 'analytics' && typeof loadAnalytics === 'function') {
+        loadAnalytics();
     }
 }
 
@@ -316,97 +319,24 @@ async function loadDashboardStats() {
         if (data.ok) {
             const s = data.stats;
             
-            // Total Catalog Drugs (Blue)
             const drugsEl = document.getElementById('statTotalDrugs');
             if (drugsEl) {
                 drugsEl.innerText = s.total_drugs || 0;
-                drugsEl.className = 'kpi-value';
-            }
-            
-            // Total Inventory Value (Emerald Hero)
-            const totalVal = Number(s.total_inventory_value || 0);
-            const valEl = document.getElementById('statTotalValue');
-            if (valEl) {
-                const formattedVal = '฿' + totalVal.toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                valEl.innerText = formattedVal;
-                valEl.title = formattedVal;
-                valEl.className = 'kpi-value text-emerald kpi-value-money';
-                if (formattedVal.length > 13) {
-                    valEl.style.fontSize = '1.02rem';
-                } else if (formattedVal.length > 10) {
-                    valEl.style.fontSize = '1.12rem';
-                } else {
-                    valEl.style.fontSize = '';
-                }
-            }
-            const valSub = document.getElementById('statTotalValueSub');
-            if (valSub) {
-                if (s.total_inventory_cost !== undefined && Number(s.total_inventory_cost) > 0) {
-                    const costFormatted = `ต้นทุนรวม: ฿${Number(s.total_inventory_cost).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                    valSub.innerText = costFormatted;
-                    valSub.title = costFormatted;
-                } else {
-                    valSub.innerText = 'ยอดรวมมูลค่าคงคลังทั้งหมด';
-                    valSub.title = 'ยอดรวมมูลค่าคงคลังทั้งหมด';
-                }
+                drugsEl.className = 'stat-tile-num kpi-value';
             }
 
-            // Total Inventory Units (Teal)
-            const unitsEl = document.getElementById('statTotalUnits');
-            if (unitsEl) {
-                unitsEl.innerText = (s.total_units || 0).toLocaleString();
-                unitsEl.className = 'kpi-value';
-            }
-            const unitsSub = document.getElementById('statTotalUnitsSub');
-            if (unitsSub) {
-                unitsSub.innerText = `หน่วยคงคลัง (${s.total_drugs || 0} รายการ)`;
-            }
-
-            // Low Stock Reorder Warning (Rose if alerts, Emerald if safe)
             const lowCount = Number(s.low_stock_count || 0);
             const lowEl = document.getElementById('statLowStock');
-            const lowBadge = document.getElementById('statLowStockBadge');
             if (lowEl) {
                 lowEl.innerText = lowCount;
-                lowEl.className = lowCount > 0 ? 'kpi-value text-rose' : 'kpi-value';
-            }
-            if (lowBadge) {
-                if (lowCount > 0) {
-                    lowBadge.className = 'kpi-micro-badge rose';
-                    lowBadge.innerHTML = '<i class="fas fa-triangle-exclamation"></i> เตือนเติม';
-                } else {
-                    lowBadge.className = 'kpi-micro-badge safe';
-                    lowBadge.innerHTML = '<i class="fas fa-check"></i> ปกติ';
-                }
+                lowEl.className = lowCount > 0 ? 'stat-tile-num kpi-value text-rose' : 'stat-tile-num kpi-value';
             }
 
-            // Today Dispensed (Indigo)
-            const todayEl = document.getElementById('statTodayDispensed');
-            if (todayEl) {
-                todayEl.innerText = (s.today_units_dispensed || 0).toLocaleString();
-                todayEl.className = 'kpi-value';
-            }
-            const todaySub = document.getElementById('statTodayDispensedSub');
-            if (todaySub && s.today_dispensed_value !== undefined && Number(s.today_dispensed_value) > 0) {
-                todaySub.innerText = `มูลค่าจ่าย: ฿${Number(s.today_dispensed_value).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            }
-
-            // Expiring Soon (Amber if alerts, Emerald if safe)
             const expCount = Number(s.expiring_soon_count || 0);
             const expSoonEl = document.getElementById('statExpiringSoon');
-            const expBadge = document.getElementById('statExpiringBadge');
             if (expSoonEl) {
                 expSoonEl.innerText = expCount;
-                expSoonEl.className = expCount > 0 ? 'kpi-value text-amber' : 'kpi-value';
-            }
-            if (expBadge) {
-                if (expCount > 0) {
-                    expBadge.className = 'kpi-micro-badge amber';
-                    expBadge.innerHTML = '<i class="fas fa-hourglass-half"></i> เตือน';
-                } else {
-                    expBadge.className = 'kpi-micro-badge safe';
-                    expBadge.innerHTML = '<i class="fas fa-check"></i> สดใหม่';
-                }
+                expSoonEl.className = expCount > 0 ? 'stat-tile-num kpi-value text-amber' : 'stat-tile-num kpi-value';
             }
 
             const lowCard = document.getElementById('kpiCardLowStock');
@@ -594,7 +524,7 @@ function renderDrugsTable(drugs) {
                     <td style="text-align: right;">
                         <div class="table-actions-cluster">
                             <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" title="${inCart ? 'อยู่ในใบสั่งยาแล้ว' : 'เพิ่มลงในใบสั่งยา'}" onclick="addToRxCart(${d.id}); event.stopPropagation();">
-                                <span>${inCart ? '✓ ในใบสั่ง' : 'สั่งยา'}</span>
+                                <span>${inCart ? '<i class="fas fa-check"></i> ในใบสั่ง' : 'สั่งยา'}</span>
                             </button>
                             <button type="button" class="btn-action-dispense" title="ตัดจ่ายยานี้ทันที" onclick="openDispenseModalForDrug(${d.id})">
                                 <span>ตัดสต็อก</span>
@@ -678,7 +608,7 @@ function renderDrugsTable(drugs) {
 
                     <div class="mobile-card-actions">
                         <button type="button" class="btn-action-cart ${inCart ? 'in-cart' : ''}" onclick="addToRxCart(${d.id})">
-                            <span>${inCart ? '✓ ในใบสั่ง' : 'สั่งยา'}</span>
+                            <span>${inCart ? '<i class="fas fa-check"></i> ในใบสั่ง' : 'สั่งยา'}</span>
                         </button>
                         <button type="button" class="btn-action-dispense" onclick="openDispenseModalForDrug(${d.id})">
                             <span>ตัดสต็อก</span>
@@ -954,6 +884,8 @@ function openAddDrugModal() {
     if (titleEl) titleEl.innerText = 'เพิ่มยาใหม่';
     const form = document.getElementById('drugForm');
     if (form) form.reset();
+    const stockInp = document.getElementById('drugStockInput');
+    if (stockInp) stockInp.value = '0';
     renderDrugCategoryInputOptions();
     const formId = document.getElementById('drugFormId');
     if (formId) formId.value = '';
@@ -1164,7 +1096,7 @@ async function saveDrug(e) {
     };
 
     if (!payload.name) {
-        alert('กรุณากรอกชื่อยา');
+        showToast('กรุณากรอกชื่อยา', 'warning');
         return;
     }
     if (isEdit) {
@@ -1188,11 +1120,11 @@ async function saveDrug(e) {
             loadDashboardStats();
             showToast(isEdit ? 'แก้ไขข้อมูลยาและรูปภาพสำเร็จ' : 'เพิ่มยาใหม่และบันทึกรูปภาพเรียบร้อย!', 'success');
         } else {
-            alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown error'));
+            showToast('เกิดข้อผิดพลาด: ' + (data.error || 'ไม่สามารถบันทึกได้'), 'error');
         }
     } catch (e) {
         console.error('Save drug error:', e);
-        alert('ไม่สามารถบันทึกข้อมูลได้');
+        showToast('ไม่สามารถบันทึกข้อมูลได้', 'error');
     }
 }
 
@@ -1200,9 +1132,11 @@ async function confirmDeleteDrug(id) {
     const numId = Number(id);
     const drug = allDrugs.find(d => Number(d.id) === numId || d.id == id);
     const name = drug ? drug.name : 'ยานี้';
-    if (!confirm(`คุณต้องการลบยา '${name}' ออกจากคลังยาใช่หรือไม่?\n(ระบบจะอัปเดตลง Google Sheet อัตโนมัติ)`)) {
-        return;
-    }
+    const ok = await showConfirmDialog(
+        `คุณต้องการลบยา '${name}' ออกจากคลังยาใช่หรือไม่?\n(ระบบจะอัปเดตลง Google Sheet อัตโนมัติ)`,
+        { title: 'ยืนยันการลบรายการยา', confirmText: 'ลบรายการยา', danger: true }
+    );
+    if (!ok) return;
     try {
         const res = await fetch(`/api/drugs/${id}`, { method: 'DELETE' });
         const data = await res.json();
@@ -1256,10 +1190,19 @@ function onDispenseQtyChange() {
 
         if (alertEl) alertEl.style.display = 'block';
         if (alertText) {
-            alertText.innerHTML = `<strong>⚠️ ตรวจสอบจำนวน:</strong> ${reasons.join(' และ ')} โปรดระวังการพิมพ์เลข 0 เกิน`;
+            alertText.innerHTML = `<strong>ตรวจสอบจำนวน:</strong> ${reasons.join(' และ ')} โปรดระวังการพิมพ์เลข 0 เกิน`;
         }
     } else {
         if (alertEl) alertEl.style.display = 'none';
+    }
+}
+
+function setDispenseDateNow() {
+    const inp = document.getElementById('dispenseCreatedAtInput');
+    if (inp) {
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        inp.value = (new Date(now.getTime() - offset)).toISOString().slice(0, 16);
     }
 }
 
@@ -1277,6 +1220,7 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL', preselectLot
     selectedDrugForDispense = drug;
     document.getElementById('dispenseDrugName').innerText = drug.name;
     document.getElementById('dispenseDrugCode').innerText = `รหัส: ${drug.code} • คงเหลือรวม: ${drug.stock_qty} ${drug.unit}`;
+    setDispenseDateNow();
     
     // Populate Lot selector dropdown
     const lotGroup = document.getElementById('dispenseLotGroup');
@@ -1286,12 +1230,15 @@ function openDispenseModalForDrug(drugOrId, channel = 'WEB_MANUAL', preselectLot
     if (lotSelect) {
         let lotOptionsHtml = `<option value="">อัตโนมัติ (ล็อตหมดอายุก่อน)</option>`;
         if (lots.length > 0) {
+            const firstActiveLot = lots.find(l => Number(l.stock_qty || 0) > 0 && l.is_active !== 0);
             lots.forEach(lot => {
-                const isOutOfStock = lot.stock_qty <= 0;
+                const isOutOfStock = Number(lot.stock_qty || 0) <= 0;
+                const daysLeft = lot.days_left ?? lot.days_until_expiry ?? null;
+                const isFefo = Boolean(lot.is_fefo_recommended) || (firstActiveLot && firstActiveLot.id === lot.id);
                 let tag = '';
-                if (lot.is_fefo_recommended) tag = ' ⭐ [FEFO แนะนำ]';
-                else if (lot.is_expired) tag = ' ❌ [หมดอายุ]';
-                else if (lot.days_until_expiry !== null && lot.days_until_expiry <= 60) tag = ` ⚠️ [ใกล้หมดอายุ ${lot.days_until_expiry} วัน]`;
+                if (lot.is_expired) tag = ' [หมดอายุ]';
+                else if (isFefo) tag = ' [แนะนำ: หมดอายุก่อน]';
+                else if (daysLeft !== null && daysLeft <= 60) tag = ` [ใกล้หมดอายุ ${daysLeft} วัน]`;
 
                 const isSelected = preselectLotId && (lot.id === Number(preselectLotId) || lot.id == preselectLotId);
                 lotOptionsHtml += `
@@ -1420,7 +1367,7 @@ function openHighQtyConfirmModal(drug, qty, currentStock) {
         let reasons = [];
         if (qty >= 100) reasons.push(`ตัดจ่ายตั้งแต่ ${formatQty(qty)} ${drug.unit} ขึ้นไป`);
         if (percent >= 50) reasons.push(`สูงถึง ${percent}% ของยาทั้งคลัง`);
-        ratioNotice.innerHTML = `⚠️ ${reasons.join(' • ')}`;
+        ratioNotice.innerHTML = `<i class="fas fa-triangle-exclamation"></i> ${reasons.join(' • ')}`;
     }
 
     modal.classList.add('active');
@@ -1443,7 +1390,7 @@ function executeDispenseAfterConfirmation() {
     if (!pendingDispensePayload) return;
     const p = pendingDispensePayload;
     closeHighQtyConfirmModal();
-    executeDispense(p.drug, p.quantity, p.channel, p.dispensed_by, p.patient_name, p.notes, p.lot_id);
+    executeDispense(p.drug, p.quantity, p.channel, p.dispensed_by, p.patient_name, p.notes, p.lot_id, p.created_at);
     pendingDispensePayload = null;
 }
 
@@ -1459,21 +1406,26 @@ async function submitDispense(e) {
     if (!selectedDrugForDispense) return;
 
     const drug = selectedDrugForDispense;
-    const qty = parseFloat(document.getElementById('dispenseQtyInput')?.value) || 1;
+    const qtyRaw = document.getElementById('dispenseQtyInput')?.value;
+    const qty = parseFloat(qtyRaw);
+    if (isNaN(qty) || qty <= 0) {
+        showToast('กรุณาระบุจำนวนที่ตัดจ่ายให้มากกว่า 0', 'warning');
+        return;
+    }
     const currentStock = Number(drug.stock_qty) || 0;
     const lotId = document.getElementById('dispenseLotSelect')?.value || null;
 
     if (lotId) {
         const lot = (drug.lots || []).find(l => l.id == lotId);
         if (lot && qty > Number(lot.stock_qty)) {
-            showToast(`❌ ยอดตัดจ่ายเกินคงเหลือในล็อต ${lot.lot_number} (คงเหลือ ${lot.stock_qty} ${drug.unit})`, 'error');
+            showToast(`ยอดตัดจ่ายเกินคงเหลือในล็อต ${lot.lot_number} (คงเหลือ ${lot.stock_qty} ${drug.unit})`, 'error');
             return;
         }
     }
 
     // 1. Hard check: cannot dispense more than stock
     if (qty > currentStock) {
-        showToast(`❌ ยาคงเหลือไม่พอตัดจ่าย (คงเหลือ ${currentStock} ${drug.unit})`, 'error');
+        showToast(`ยาคงเหลือไม่พอตัดจ่าย (คงเหลือ ${currentStock} ${drug.unit})`, 'error');
         return;
     }
 
@@ -1486,6 +1438,7 @@ async function submitDispense(e) {
     const notes = (document.getElementById('dispenseNoteInput')?.value || '').trim();
     const dispenser = (document.getElementById('dispenserNameInput')?.value || '').trim() || window.CURRENT_USER_NAME || 'ผู้ดูแลระบบคลังยา (Admin)';
     const channel = currentDispenseChannel || 'WEB_MANUAL';
+    const createdAt = (document.getElementById('dispenseCreatedAtInput')?.value || '').trim();
 
     // 2. High Quantity Check: >= 100 OR >= 50% of current stock
     const isHighQty = (qty >= 100) || (currentStock > 0 && qty >= currentStock * 0.5);
@@ -1497,17 +1450,18 @@ async function submitDispense(e) {
             dispensed_by: dispenser,
             patient_name: patient,
             notes: notes,
-            lot_id: lotId
+            lot_id: lotId,
+            created_at: createdAt
         };
         openHighQtyConfirmModal(drug, qty, currentStock);
         return;
     }
 
     // Normal quantity: execute directly
-    executeDispense(drug, qty, channel, dispenser, patient, notes, lotId);
+    executeDispense(drug, qty, channel, dispenser, patient, notes, lotId, createdAt);
 }
 
-async function executeDispense(drug, qty, channel, dispenser, patient, notes, lotId = null) {
+async function executeDispense(drug, qty, channel, dispenser, patient, notes, lotId = null, createdAt = null) {
     if (isDispensing) return;
 
     // 1. Lock immediately so the button cannot be clicked again
@@ -1535,7 +1489,8 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes, lo
                 dispensed_by: dispenser,
                 patient_name: patient,
                 notes: notes,
-                lot_id: lotId ? Number(lotId) : null
+                lot_id: lotId ? Number(lotId) : null,
+                created_at: createdAt || undefined
             })
         });
         const data = await res.json();
@@ -1543,14 +1498,14 @@ async function executeDispense(drug, qty, channel, dispenser, patient, notes, lo
             loadDrugs();
             loadDashboardStats();
             loadDispensingLogs();
-            showToast(`✅ ${data.message}`, 'success');
+            showToast(`${data.message}`, 'success');
         } else {
-            showToast('⚠️ ไม่สามารถตัดสต็อกได้: ' + (data.error || 'Unknown error'), 'error');
+            showToast('ไม่สามารถตัดสต็อกได้: ' + (data.error || 'Unknown error'), 'error');
             loadDrugs();
         }
     } catch (err) {
         console.error('Dispense error:', err);
-        showToast('❌ เกิดข้อผิดพลาดในการตัดสต็อก กรุณาตรวจสอบการเชื่อมต่อ', 'error');
+        showToast('เกิดข้อผิดพลาดในการตัดสต็อก กรุณาตรวจสอบการเชื่อมต่อ', 'error');
     } finally {
         isDispensing = false;
         if (submitBtn) {
@@ -1708,7 +1663,10 @@ function renderLogsTable(logs) {
                             ` : `
                                 <button class="log-btn" onclick="openSingleRequisition(${l.id})" title="พิมพ์ใบเบิกจ่ายยา (A4)">ใบเบิก</button>
                             `}
-                            ${!l.is_voided ? `<button class="log-btn log-btn-danger" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก">ยกเลิก</button>` : ''}
+                            ${!l.is_voided ? `
+                                <button type="button" class="log-btn" onclick="openEditDispenseModal(${l.id})" title="แก้ไขรายการจ่ายย้อนหลัง" style="color: #0284C7; border-color: #BAE6FD;">แก้ไข</button>
+                                <button class="log-btn log-btn-danger" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})" title="ยกเลิกรายการจ่ายและคืนยาเข้าสต็อก">ยกเลิก</button>
+                            ` : ''}
                         </div>
                     </td>
                 </tr>
@@ -1757,7 +1715,7 @@ function renderLogsTable(logs) {
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.65rem; padding-top: 0.65rem; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.5rem;">
                         <div>
-                            <span>คงเหลือ: ${l.balance_before} ➔ </span><strong class="log-after">${l.balance_after}</strong>
+                            <span>คงเหลือ: ${l.balance_before} &rarr; </span><strong class="log-after">${l.balance_after}</strong>
                         </div>
                         <div style="display: flex; gap: 0.4rem; align-items: center;">
                             ${channelBadge}
@@ -1775,7 +1733,10 @@ function renderLogsTable(logs) {
                         ` : `
                             <button class="log-btn" onclick="openSingleRequisition(${l.id})">ใบเบิก</button>
                         `}
-                        ${!l.is_voided ? `<button type="button" class="log-btn log-btn-danger" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})">ยกเลิก</button>` : ''}
+                        ${!l.is_voided ? `
+                            <button type="button" class="log-btn" onclick="openEditDispenseModal(${l.id})" style="color: #0284C7; border-color: #BAE6FD;">แก้ไข</button>
+                            <button type="button" class="log-btn log-btn-danger" onclick="voidDispense(${l.id}, '${escapeHtml(l.drug_name)}', ${l.quantity})">ยกเลิก</button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -1786,7 +1747,11 @@ function renderLogsTable(logs) {
 }
 
 async function voidDispense(logId, drugName, qty) {
-    const reason = prompt(`ต้องการยกเลิกรายการจ่ายยา "${drugName}" จำนวน ${qty} หน่วย ใช่หรือไม่?\n\nกรุณาระบุเหตุผลในการยกเลิก (เช่น สแกนยาผิดตัว, คนไข้เปลี่ยนยา):`, 'ยกเลิกรายการจ่ายยาโดยเจ้าหน้าที่');
+    const reason = await showPromptDialog(
+        `ต้องการยกเลิกรายการจ่ายยา "${drugName}" จำนวน ${qty} หน่วย ใช่หรือไม่?\nกรุณาระบุเหตุผลในการยกเลิก (เช่น สแกนผิดรายการ, คนไข้เปลี่ยนยา):`,
+        'ยกเลิกรายการจ่ายยาโดยเจ้าหน้าที่',
+        { title: 'ยืนยันยกเลิกการตัดสต็อก', confirmText: 'ยืนยันยกเลิก', danger: true, placeholder: 'ระบุเหตุผลการยกเลิก...' }
+    );
     if (!reason) return;
 
     try {
@@ -1802,11 +1767,151 @@ async function voidDispense(logId, drugName, qty) {
             loadDrugs();
             loadDashboardStats();
         } else {
-            alert('ไม่สามารถยกเลิกได้: ' + (data.error || 'เกิดข้อผิดพลาด'));
+            showToast('ไม่สามารถยกเลิกได้: ' + (data.error || 'เกิดข้อผิดพลาด'), 'error');
         }
     } catch (e) {
         console.error('Error voiding dispense:', e);
-        alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    }
+}
+
+async function openEditDispenseModal(logId) {
+    try {
+        const res = await fetch(`/api/dispense/logs/${logId}`);
+        const data = await res.json();
+        if (!data.ok || !data.log) {
+            showToast('ไม่พบข้อมูลรายการจ่ายนี้', 'error');
+            return;
+        }
+        const log = data.log;
+
+        document.getElementById('editDispenseId').value = log.id;
+        document.getElementById('editDispenseDrugId').value = log.drug_id;
+        document.getElementById('editDispenseOriginalQty').value = log.quantity;
+
+        document.getElementById('editDispensePreviewCode').innerText = log.drug_code || '-';
+        document.getElementById('editDispensePreviewName').innerText = log.drug_name || '-';
+        document.getElementById('editDispensePreviewLot').innerText = log.lot_number || '-';
+        document.getElementById('editDispenseUnitLabel').innerText = log.unit || 'หน่วย';
+
+        let dtVal = '';
+        if (log.created_at) {
+            dtVal = log.created_at.slice(0, 16).replace(' ', 'T');
+        }
+        document.getElementById('editDispenseCreatedAt').value = dtVal;
+
+        document.getElementById('editDispenseQty').value = log.quantity;
+        document.getElementById('editDispensePatient').value = log.patient_name || '';
+        document.getElementById('editDispenseDispensedBy').value = log.dispensed_by || '';
+        document.getElementById('editDispenseNotes').value = log.notes || '';
+
+        onEditDispenseQtyChange();
+
+        const modal = document.getElementById('editDispenseModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.classList.add('active');
+        }
+    } catch (e) {
+        console.error('Error fetching dispense log:', e);
+        showToast('เกิดข้อผิดพลาดในการโหลดข้อมูลรายการจ่าย', 'error');
+    }
+}
+
+function closeEditDispenseModal() {
+    const modal = document.getElementById('editDispenseModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+}
+
+function onEditDispenseQtyChange() {
+    const orig = parseFloat(document.getElementById('editDispenseOriginalQty')?.value || '0');
+    const cur = parseFloat(document.getElementById('editDispenseQty')?.value || '0');
+    const hint = document.getElementById('editDispenseQtyHint');
+    if (!hint) return;
+
+    if (isNaN(cur) || cur <= 0) {
+        hint.style.display = 'block';
+        hint.style.background = '#FEE2E2';
+        hint.style.color = '#B91C1C';
+        hint.style.border = '1px solid #FCA5A5';
+        hint.innerHTML = '<i class="fas fa-circle-exclamation"></i> จำนวนที่ตัดจ่ายต้องมากกว่า 0';
+        return;
+    }
+
+    const diff = cur - orig;
+    if (diff === 0) {
+        hint.style.display = 'none';
+    } else if (diff > 0) {
+        hint.style.display = 'block';
+        hint.style.background = '#FEF3C7';
+        hint.style.color = '#B45309';
+        hint.style.border = '1px solid #FDE68A';
+        hint.innerHTML = `<i class="fas fa-arrow-up"></i> ตัดจ่ายเพิ่ม <strong>+${diff}</strong> หน่วย (ระบบจะหักสต็อกในคลังเพิ่ม ${diff} หน่วย)`;
+    } else {
+        const restored = Math.abs(diff);
+        hint.style.display = 'block';
+        hint.style.background = '#D1FAE5';
+        hint.style.color = '#047857';
+        hint.style.border = '1px solid #A7F3D0';
+        hint.innerHTML = `<i class="fas fa-arrow-down"></i> ลดยอดตัดจ่ายลง <strong>${diff}</strong> หน่วย (ระบบจะ<strong>คืนยา ${restored} หน่วย</strong>กลับเข้าสต็อก)`;
+    }
+}
+
+async function saveEditDispense(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const logId = document.getElementById('editDispenseId')?.value;
+    if (!logId) return;
+
+    const qty = parseFloat(document.getElementById('editDispenseQty')?.value || '0');
+    if (isNaN(qty) || qty <= 0) {
+        showToast('กรุณาระบุจำนวนที่ตัดจ่ายให้ถูกต้อง (มากกว่า 0)', 'warning');
+        return;
+    }
+
+    const createdAt = document.getElementById('editDispenseCreatedAt')?.value || '';
+    const patient = (document.getElementById('editDispensePatient')?.value || '').trim();
+    const dispensedBy = (document.getElementById('editDispenseDispensedBy')?.value || '').trim();
+    const notes = (document.getElementById('editDispenseNotes')?.value || '').trim();
+
+    const btn = document.getElementById('btnSubmitEditDispense');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังบันทึก...';
+    }
+
+    try {
+        const res = await fetch(`/api/dispense/logs/${logId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                quantity: qty,
+                created_at: createdAt,
+                patient_name: patient,
+                dispensed_by: dispensedBy,
+                notes: notes
+            })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            closeEditDispenseModal();
+            showToast('แก้ไขรายการจ่ายยาย้อนหลังเรียบร้อยแล้ว', 'success');
+            loadDrugs();
+            loadDashboardStats();
+            loadDispensingLogs();
+        } else {
+            showToast('ไม่สามารถแก้ไขได้: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        console.error('Error saving dispense edit:', err);
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> บันทึกการแก้ไข';
+        }
     }
 }
 
@@ -2046,9 +2151,11 @@ async function handleDeleteLot() {
     const lotId = parseInt(document.getElementById('editLotId').value, 10);
     const lotNumber = (document.getElementById('editLotNumberInput').value || '').trim();
 
-    if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบล็อต "${lotNumber}" นี้ออกจากระบบ?\n(การลบจะไม่สามารถย้อนกลับได้)`)) {
-        return;
-    }
+    const ok = await showConfirmDialog(
+        `คุณแน่ใจหรือไม่ว่าต้องการลบล็อต "${lotNumber}" นี้ออกจากระบบ?\n(การลบจะไม่สามารถย้อนกลับได้)`,
+        { title: 'ยืนยันการลบล็อตยา', confirmText: 'ลบล็อต', danger: true }
+    );
+    if (!ok) return;
 
     const delBtn = document.getElementById('btnDeleteLot');
     if (delBtn) {
@@ -2848,7 +2955,7 @@ async function onCameraSelectChange(e) {
 async function flipCamera() {
     currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
     selectedCameraId = null; // reset specific ID so facingMode takes effect
-    showToast(`🔄 สลับไปใช้กล้อง${currentFacingMode === 'environment' ? 'หลัง' : 'หน้า'}...`, 'info');
+    showToast(`สลับไปใช้กล้อง${currentFacingMode === 'environment' ? 'หลัง' : 'หน้า'}...`, 'info');
     await stopScanner();
     await startScanner();
 }
@@ -2868,7 +2975,7 @@ async function toggleTorch() {
             btn.classList.toggle('btn-primary', isTorchOn);
             btn.classList.toggle('btn-outline', !isTorchOn);
         }
-        showToast(isTorchOn ? '💡 เปิดไฟฉายแล้ว' : 'ไฟฉายปิดแล้ว', 'info');
+        showToast(isTorchOn ? 'เปิดไฟฉายแล้ว' : 'ปิดไฟฉายแล้ว', 'info');
     } catch (e) {
         showToast('อุปกรณ์นี้ไม่รองรับการเปิดไฟฉาย', 'info');
     }
@@ -2992,7 +3099,7 @@ async function handleScannedCode(rawCode) {
     cleanCode = cleanCode.replace(/^PHARM:/i, '').trim();
 
     playMedicalBeep();
-    showToast(`🔍 กำลังตรวจสอบรหัส: ${cleanCode}...`, 'info');
+    showToast(`กำลังตรวจสอบรหัส: ${cleanCode}...`, 'info');
 
     try {
         let lookupUrl = `/api/drugs/scan-lookup?code=${encodeURIComponent(cleanCode)}`;
@@ -3008,9 +3115,9 @@ async function handleScannedCode(rawCode) {
             switchTab('inventory');
             openDispenseModalForDrug(drug.id, 'QR_SCAN', matchedLotId);
             if (data.matched_lot) {
-                showToast(`✅ พบยา: ${drug.name} (ล็อต: ${data.matched_lot.lot_number})`, 'success');
+                showToast(`พบยา: ${drug.name} (ล็อต: ${data.matched_lot.lot_number})`, 'success');
             } else {
-                showToast(`✅ พบยาในคลัง: ${drug.name}`, 'success');
+                showToast(`พบยาในคลัง: ${drug.name}`, 'success');
             }
         } else {
             // Open nice modal prompt instead of window.confirm!
@@ -3071,7 +3178,7 @@ function quickTestScan(code) {
 async function scanLocalImageFile(input) {
     if (!input.files || input.files.length === 0) return;
     const file = input.files[0];
-    showToast('🔍 กำลังวิเคราะห์รูปภาพ...', 'info');
+    showToast('กำลังวิเคราะห์รูปภาพ...', 'info');
 
     await stopScanner();
 
@@ -3116,12 +3223,12 @@ async function uploadPrescriptionForScan(input) {
                 document.getElementById('dispenseQtyInput').value = an.quantity || 1;
                 showToast(`AI OCR ตรวจพบ: ${an.drug.name} (จำนวน ${an.quantity})`, 'success');
             } else {
-                alert(an.message || 'ไม่สามารถตรวจพบชื่อยาจากภาพนี้ได้');
+                showToast(an.message || 'ไม่สามารถตรวจพบชื่อยาจากภาพนี้ได้', 'warning');
             }
         }
     } catch (e) {
         console.error('Scan error:', e);
-        alert('เกิดข้อผิดพลาดในการประมวลผลรูปภาพ');
+        showToast('เกิดข้อผิดพลาดในการประมวลผลรูปภาพ', 'error');
     } finally {
         if (btn) btn.innerHTML = '<i class="fas fa-camera"></i> อัปโหลดรูปใบสั่งยา / ซองยา';
         input.value = '';
@@ -3140,10 +3247,10 @@ async function syncWithGoogleSheet() {
         const res = await fetch('/api/sync-sheet', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
-            showToast('✅ ซิงก์ข้อมูลคลังยาลง Google Sheet สำเร็จแล้ว', 'success');
+            showToast('ซิงก์ข้อมูลคลังยาลง Google Sheet สำเร็จแล้ว', 'success');
             loadDashboardStats();
         } else {
-            alert('การซิงก์ Sheet: ' + (data.message || 'Error'));
+            showToast('การซิงก์ Sheet: ' + (data.message || 'Error'), 'error');
         }
     } catch (e) {
         console.error('Sync error:', e);
@@ -3293,6 +3400,13 @@ function setupEventListeners() {
             closeNewBarcodeModal();
             closeImageLightbox();
             closeApkInstallModal();
+            closeAuditLogModal();
+            closeBatchRequisitionModal();
+            closeMobileUserMenu();
+            closeRxCartModal();
+            closeEditDispenseModal();
+            closeEditLotModal();
+            closeLotQrModal();
         }
         const isEditing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
         if ((e.key === '/' && !isEditing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
@@ -3334,18 +3448,18 @@ function searchStockInLogs() {
     renderStockInTable(stockInLogsList);
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', duration = 3200) {
     const toast = document.createElement('div');
     toast.className = 'toast-alert';
-    const borderColor = type === 'success' ? 'var(--emerald-600)' : (type === 'error' ? 'var(--rose-600)' : 'var(--brand-500)');
-    const iconClass = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
-    const iconColor = type === 'success' ? 'var(--emerald-600)' : (type === 'error' ? 'var(--rose-600)' : 'var(--brand-500)');
+    const borderColor = type === 'success' ? 'var(--emerald-600)' : (type === 'error' ? 'var(--rose-600)' : (type === 'warning' ? 'var(--amber-600)' : 'var(--accent)'));
+    const iconClass = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-circle-exclamation' : (type === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-info'));
+    const iconColor = borderColor;
 
     toast.style.cssText = `
         position: fixed;
         bottom: 1.75rem;
         right: 1.75rem;
-        z-index: 10000;
+        z-index: 10040;
         background-color: var(--bg-surface);
         border: 1px solid var(--border-default);
         border-left: 4px solid ${borderColor};
@@ -3359,7 +3473,7 @@ function showToast(message, type = 'info') {
         display: inline-flex;
         align-items: center;
         gap: 0.65rem;
-        animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        animation: slideUp 0.2s ease;
         max-width: 90vw;
     `;
     toast.innerHTML = `<i class="fas ${iconClass}" style="color: ${iconColor}; font-size: 1rem;"></i> <span>${escapeHtml(message)}</span>`;
@@ -3368,9 +3482,107 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transform = 'translateY(8px)';
-        toast.style.transition = 'all 0.25s ease';
+        toast.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
         setTimeout(() => toast.remove(), 260);
-    }, 3200);
+    }, duration);
+}
+
+function showAppDialog({ title = 'ยืนยันการทำรายการ', message = '', mode = 'confirm', defaultValue = '', placeholder = '', confirmText = 'ยืนยัน', cancelText = 'ยกเลิก', danger = false } = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('appDialogModal');
+        const titleEl = document.getElementById('appDialogTitle');
+        const msgEl = document.getElementById('appDialogMessage');
+        const inputGroup = document.getElementById('appDialogInputGroup');
+        const inputEl = document.getElementById('appDialogInput');
+        const confirmBtn = document.getElementById('appDialogConfirmBtn');
+        const cancelBtn = document.getElementById('appDialogCancelBtn');
+        const closeBtn = document.getElementById('appDialogCloseBtn');
+
+        if (!modal || !confirmBtn || !cancelBtn) {
+            resolve(mode === 'prompt' ? defaultValue : true);
+            return;
+        }
+
+        titleEl.innerText = title;
+        msgEl.innerText = message;
+        confirmBtn.innerText = confirmText;
+        cancelBtn.innerText = cancelText;
+        confirmBtn.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+
+        if (mode === 'prompt') {
+            inputGroup.style.display = 'block';
+            inputEl.value = defaultValue || '';
+            inputEl.placeholder = placeholder || '';
+        } else {
+            inputGroup.style.display = 'none';
+            inputEl.value = '';
+        }
+
+        let settled = false;
+        const finish = (val) => {
+            if (settled) return;
+            settled = true;
+            document.removeEventListener('keydown', onKeyDown, true);
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            closeBtn.removeEventListener('click', onCancel);
+            modal.removeEventListener('click', onOverlayClick);
+            modal.classList.remove('active');
+            modal.style.display = 'none';
+            resolve(val);
+        };
+
+        const onConfirm = () => {
+            if (mode === 'prompt') {
+                const v = (inputEl.value || '').trim();
+                if (!v) {
+                    inputEl.focus();
+                    showToast('กรุณาระบุข้อมูลก่อนยืนยัน', 'warning');
+                    return;
+                }
+                finish(v);
+            } else {
+                finish(true);
+            }
+        };
+        const onCancel = () => finish(mode === 'prompt' ? null : false);
+        const onOverlayClick = (e) => { if (e.target === modal) onCancel(); };
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancel();
+            } else if (e.key === 'Enter' && mode === 'prompt' && document.activeElement === inputEl) {
+                e.preventDefault();
+                onConfirm();
+            }
+        };
+
+        confirmBtn.addEventListener('click', onConfirm);
+        cancelBtn.addEventListener('click', onCancel);
+        closeBtn.addEventListener('click', onCancel);
+        modal.addEventListener('click', onOverlayClick);
+        document.addEventListener('keydown', onKeyDown, true);
+
+        modal.style.display = 'flex';
+        requestAnimationFrame(() => {
+            modal.classList.add('active');
+            if (mode === 'prompt') {
+                inputEl.focus();
+                inputEl.select();
+            } else {
+                confirmBtn.focus();
+            }
+        });
+    });
+}
+
+function showConfirmDialog(message, options = {}) {
+    return showAppDialog({ ...options, message, mode: 'confirm' });
+}
+
+function showPromptDialog(message, defaultValue = '', options = {}) {
+    return showAppDialog({ ...options, message, defaultValue, mode: 'prompt' });
 }
 
 function escapeHtml(str) {
@@ -3579,9 +3791,11 @@ async function loadGoogleConfig() {
 }
 
 async function disconnectGoogleAccount() {
-    if (!confirm('คุณต้องการยกเลิกการเชื่อมต่อกับบัญชี Google นี้ใช่หรือไม่?\n(ข้อมูลในคลังยายังคงอยู่ในเครื่องตามปกติ)')) {
-        return;
-    }
+    const ok = await showConfirmDialog(
+        'คุณต้องการยกเลิกการเชื่อมต่อกับบัญชี Google นี้ใช่หรือไม่?\n(ข้อมูลในคลังยายังคงอยู่ในเครื่องตามปกติ)',
+        { title: 'ยืนยันยกเลิกการเชื่อมต่อ Google', confirmText: 'ยกเลิกเชื่อมต่อ', danger: true }
+    );
+    if (!ok) return;
     try {
         const res = await fetch('/api/google/disconnect', { method: 'POST' });
         const data = await res.json();
@@ -3590,11 +3804,11 @@ async function disconnectGoogleAccount() {
             loadGoogleConfig();
             loadDashboardStats();
         } else {
-            alert('ไม่สามารถตัดการเชื่อมต่อได้: ' + (data.error || 'Error'));
+            showToast('ไม่สามารถตัดการเชื่อมต่อได้: ' + (data.error || 'Error'), 'error');
         }
     } catch (e) {
         console.error('Disconnect error:', e);
-        alert('เกิดข้อผิดพลาดในการตัดการเชื่อมต่อ');
+        showToast('เกิดข้อผิดพลาดในการตัดการเชื่อมต่อ', 'error');
     }
 }
 
@@ -3617,15 +3831,15 @@ async function saveGoogleConfig(e) {
         });
         const data = await res.json();
         if (data.ok) {
-            showToast('✅ บันทึกและเชื่อมต่อ Google Drive & Sheets เรียบร้อยแล้ว', 'success');
+            showToast('บันทึกและเชื่อมต่อ Google Drive & Sheets เรียบร้อยแล้ว', 'success');
             loadGoogleConfig();
             loadDashboardStats();
         } else {
-            alert('ไม่สามารถบันทึกได้: ' + (data.error || 'Error'));
+            showToast('ไม่สามารถบันทึกได้: ' + (data.error || 'Error'), 'error');
         }
     } catch (e) {
         console.error('Save google config error:', e);
-        alert('เกิดข้อผิดพลาดในการบันทึก');
+        showToast('เกิดข้อผิดพลาดในการบันทึก', 'error');
     } finally {
         if (btn) btn.innerHTML = '<i class="fas fa-save"></i> บันทึกและทดสอบเชื่อมต่อ';
     }
@@ -3639,17 +3853,17 @@ async function autoCreateSheet() {
         const res = await fetch('/api/google/auto-create-sheet', { method: 'POST' });
         const data = await res.json();
         if (data.ok) {
-            showToast('🎉 สร้าง Google Sheet คลังยาสำเร็จแล้ว!', 'success');
+            showToast('สร้าง Google Sheet คลังยาสำเร็จแล้ว', 'success');
             loadGoogleConfig();
             loadDashboardStats();
         } else {
-            alert('ไม่สามารถสร้าง Sheet อัตโนมัติได้: ' + (data.error || 'กรุณาตรวจสอบสิทธิ์ของ Service Account'));
+            showToast('ไม่สามารถสร้าง Sheet อัตโนมัติได้: ' + (data.error || 'กรุณาตรวจสอบสิทธิ์ของ Service Account'), 'error');
         }
     } catch (e) {
         console.error('Auto create sheet error:', e);
-        alert('เกิดข้อผิดพลาดในการสร้าง Sheet');
+        showToast('เกิดข้อผิดพลาดในการสร้าง Sheet', 'error');
     } finally {
-        if (btn) btn.innerHTML = '✨ สร้าง Sheet ใหม่อัตโนมัติ';
+        if (btn) btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> สร้าง Sheet ใหม่อัตโนมัติ';
     }
 }
 
@@ -3672,7 +3886,7 @@ function exportInventoryExcel() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('📥 กำลังดาวน์โหลด Excel คลังยา…', 'success');
+    showToast('กำลังดาวน์โหลด Excel คลังยา...', 'success');
 }
 
 function exportLogsExcel() {
@@ -3694,7 +3908,7 @@ function exportLogsExcel() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('📥 กำลังดาวน์โหลด Excel ประวัติการตัดสต็อก…', 'success');
+    showToast('กำลังดาวน์โหลด Excel ประวัติการตัดสต็อก...', 'success');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -3727,15 +3941,33 @@ function openBatchPrescriptionRequisition(batchId) {
     window.open(url, '_blank');
 }
 
+function _localTodayIsoDate() {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+}
+
 function openBatchRequisitionModal() {
     const modal = document.getElementById('batchRequisitionModal');
     if (!modal) return;
 
-    // Pick active date filter from table if any
+    // Pick active date / range filter from logs table if any
+    const startFilter = document.getElementById('logStartDateFilter')?.value || '';
+    const endFilter = document.getElementById('logEndDateFilter')?.value || '';
     const activeDate = document.getElementById('logDateFilter')?.value || '';
     const activeChannel = document.getElementById('logChannelFilter')?.value || 'all';
 
-    if (activeDate) {
+    if (startFilter && endFilter && startFilter === endFilter) {
+        setRequisitionDateMode('specific');
+        const specInput = document.getElementById('reqSpecificDate');
+        if (specInput) specInput.value = startFilter;
+    } else if (startFilter || endFilter) {
+        setRequisitionDateMode('range');
+        const startInput = document.getElementById('reqStartDate');
+        const endInput = document.getElementById('reqEndDate');
+        const todayStr = _localTodayIsoDate();
+        if (startInput) startInput.value = startFilter || endFilter || todayStr;
+        if (endInput) endInput.value = endFilter || startFilter || todayStr;
+    } else if (activeDate) {
         setRequisitionDateMode('specific');
         const specInput = document.getElementById('reqSpecificDate');
         if (specInput) specInput.value = activeDate;
@@ -3775,8 +4007,8 @@ function setRequisitionDateMode(mode) {
     if (boxSpecific) boxSpecific.style.display = mode === 'specific' ? 'block' : 'none';
     if (boxRange) boxRange.style.display = mode === 'range' ? 'block' : 'none';
 
-    // Set defaults if empty
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Set defaults using local clinic date (not UTC)
+    const todayStr = _localTodayIsoDate();
     if (mode === 'specific') {
         const specInput = document.getElementById('reqSpecificDate');
         if (specInput && !specInput.value) specInput.value = todayStr;
@@ -3796,7 +4028,7 @@ function submitGenerateBatchRequisition() {
     const params = new URLSearchParams();
 
     if (currentReqDateMode === 'today') {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = _localTodayIsoDate();
         params.set('date', todayStr);
     } else if (currentReqDateMode === 'specific') {
         const dateVal = document.getElementById('reqSpecificDate')?.value;
@@ -3917,16 +4149,16 @@ async function saveLineConfig(e) {
         });
         const data = await res.json();
         if (data.ok) {
-            showToast('✅ บันทึกการตั้งค่าแจ้งเตือน LINE เรียบร้อยแล้ว', 'success');
+            showToast('บันทึกการตั้งค่าแจ้งเตือน LINE เรียบร้อยแล้ว', 'success');
             loadLineConfig();
             loadDashboardStats();
             loadDrugs();
         } else {
-            alert('ไม่สามารถบันทึกได้: ' + (data.error || 'Error'));
+            showToast('ไม่สามารถบันทึกได้: ' + (data.error || 'Error'), 'error');
         }
     } catch (err) {
         console.error('Save LINE config error:', err);
-        alert('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า LINE');
+        showToast('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า LINE', 'error');
     }
 }
 
@@ -3955,17 +4187,17 @@ async function sendLineExpiryAlertNow(force = true) {
         const data = await res.json();
 
         if (data.ok && data.sent) {
-            showToast(`🎉 ส่งแจ้งเตือนยาใกล้หมดอายุ (${data.expiring_count} รายการ) เข้า LINE สำเร็จแล้ว!`, 'success');
+            showToast(`ส่งแจ้งเตือนยาใกล้หมดอายุ (${data.expiring_count} รายการ) เข้า LINE สำเร็จแล้ว`, 'success');
             loadLineConfig();
             loadDashboardStats();
         } else if (data.ok && !data.sent) {
-            showToast(`ℹ️ ${data.message}`, 'info');
+            showToast(`${data.message}`, 'info');
         } else {
-            alert('ไม่สามารถส่งข้อความได้: ' + (data.error || 'Unknown Error'));
+            showToast('ไม่สามารถส่งข้อความได้: ' + (data.error || 'Unknown Error'), 'error');
         }
     } catch (err) {
         console.error('Send LINE alert error:', err);
-        showToast('⚠️ เกิดข้อผิดพลาดในการส่ง LINE Alert', 'error');
+        showToast('เกิดข้อผิดพลาดในการส่ง LINE Alert', 'error');
     } finally {
         if (btnToolbar) {
             btnToolbar.innerHTML = origToolbarText;
@@ -3997,10 +4229,13 @@ function populateStockInDrugSelect(selectedId = null) {
 }
 
 function openStockInModal(drugId = null) {
-    populateStockInDrugSelect(drugId);
-
     const form = document.getElementById('stockInForm');
     if (form) form.reset();
+
+    const selectEl = document.getElementById('stockInDrugSelect');
+    if (selectEl) selectEl.dataset.lastDrugId = '';
+
+    populateStockInDrugSelect(drugId);
 
     if (drugId) {
         const select = document.getElementById('stockInDrugSelect');
@@ -4035,9 +4270,23 @@ function onStockInDrugChange(event) {
     const select = document.getElementById('stockInDrugSelect');
     if (!select) return;
 
-    const drugId = select.value;
+    const drugId = select.value || '';
+    const prevDrugId = select.dataset.lastDrugId || '';
+    const drugSwitched = prevDrugId !== String(drugId);
     const preview = document.getElementById('stockInDrugPreview');
     const drug = allDrugs.find(d => Number(d.id) === Number(drugId));
+
+    const expiryInput = document.getElementById('stockInExpiryInput');
+    const lotInput = document.getElementById('stockInLotInput');
+    const costInput = document.getElementById('stockInCostInput');
+
+    // Prevent stale lot / expiry / cost from a previously selected drug leaking into the newly chosen drug
+    if (drugSwitched) {
+        if (expiryInput) expiryInput.value = '';
+        if (lotInput) lotInput.value = '';
+        if (costInput) costInput.value = '';
+        select.dataset.lastDrugId = String(drugId);
+    }
 
     if (drug && preview) {
         preview.style.display = 'block';
@@ -4052,21 +4301,26 @@ function onStockInDrugChange(event) {
         if (unitEl) unitEl.innerText = drug.unit;
 
         // Unit selector (box / tablet) and cost per box when the drug has a pack size
-        setupStockInUnit(drug);
+        setupStockInUnit(drug, drugSwitched);
 
         // Auto-fill expiry date if available
-        const expiryInput = document.getElementById('stockInExpiryInput');
         if (expiryInput && !expiryInput.value && drug.expiry_date) {
             expiryInput.value = drug.expiry_date;
         }
 
         // Auto-fill lot if available
-        const lotInput = document.getElementById('stockInLotInput');
         if (lotInput && !lotInput.value && drug.lot_number) {
             lotInput.value = drug.lot_number;
         }
     } else if (preview) {
         preview.style.display = 'none';
+        const costLbl = document.getElementById('stockInCostLabel');
+        if (costLbl) costLbl.textContent = 'ราคาทุน (บาท)';
+        const unitSel = document.getElementById('stockInUnitSelect');
+        if (unitSel) {
+            unitSel.innerHTML = '';
+            unitSel.style.display = 'none';
+        }
     }
 
     calcStockInTotal();
@@ -4094,7 +4348,7 @@ function updateStockInCostLabel(drug) {
     label.textContent = unitName ? `ราคาทุน (บาท / ${unitName})` : 'ราคาทุน (บาท)';
 }
 
-function setupStockInUnit(drug) {
+function setupStockInUnit(drug, resetCost = false) {
     const sel = document.getElementById('stockInUnitSelect');
     const costInput = document.getElementById('stockInCostInput');
     const ps = stockInPackSize(drug);
@@ -4110,7 +4364,7 @@ function setupStockInUnit(drug) {
             sel.style.display = 'none';
         }
     }
-    if (costInput && (!costInput.value || costInput.value === '0')) {
+    if (costInput && (resetCost || !costInput.value || costInput.value === '0')) {
         const c = Number(drug.cost) || 0;
         costInput.value = c ? (ps ? Math.round(c * ps * 100) / 100 : c) : '';
     }
@@ -4176,7 +4430,16 @@ async function submitStockIn(e) {
 
     const lotNumber = (document.getElementById('stockInLotInput')?.value || '').trim();
     const expiryDate = (document.getElementById('stockInExpiryInput')?.value || '').trim();
-    const costPerUnit = parseFloat(document.getElementById('stockInCostInput')?.value || 0);
+    const costRaw = (document.getElementById('stockInCostInput')?.value || '').trim();
+    let costPerUnit = null;
+    if (costRaw !== '') {
+        const parsedCost = parseFloat(costRaw);
+        if (isNaN(parsedCost) || parsedCost < 0) {
+            showToast('ราคาทุนต้องเป็นตัวเลขที่ไม่ติดลบ', 'warning');
+            return;
+        }
+        costPerUnit = parsedCost;
+    }
     const supplier = (document.getElementById('stockInSupplierInput')?.value || '').trim();
     const receivedBy = (document.getElementById('stockInReceivedByInput')?.value || '').trim();
     const notes = (document.getElementById('stockInNotesInput')?.value || '').trim();
@@ -4207,7 +4470,7 @@ async function submitStockIn(e) {
 
         const data = await res.json();
         if (data.ok) {
-            showToast(`✅ ${data.message}`, 'success');
+            showToast(`${data.message}`, 'success');
             closeStockInModal();
             loadDrugs();
             loadDashboardStats();
@@ -4217,7 +4480,7 @@ async function submitStockIn(e) {
                 loadAnalytics();
             }
         } else {
-            alert('ไม่สามารถรับเข้าสต็อกได้: ' + (data.error || 'Unknown error'));
+            showToast('ไม่สามารถรับเข้าสต็อกได้: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (err) {
         console.error('Submit Stock In error:', err);
@@ -4483,7 +4746,7 @@ function renderStockInTable(logs) {
                             </div>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.35rem;">
-                            <span>คงเหลือ: ${l.balance_before} ➔ <strong class="log-after">${l.balance_after}</strong></span>
+                            <span>คงเหลือ: ${l.balance_before} &rarr; <strong class="log-after">${l.balance_after}</strong></span>
                             ${l.lot_number ? `<span>Lot: <code>${escapeHtml(l.lot_number)}</code></span>` : ''}
                         </div>
                         <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
@@ -4552,7 +4815,7 @@ function exportStockInExcel() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('📥 กำลังดาวน์โหลด Excel ประวัติการรับยาเข้า…', 'success');
+    showToast('กำลังดาวน์โหลด Excel ประวัติการรับยาเข้า...', 'success');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -4673,10 +4936,36 @@ function openEditStockInModal(logId) {
         createdAtInput.value = val;
     }
 
-    document.getElementById('editStockInQty').value = log.quantity || 1;
+    const baseQty = Number(log.quantity || 0);
+    const ps = stockInPackSize(drug);
+    const editUnitSel = document.getElementById('editStockInUnitSelect');
+    let usePack = false;
+    if (ps) {
+        const noteMentionsPack = String(log.notes || '').includes('[รับ ');
+        const isExactMultiple = baseQty >= ps && Math.abs((baseQty / ps) - Math.round(baseQty / ps)) < 1e-6;
+        usePack = noteMentionsPack || isExactMultiple;
+        if (editUnitSel) {
+            editUnitSel.innerHTML = `<option value="pack">${escapeHtml(drug.pack_unit || 'กล่อง')}</option><option value="unit">${escapeHtml(unitStr)}</option>`;
+            editUnitSel.value = usePack ? 'pack' : 'unit';
+            editUnitSel.dataset.mode = editUnitSel.value;
+            editUnitSel.style.display = '';
+        }
+    } else if (editUnitSel) {
+        editUnitSel.innerHTML = '';
+        editUnitSel.dataset.mode = 'unit';
+        editUnitSel.style.display = 'none';
+    }
+
+    document.getElementById('editStockInQty').value = usePack
+        ? Math.round((baseQty / ps) * 10000) / 10000
+        : (baseQty || 1);
     document.getElementById('editStockInLot').value = log.lot_number || '';
     document.getElementById('editStockInExpiry').value = log.expiry_date || '';
-    document.getElementById('editStockInCost').value = log.cost_per_unit || '';
+    const unitCostVal = Number(log.cost_per_unit || 0);
+    document.getElementById('editStockInCost').value = unitCostVal > 0
+        ? (usePack ? Math.round(unitCostVal * ps * 100) / 100 : unitCostVal)
+        : '';
+    updateEditStockInCostLabel(drug, unitStr);
     let editRecVal = (log.received_by || '').trim();
     if (!editRecVal || editRecVal === 'เภสัชกร/เจ้าหน้าที่' || editRecVal === 'เจ้าหน้าที่') {
         editRecVal = window.CURRENT_USER_NAME || editRecVal || 'ผู้ดูแลระบบคลังยา (Admin)';
@@ -4759,38 +5048,87 @@ function closeEditStockInModal() {
     if (modal) modal.classList.remove('active');
 }
 
+function editStockInSelectedDrug() {
+    const did = document.getElementById('editStockInDrugId')?.value;
+    return (typeof allDrugs !== 'undefined' && did) ? allDrugs.find(d => Number(d.id) === Number(did)) : null;
+}
+
+function editStockInUsesPack() {
+    const sel = document.getElementById('editStockInUnitSelect');
+    return !!sel && sel.style.display !== 'none' && sel.value === 'pack';
+}
+
+function updateEditStockInCostLabel(drug, fallbackUnit = '') {
+    const label = document.getElementById('editStockInCostLabel');
+    if (!label) return;
+    const baseU = (drug && drug.unit) || fallbackUnit || document.getElementById('editPreviewUnit')?.textContent || 'หน่วย';
+    const unitName = editStockInUsesPack() ? ((drug && drug.pack_unit) || 'กล่อง') : baseU;
+    label.textContent = unitName ? `ราคาทุน (บาท / ${unitName})` : 'ราคาทุน (บาท)';
+}
+
+function onEditStockInUnitChange() {
+    const drug = editStockInSelectedDrug();
+    const sel = document.getElementById('editStockInUnitSelect');
+    const qtyInp = document.getElementById('editStockInQty');
+    const costInp = document.getElementById('editStockInCost');
+    const ps = stockInPackSize(drug);
+    if (!sel || !ps) return;
+    const prev = sel.dataset.mode || 'unit';
+    const now = sel.value;
+    if (prev !== now) {
+        if (qtyInp && qtyInp.value) {
+            const qv = parseFloat(qtyInp.value);
+            if (!isNaN(qv)) qtyInp.value = Math.round((now === 'pack' ? qv / ps : qv * ps) * 10000) / 10000;
+        }
+        if (costInp && costInp.value) {
+            const cv = parseFloat(costInp.value);
+            if (!isNaN(cv)) costInp.value = Math.round((now === 'unit' ? cv / ps : cv * ps) * 1000000) / 1000000;
+        }
+    }
+    sel.dataset.mode = now;
+    updateEditStockInCostLabel(drug);
+    calcEditStockInImpact();
+}
+
 function calcEditStockInImpact() {
+    const drug = editStockInSelectedDrug();
+    const ps = stockInPackSize(drug);
+    const usesPack = editStockInUsesPack() && ps > 1;
     const origQty = parseFloat(document.getElementById('editStockInOriginalQty')?.value || '0');
-    const newQty = parseFloat(document.getElementById('editStockInQty')?.value || '0');
+    const inputQty = parseFloat(document.getElementById('editStockInQty')?.value || '0');
+    const newBaseQty = usesPack ? (inputQty * ps) : inputQty;
     const cost = parseFloat(document.getElementById('editStockInCost')?.value || '0') || 0;
     
     const totalCostInp = document.getElementById('editStockInTotalCost');
     if (totalCostInp) {
-        totalCostInp.value = '฿' + (newQty * cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        totalCostInp.value = '฿' + (inputQty * cost).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     const curStock = parseFloat(document.getElementById('editPreviewCurrentStock')?.textContent || '0');
-    const diff = newQty - origQty;
+    const diff = Math.round((newBaseQty - origQty) * 1000000) / 1000000;
+    const unitLabel = (drug && drug.unit) || document.getElementById('editPreviewUnit')?.textContent || 'หน่วย';
     const hintEl = document.getElementById('editStockInImpactHint');
     const saveBtn = document.getElementById('btnSaveEditStockIn');
 
     if (hintEl) {
         if (diff === 0) {
-            hintEl.textContent = 'จำนวนรับเข้าเท่าเดิม ไม่กระทบสต็อกปัจจุบัน';
+            hintEl.textContent = usesPack
+                ? `รับเข้า ${inputQty} ${drug?.pack_unit || 'กล่อง'} (${newBaseQty} ${unitLabel}) • ยอดรวมเท่าเดิม ไม่กระทบสต็อกปัจจุบัน`
+                : 'จำนวนรับเข้าเท่าเดิม ไม่กระทบสต็อกปัจจุบัน';
             hintEl.style.color = 'var(--text-muted)';
             if (saveBtn) saveBtn.disabled = false;
         } else if (diff > 0) {
-            hintEl.innerHTML = `<i class="fas fa-arrow-trend-up"></i> สต็อกยาจะเพิ่มขึ้น +${diff} หน่วย (จากคงเหลือปัจจุบัน ${curStock} ➔ <strong>${curStock + diff}</strong>)`;
+            hintEl.innerHTML = `<i class="fas fa-arrow-trend-up"></i> สต็อกยาจะเพิ่มขึ้น +${diff} ${unitLabel} (จากคงเหลือ ${curStock} &rarr; <strong>${curStock + diff}</strong> ${unitLabel})`;
             hintEl.style.color = '#059669';
             if (saveBtn) saveBtn.disabled = false;
         } else {
             // User is reducing received quantity
             if (curStock + diff < 0) {
-                hintEl.innerHTML = `⚠️ <strong>ไม่สามารถลดยอดรับเข้าเหลือ ${newQty} ได้:</strong> ยานี้ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย หากลดลง ${Math.abs(diff)} หน่วย สต็อกจะติดลบ (${curStock + diff}) ระบบจึงล็อคป้องกันไว้`;
+                hintEl.innerHTML = `<i class="fas fa-triangle-exclamation"></i> <strong>ไม่สามารถลดยอดรับเข้าเหลือ ${newBaseQty} ${unitLabel} ได้:</strong> ยานี้ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} ${unitLabel} หากลดลง ${Math.abs(diff)} ${unitLabel} สต็อกจะติดลบ (${curStock + diff}) ระบบจึงล็อคป้องกันไว้`;
                 hintEl.style.color = '#DC2626';
                 if (saveBtn) saveBtn.disabled = true;
             } else {
-                hintEl.innerHTML = `<i class="fas fa-arrow-trend-down"></i> สต็อกยาจะลดลง ${diff} หน่วย (จากคงเหลือปัจจุบัน ${curStock} ➔ <strong>${curStock + diff}</strong>)`;
+                hintEl.innerHTML = `<i class="fas fa-arrow-trend-down"></i> สต็อกยาจะลดลง ${diff} ${unitLabel} (จากคงเหลือ ${curStock} &rarr; <strong>${curStock + diff}</strong> ${unitLabel})`;
                 hintEl.style.color = '#D97706';
                 if (saveBtn) saveBtn.disabled = false;
             }
@@ -4803,6 +5141,23 @@ async function saveEditStockIn(event) {
     const logId = document.getElementById('editStockInId')?.value;
     if (!logId) return;
 
+    const qtyVal = parseFloat(document.getElementById('editStockInQty')?.value || '');
+    if (isNaN(qtyVal) || qtyVal <= 0) {
+        showToast('จำนวนรับเข้าต้องมากกว่า 0', 'warning');
+        return;
+    }
+
+    const costRaw = (document.getElementById('editStockInCost')?.value || '').trim();
+    let costPerUnit = null;
+    if (costRaw !== '') {
+        const c = parseFloat(costRaw);
+        if (isNaN(c) || c < 0) {
+            showToast('ราคาทุนต้องเป็นตัวเลขที่ไม่ติดลบ', 'warning');
+            return;
+        }
+        costPerUnit = c;
+    }
+
     const btn = document.getElementById('btnSaveEditStockIn');
     if (btn) btn.disabled = true;
 
@@ -4812,10 +5167,11 @@ async function saveEditStockIn(event) {
     }
 
     const payload = {
-        quantity: parseFloat(document.getElementById('editStockInQty')?.value || '1'),
+        quantity: qtyVal,
+        input_unit: editStockInUsesPack() ? 'pack' : 'unit',
         lot_number: document.getElementById('editStockInLot')?.value.trim() || '',
         expiry_date: document.getElementById('editStockInExpiry')?.value || '',
-        cost_per_unit: parseFloat(document.getElementById('editStockInCost')?.value || '0') || 0,
+        cost_per_unit: costPerUnit,
         supplier: document.getElementById('editStockInSupplier')?.value.trim() || 'องค์การเภสัชกรรม (GPO)',
         received_by: document.getElementById('editStockInReceivedBy')?.value.trim() || '',
         notes: document.getElementById('editStockInNotes')?.value.trim() || '',
@@ -4868,12 +5224,16 @@ async function voidStockInRecord(logId) {
     const curStock = drug ? Number(drug.stock_qty || 0) : (log?.current_drug_stock != null ? Number(log.current_drug_stock) : null);
 
     if (curStock !== null && curStock < qty) {
-        showToast(`❌ ไม่สามารถยกเลิกรายการรับเข้าได้: ยา '${drugName}' ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${qty} หน่วย) ระบบบล็อกไว้เพื่อป้องกันไม่ให้สต็อกติดลบ`, 'error', 7000);
+        showToast(`ไม่สามารถยกเลิกรายการรับเข้าได้: ยา '${drugName}' ถูกตัดจ่ายไปแล้วจนเหลือในคลังเพียง ${curStock} หน่วย (น้อยกว่ายอดรับเข้า ${qty} หน่วย) ระบบบล็อกไว้เพื่อป้องกันไม่ให้สต็อกติดลบ`, 'error', 7000);
         return;
     }
 
-    const promptMsg = `คุณต้องการยกเลิกรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาในคลังจะถูกปรับลดลง ${qty} หน่วย (${curStock !== null ? curStock : 'ปัจจุบัน'} ➔ ${curStock !== null ? curStock - qty : ''})\n\nกรุณาระบุเหตุผลในการยกเลิก (เช่น เอกสารผิดพลาด, บันทึกยอดซ้ำ):`;
-    const reason = prompt(promptMsg, 'ยกเลิกรายการรับเข้าโดยเจ้าหน้าที่');
+    const promptMsg = `คุณต้องการยกเลิกรายการรับเข้ายา '${drugName}' จำนวน ${qty} หน่วย ใช่หรือไม่?\nสต็อกยาในคลังจะถูกปรับลดลง ${qty} หน่วย (${curStock !== null ? curStock : 'ปัจจุบัน'} &rarr; ${curStock !== null ? curStock - qty : ''})\n\nกรุณาระบุเหตุผลในการยกเลิก (เช่น เอกสารผิดพลาด, บันทึกยอดซ้ำ):`;
+    const reason = await showPromptDialog(
+        promptMsg.replace('&rarr;', '→'),
+        'ยกเลิกรายการรับเข้าโดยเจ้าหน้าที่',
+        { title: 'ยืนยันยกเลิกรายการรับเข้า', confirmText: 'ยืนยันยกเลิก', danger: true, placeholder: 'ระบุเหตุผลการยกเลิก...' }
+    );
     if (!reason) return;
 
     const urlCode = new URLSearchParams(window.location.search).get('code');
@@ -4998,9 +5358,10 @@ function renderAnalyticsCharts(analytics) {
         return;
     }
 
-    // Set common font
-    Chart.defaults.font.family = "'Anuphan', 'IBM Plex Sans Thai', 'Inter', sans-serif";
-    Chart.defaults.color = document.documentElement.getAttribute('data-theme') === 'dark' ? '#94A3B8' : '#64748B';
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(148, 163, 184, 0.14)' : 'rgba(15, 23, 42, 0.08)';
+    Chart.defaults.font.family = "'Anuphan', -apple-system, sans-serif";
+    Chart.defaults.color = isDark ? '#94A3B8' : '#64748B';
 
     // -------------------------------------------------------------
     // Chart 1: 7-Day Trend (In vs Out Grouped Bar)
@@ -5014,7 +5375,7 @@ function renderAnalyticsCharts(analytics) {
                 labels: weekly.labels || [],
                 datasets: [
                     {
-                        label: 'รับเข้าสต็อก (Stock In)',
+                        label: 'รับเข้าสต็อก',
                         data: weekly.received || [],
                         backgroundColor: 'rgba(16, 185, 129, 0.85)',
                         borderColor: '#10B981',
@@ -5024,7 +5385,7 @@ function renderAnalyticsCharts(analytics) {
                         categoryPercentage: 0.6
                     },
                     {
-                        label: 'ตัดสต็อกจ่าย (Dispensed)',
+                        label: 'ตัดสต็อกจ่าย',
                         data: weekly.dispensed || [],
                         backgroundColor: 'rgba(239, 68, 68, 0.85)',
                         borderColor: '#EF4444',
@@ -5050,9 +5411,11 @@ function renderAnalyticsCharts(analytics) {
                     }
                 },
                 scales: {
+                    x: { grid: { color: gridColor } },
                     y: {
                         beginAtZero: true,
-                        ticks: { precision: 0 }
+                        ticks: { precision: 0 },
+                        grid: { color: gridColor }
                     }
                 }
             }
@@ -5074,12 +5437,12 @@ function renderAnalyticsCharts(analytics) {
                     label: 'จำนวนหน่วยที่เบิกจ่าย',
                     data: topDrugs.map(d => d.total_qty),
                     backgroundColor: [
-                        'rgba(37, 99, 235, 0.85)',
-                        'rgba(13, 148, 136, 0.85)',
-                        'rgba(16, 185, 129, 0.85)',
-                        'rgba(245, 158, 11, 0.85)',
-                        'rgba(139, 92, 246, 0.85)',
-                        'rgba(244, 63, 94, 0.85)'
+                        '#0F766E',
+                        '#0D9488',
+                        '#14B8A6',
+                        '#334155',
+                        '#475569',
+                        '#64748B'
                     ],
                     borderRadius: 6
                 }]
@@ -5099,8 +5462,10 @@ function renderAnalyticsCharts(analytics) {
                 scales: {
                     x: {
                         beginAtZero: true,
-                        ticks: { precision: 0 }
-                    }
+                        ticks: { precision: 0 },
+                        grid: { color: gridColor }
+                    },
+                    y: { grid: { color: gridColor } }
                 }
             }
         });
@@ -5120,8 +5485,8 @@ function renderAnalyticsCharts(analytics) {
                 datasets: [{
                     data: cats.map(c => c.units),
                     backgroundColor: [
-                        '#2563EB', '#0D9488', '#10B981', '#F59E0B', 
-                        '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'
+                        '#0F766E', '#0D9488', '#14B8A6', '#2DD4BF',
+                        '#0284C7', '#334155', '#64748B', '#94A3B8'
                     ],
                     borderWidth: 2,
                     hoverOffset: 6
@@ -5224,7 +5589,7 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js')
             .then(reg => {
                 reg.update();
-                console.log('✅ ServiceWorker active:', reg.scope);
+                console.log('ServiceWorker active:', reg.scope);
             })
             .catch(err => console.warn('ServiceWorker registration error:', err));
     });
@@ -5276,18 +5641,18 @@ function openMobileUserMenu() {
     const isLineActive = lineDot && lineDot.classList.contains('active');
     if (lineBadge) {
         lineBadge.className = isLineActive ? 'badge badge-success' : 'badge badge-danger';
-        lineBadge.innerHTML = isLineActive ? '🟢 พร้อมใช้' : '🔴 ไม่พร้อม';
+        lineBadge.innerHTML = isLineActive ? '<span class="status-dot-inline is-ok"></span>พร้อมใช้' : '<span class="status-dot-inline is-err"></span>ไม่พร้อม';
     }
 
     const sheetDot = document.getElementById('sheetStatusDot');
     const isSheetActive = sheetDot && sheetDot.classList.contains('active');
     if (sheetBadge) {
         sheetBadge.className = isSheetActive ? 'badge badge-success' : 'badge badge-danger';
-        sheetBadge.innerHTML = isSheetActive ? '🟢 ซิงค์แล้ว' : '🔴 ไม่ได้ซิงค์';
+        sheetBadge.innerHTML = isSheetActive ? '<span class="status-dot-inline is-ok"></span>ซิงค์แล้ว' : '<span class="status-dot-inline is-err"></span>ไม่ได้ซิงค์';
     }
 
     if (avatarDot) {
-        avatarDot.style.backgroundColor = (isLineActive && isSheetActive) ? 'var(--emerald-500)' : 'var(--amber-500)';
+        avatarDot.style.backgroundColor = (isLineActive && isSheetActive) ? 'var(--emerald-500)' : 'var(--amber-600)';
     }
 
     modal.classList.add('active');
@@ -5314,9 +5679,9 @@ function triggerPwaInstall() {
     } else {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         if (isIOS) {
-            showToast('บน iPhone: แตะปุ่มแชร์ (Share) ➔ เลือก "เพิ่มไปยังหน้าจอโฮม"', 'info');
+            showToast('บน iPhone: แตะปุ่มแชร์ > เลือก "เพิ่มไปยังหน้าจอโฮม"', 'info');
         } else {
-            showToast('บน Android: แตะปุ่มจุดสามจุด (⋮) ➔ เลือก "ติดตั้งแอป" หรือ "เพิ่มลงในหน้าจอหลัก"', 'info');
+            showToast('บน Android: แตะปุ่มจุดสามจุด > เลือก "ติดตั้งแอป" หรือ "เพิ่มลงในหน้าจอหลัก"', 'info');
         }
     }
 }
@@ -5591,7 +5956,7 @@ function addToRxCart(drugId) {
             quantity: 1,
             notes: ''
         });
-        showToast(`🛒 เพิ่ม "${drug.name}" ลงในใบสั่งยาแล้ว`, 'success');
+        showToast(`เพิ่ม "${drug.name}" ลงในใบสั่งยาแล้ว`, 'success');
     }
 
     updateRxCartBadges();
@@ -5617,7 +5982,15 @@ function updateRxCartQty(drugId, newQty) {
     if (!item) return;
 
     let qty = parseFloat(newQty);
-    if (isNaN(qty) || qty <= 0) qty = 1;
+    if (isNaN(qty)) {
+        showToast('กรุณาระบุจำนวนเป็นตัวเลขที่ถูกต้อง', 'warning');
+        renderRxCartModal();
+        return;
+    }
+    if (qty <= 0) {
+        removeFromRxCart(drugId);
+        return;
+    }
 
     const curStock = Number(item.drug.stock_qty || 0);
     if (qty > curStock) {
@@ -5785,8 +6158,18 @@ function renderRxCartModal() {
     }).join('');
 }
 
+function setRxCartDateNow() {
+    const inp = document.getElementById('rxCartCreatedAtInput');
+    if (inp) {
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        inp.value = (new Date(now.getTime() - offset)).toISOString().slice(0, 16);
+    }
+}
+
 function openRxCartModal() {
     renderRxCartModal();
+    setRxCartDateNow();
     const modal = document.getElementById('rxCartModal');
     if (modal) {
         modal.style.display = 'flex';
@@ -5822,6 +6205,7 @@ async function submitRxBatchDispense() {
     const dept = (document.getElementById('rxCartDepartment')?.value || 'แผนกตรวจรักษา / หอผู้ป่วยสามัญ').trim();
     const dispenser = (document.getElementById('rxCartDispenserName')?.value || 'เภสัชกร / เจ้าหน้าที่ประจำคลังยา').trim();
     const notes = (document.getElementById('rxCartNotes')?.value || '').trim();
+    const createdAt = (document.getElementById('rxCartCreatedAtInput')?.value || '').trim();
 
     const submitBtn = document.getElementById('btnSubmitRxBatch');
     if (submitBtn) {
@@ -5840,6 +6224,7 @@ async function submitRxBatchDispense() {
             requester_dept: dept,
             dispensed_by: dispenser,
             notes: notes,
+            created_at: createdAt || undefined,
             channel: 'WEB_RX_CART'
         };
 
@@ -6167,7 +6552,8 @@ async function confirmDeleteCategory(catId, catName, drugCount) {
         confirmMsg = `หมวดหมู่ "${catName}" มียาอยู่ ${drugCount} รายการ!\n\nหากลบ ระบบจะย้ายยาทั้ง ${drugCount} รายการไปอยู่หมวดหมู่ "ทั่วไป" อัตโนมัติ เพื่อป้องกันข้อมูลสูญหาย\n\nต้องการยืนยันการลบหรือไม่?`;
     }
     
-    if (!confirm(confirmMsg)) return;
+    const ok = await showConfirmDialog(confirmMsg, { title: 'ยืนยันการลบหมวดหมู่', confirmText: 'ลบหมวดหมู่', danger: true });
+    if (!ok) return;
     
     try {
         const res = await fetch(`/api/categories/${catId}`, {
@@ -6196,7 +6582,7 @@ async function triggerManualDbBackup() {
         });
         const data = await res.json();
         if (data.ok) {
-            showToast(`💾 สำรองข้อมูลสำเร็จ: ${data.data.filename}`, 'success');
+            showToast(`สำรองข้อมูลสำเร็จ: ${data.data.filename}`, 'success');
         } else {
             showToast(`สำรองข้อมูลไม่สำเร็จ: ${data.error || 'เกิดข้อผิดพลาด'}`, 'error');
         }

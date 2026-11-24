@@ -20,6 +20,8 @@ agy_project/
 # local test databases / scratch data (never commit)
 test_*.db
 test_*.db-*
+scratch/
+
 
 # include production database and uploaded drug images
 !pharmacy.db

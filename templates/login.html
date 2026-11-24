@@ -2,13 +2,13 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>เข้าสู่ระบบ — ระบบจัดการคลังยาคลินิก PharmaCore</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เข้าสู่ระบบ — ระบบบริหารคลังยาและเวชภัณฑ์คลินิก</title>
     
-    <!-- Google Fonts: Anuphan & Inter -->
+    <!-- Google Fonts: Anuphan -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
     <!-- Favicon & App Icons -->
@@ -24,7 +24,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="PharmaCore">
+    <meta name="apple-mobile-web-app-title" content="คลังยาคลินิก">
 
     <style>
         *, *::before, *::after {
@@ -36,31 +36,51 @@
         :root {
             --bg-canvas: #F8FAFC;
             --bg-card: #FFFFFF;
+            --bg-input: #FFFFFF;
             --border-color: #E2E8F0;
             --text-heading: #0F172A;
             --text-body: #475569;
             --text-muted: #64748B;
             --teal-primary: #0F766E;
+            --teal-hover: #115E59;
             --teal-light: #F0FDFA;
             --teal-border: #CCFBF1;
+            --google-bg: #FFFFFF;
+            --google-hover: #F8FAFC;
+            --google-active: #F1F5F9;
+            --google-border: #CBD5E1;
+            --google-text: #1E293B;
+            --error-bg: #FEF2F2;
+            --error-border: #FECACA;
+            --error-text: #DC2626;
         }
 
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-canvas: #0D1117;
                 --bg-card: #161B22;
+                --bg-input: #0D1117;
                 --border-color: #30363D;
                 --text-heading: #F0F6FC;
-                --text-body: #8B949E;
-                --text-muted: #6E7681;
+                --text-body: #C9D1D9;
+                --text-muted: #8B949E;
                 --teal-primary: #0F766E;
-                --teal-light: rgba(15, 118, 110, 0.15);
-                --teal-border: rgba(15, 118, 110, 0.3);
+                --teal-hover: #0D9488;
+                --teal-light: rgba(20, 184, 166, 0.12);
+                --teal-border: rgba(20, 184, 166, 0.28);
+                --google-bg: #21262D;
+                --google-hover: #30363D;
+                --google-active: #373E47;
+                --google-border: #30363D;
+                --google-text: #F0F6FC;
+                --error-bg: rgba(248, 113, 113, 0.12);
+                --error-border: rgba(248, 113, 113, 0.35);
+                --error-text: #FCA5A5;
             }
         }
 
         body {
-            font-family: 'Anuphan', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Anuphan', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
@@ -78,24 +98,22 @@
             margin: 0 auto;
         }
 
-        /* Top Medical Emblem */
         .brand-header {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 1.75rem;
         }
 
         .brand-icon-box {
             width: 52px;
             height: 52px;
-            margin: 0 auto 1rem;
-            background: #0F766E;
-            border-radius: 14px;
+            margin: 0 auto 0.9rem;
+            background: var(--teal-primary);
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #FFFFFF;
-            font-size: 1.4rem;
-            box-shadow: 0 4px 12px rgba(15, 118, 110, 0.2);
+            font-size: 1.35rem;
         }
 
         .brand-name {
@@ -106,26 +124,25 @@
         }
 
         .brand-desc {
-            font-size: 0.825rem;
+            font-size: 0.85rem;
             color: var(--text-muted);
             margin-top: 0.25rem;
             font-weight: 500;
         }
 
-        /* Pristine White Card */
         .login-card {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 2.25rem 2rem;
-            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 20px 25px -5px rgba(15, 23, 42, 0.04);
+            border-radius: 14px;
+            padding: 2rem 1.85rem;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
         }
 
         .card-title {
             font-size: 1.25rem;
             font-weight: 700;
             color: var(--text-heading);
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.35rem;
             letter-spacing: -0.01em;
         }
 
@@ -133,17 +150,16 @@
             font-size: 0.875rem;
             color: var(--text-muted);
             line-height: 1.55;
-            margin-bottom: 1.75rem;
+            margin-bottom: 1.5rem;
         }
 
-        /* Error Notification */
         .error-banner {
             display: flex;
             align-items: flex-start;
             gap: 0.6rem;
-            background-color: #FEF2F2;
-            border: 1px solid #FECACA;
-            color: #DC2626;
+            background-color: var(--error-bg);
+            border: 1px solid var(--error-border);
+            color: var(--error-text);
             border-radius: 10px;
             padding: 0.75rem 0.9rem;
             font-size: 0.8125rem;
@@ -151,7 +167,6 @@
             line-height: 1.45;
         }
 
-        /* Official Standard Google Sign-In Button */
         .btn-google-standard {
             display: flex;
             align-items: center;
@@ -159,29 +174,26 @@
             gap: 0.75rem;
             width: 100%;
             height: 48px;
-            background-color: #FFFFFF;
-            border: 1px solid #DADCE0;
+            background-color: var(--google-bg);
+            border: 1px solid var(--google-border);
             border-radius: 10px;
-            color: #3C4043;
-            font-family: 'Google Sans', 'Roboto', 'Anuphan', sans-serif;
+            color: var(--google-text);
+            font-family: inherit;
             font-size: 0.9375rem;
-            font-weight: 500;
+            font-weight: 600;
             text-decoration: none;
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 1px 2px rgba(60, 64, 67, 0.08);
+            transition: background-color 0.15s ease, border-color 0.15s ease;
             user-select: none;
         }
 
         .btn-google-standard:hover {
-            background-color: #F8FAFD;
-            border-color: #C6C8CC;
-            box-shadow: 0 1px 3px rgba(60, 64, 67, 0.15), 0 1px 2px rgba(60, 64, 67, 0.1);
+            background-color: var(--google-hover);
+            border-color: var(--text-muted);
         }
 
         .btn-google-standard:active {
-            background-color: #F1F3F4;
-            transform: translateY(1px);
+            background-color: var(--google-active);
         }
 
         .google-icon {
@@ -190,9 +202,77 @@
             flex-shrink: 0;
         }
 
-        /* Security Assurance Banner */
+        .login-divider {
+            display: flex;
+            align-items: center;
+            margin: 1.25rem 0;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        .login-divider-line {
+            flex: 1;
+            height: 1px;
+            background-color: var(--border-color);
+        }
+        .login-divider-text {
+            padding: 0 0.75rem;
+        }
+
+        .passcode-form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .passcode-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .passcode-input {
+            flex: 1;
+            height: 42px;
+            padding: 0 0.85rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background: var(--bg-input);
+            color: var(--text-heading);
+        }
+        .passcode-btn {
+            height: 42px;
+            padding: 0 1.15rem;
+            background: var(--teal-primary);
+            color: #FFFFFF;
+            border: 1px solid var(--teal-primary);
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+            white-space: nowrap;
+        }
+        .passcode-btn:hover {
+            background: var(--teal-hover);
+            border-color: var(--teal-hover);
+        }
+        .passcode-error {
+            display: none;
+            color: var(--error-text);
+            font-size: 0.8rem;
+            padding-left: 2px;
+        }
+
+        a:focus-visible,
+        button:focus-visible,
+        input:focus-visible {
+            outline: 2px solid #14B8A6;
+            outline-offset: 2px;
+        }
+
         .security-notice {
-            margin-top: 1.5rem;
+            margin-top: 1.35rem;
             padding: 0.85rem 1rem;
             background-color: var(--teal-light);
             border: 1px solid var(--teal-border);
@@ -203,15 +283,15 @@
         }
 
         .security-icon {
-            color: var(--teal-primary);
+            color: #14B8A6;
             font-size: 0.95rem;
             margin-top: 2px;
             flex-shrink: 0;
         }
 
         .security-text-box {
-            font-size: 0.775rem;
-            line-height: 1.45;
+            font-size: 0.8rem;
+            line-height: 1.5;
             color: var(--text-body);
         }
 
@@ -221,43 +301,29 @@
             margin-bottom: 2px;
         }
 
-        /* Clinical App Footer */
         .login-footer {
-            margin-top: 2rem;
+            margin-top: 1.75rem;
             text-align: center;
             font-size: 0.775rem;
             color: var(--text-muted);
             line-height: 1.6;
         }
 
-        .system-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            background-color: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 0.25rem 0.65rem;
-            border-radius: 9999px;
-            font-size: 0.725rem;
-            margin-bottom: 0.5rem;
-            color: var(--text-muted);
-        }
-
-        .status-indicator {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background-color: #10B981;
-        }
-
         @media (max-width: 480px) {
             body {
                 padding: 1rem;
                 justify-content: flex-start;
-                padding-top: 3rem;
+                padding-top: 2.5rem;
             }
             .login-card {
-                padding: 1.75rem 1.25rem;
+                padding: 1.65rem 1.25rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
             }
         }
     </style>
@@ -265,30 +331,27 @@
 <body>
 
 <div class="login-wrapper">
-    <!-- Clinical Emblem & Identity -->
     <div class="brand-header">
         <div class="brand-icon-box">
             <i class="fas fa-notes-medical"></i>
         </div>
-        <h1 class="brand-name">PharmaCore</h1>
-        <p class="brand-desc">ระบบบริหารคลังยาและเวชภัณฑ์คลินิก</p>
+        <h1 class="brand-name">คลังยาและเวชภัณฑ์</h1>
+        <p class="brand-desc">ระบบบริหารคลังยาและการตัดสต็อกคลินิก</p>
     </div>
 
-    <!-- Login Authentication Card -->
     <div class="login-card">
         <h2 class="card-title">เข้าสู่ระบบ</h2>
-        <p class="card-subtitle">ลงชื่อเข้าใช้ด้วยบัญชี Google เพื่อเข้าใช้งานระบบจัดการคลังยา</p>
+        <p class="card-subtitle">ลงชื่อเข้าใช้ด้วยบัญชี Google หรือรหัสผ่านเจ้าหน้าที่เพื่อใช้งานระบบ</p>
 
         {% if error %}
-        <div class="error-banner">
+        <div class="error-banner" role="alert">
             <i class="fas fa-circle-exclamation" style="margin-top: 2px;"></i>
             <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <!-- Official Google Sign-In Button -->
         <a href="/api/auth/google/user-login" class="btn-google-standard" id="btnGoogleLogin">
-            <svg class="google-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+            <svg class="google-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
                 <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
                 <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
@@ -297,49 +360,39 @@
             <span>ลงชื่อเข้าใช้ด้วย Google</span>
         </a>
 
-        <!-- Divider -->
-        <div style="display: flex; align-items: center; margin: 1.25rem 0; color: var(--text-muted); font-size: 0.775rem;">
-            <div style="flex: 1; height: 1px; background-color: var(--border-color);"></div>
-            <span style="padding: 0 0.75rem;">หรือเข้าใช้งานด้วยรหัสผ่าน</span>
-            <div style="flex: 1; height: 1px; background-color: var(--border-color);"></div>
+        <div class="login-divider">
+            <div class="login-divider-line"></div>
+            <span class="login-divider-text">หรือเข้าใช้งานด้วยรหัสผ่าน</span>
+            <div class="login-divider-line"></div>
         </div>
 
-        <!-- Passcode Form -->
-        <form id="passcodeForm" onsubmit="handlePasscodeLogin(event)" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem;">
-            <div style="display: flex; gap: 0.45rem;">
-                <input type="password" id="inputPasscode" placeholder="กรอกรหัสผ่านเจ้าหน้าที่..." autocomplete="current-password" required
-                    style="flex: 1; height: 40px; padding: 0 0.85rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.84rem; background: var(--bg-card); color: var(--text-heading); outline: none;">
-                <button type="submit" id="btnSubmitPasscode"
-                    style="height: 40px; padding: 0 1.1rem; background: var(--teal-primary); color: #fff; border: none; border-radius: 8px; font-weight: 600; font-size: 0.84rem; cursor: pointer;">
+        <form id="passcodeForm" onsubmit="handlePasscodeLogin(event)" class="passcode-form">
+            <div class="passcode-row">
+                <input type="password" id="inputPasscode" class="passcode-input" aria-label="รหัสผ่านเจ้าหน้าที่" placeholder="กรอกรหัสผ่านเจ้าหน้าที่..." autocomplete="current-password" required>
+                <button type="submit" id="btnSubmitPasscode" class="passcode-btn">
                     เข้าสู่ระบบ
                 </button>
             </div>
-            <div id="passcodeError" style="display: none; color: #E11D48; font-size: 0.75rem; padding-left: 2px;"></div>
+            <div id="passcodeError" class="passcode-error" role="alert"></div>
         </form>
 
-        <!-- Security & Audit Trail Notice -->
         <div class="security-notice">
-            <i class="fas fa-shield-halved security-icon"></i>
+            <i class="fas fa-shield-halved security-icon" aria-hidden="true"></i>
             <div class="security-text-box">
-                <div class="security-title">ระบบความปลอดภัยบุคลากรทางการแพทย์</div>
-                <div>เฉพาะผู้ได้รับอนุญาตเท่านั้น ทุกรายการเบิกจ่ายและการแก้ไขจะถูกบันทึกใน Audit Trail เพื่อความถูกต้องตามมาตรฐานวิชาชีพ</div>
+                <div class="security-title">ระบบบันทึกประวัติผู้ใช้งาน</div>
+                <div>เฉพาะบุคลากรที่ได้รับอนุญาตเท่านั้น ทุกรายการเบิกจ่ายและแก้ไขจะถูกบันทึกอัตโนมัติ</div>
             </div>
         </div>
     </div>
 
-    <!-- Minimal Clinical Footer -->
     <div class="login-footer">
-        <div class="system-pill">
-            <span class="status-indicator"></span>
-            <span>ระบบคลังยาพร้อมทำงานปกติ (Operational)</span>
-        </div>
-        <div>PharmaCore Clinic Inventory System &copy; 2026</div>
+        <div>{{ hospital_name | default('งานเภสัชกรรมและคลังยาคลินิก') }}</div>
     </div>
 </div>
 
 <script>
     document.getElementById('btnGoogleLogin').addEventListener('click', function() {
-        this.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="color:#0F766E; font-size:1.05rem;"></i><span>กำลังเชื่อมต่อไปยัง Google...</span>';
+        this.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="font-size:1.05rem;"></i><span>กำลังเชื่อมต่อไปยัง Google...</span>';
         this.style.opacity = '0.85';
         this.style.pointerEvents = 'none';
     });

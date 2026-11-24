@@ -121,19 +121,19 @@
             font-weight: 600;
             cursor: pointer;
             border: none;
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
             text-decoration: none;
             white-space: nowrap;
         }
 
         .btn-print {
-            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            background: #0F766E;
             color: #FFFFFF;
-            box-shadow: 0 2px 6px rgba(37,99,235,0.35);
+            border: 1px solid #0F766E;
         }
         .btn-print:hover {
-            background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
-            transform: translateY(-1px);
+            background: #115E59;
+            border-color: #115E59;
         }
         .btn-print * { color: #FFFFFF; }
 
@@ -483,13 +483,13 @@
         <div class="doc-header">
             <img src="/static/img/garuda.svg" alt="ตราครุฑ" class="garuda-logo">
             <div class="doc-title">ใบเบิกจ่ายยาและเวชภัณฑ์</div>
-            <div class="doc-subtitle">งานเภสัชกรรมและคลังยา (Pharmacy & Medical Supply Division)</div>
+            <div class="doc-subtitle">งานเภสัชกรรมและคลังยา</div>
             <div class="doc-hospital">{{ hospital_name | default('โรงพยาบาลส่งเสริมสุขภาพตำบลดอนนาลับ อำเภอบ้านดุง จังหวัดอุดรธานี') }}</div>
         </div>
 
         {% if is_voided %}
         <div style="background: #FEE2E2; border: 2px dashed #DC2626; color: #DC2626; padding: 10px 16px; border-radius: 6px; text-align: center; margin-bottom: 16px; font-weight: 700; font-size: 16px;">
-            ⚠️ ใบเบิกจ่ายยานี้ถูกยกเลิกแล้ว (VOIDED) — คืนยาเข้าคลังเรียบร้อยแล้ว ห้ามนำไปจ่ายยาซ้ำ
+            <i class="fas fa-triangle-exclamation" style="color: #DC2626; margin-right: 6px;"></i> ใบเบิกจ่ายยานี้ถูกยกเลิกแล้ว — คืนยาเข้าคลังเรียบร้อยแล้ว ห้ามนำไปจ่ายยาซ้ำ
             {% if void_reason %}<div style="font-size: 13px; font-weight: 500; margin-top: 3px; color: #B91C1C;">เหตุผลในการยกเลิก: {{ void_reason }}</div>{% endif %}
         </div>
         {% endif %}

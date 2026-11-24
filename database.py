@@ -6,12 +6,14 @@ Manages drug master, dispensing logs, categories, and audit trail.
 import sqlite3
 import json
 import secrets
+import logging
 import threading
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from config import Config
 
+logger = logging.getLogger("pharmacore.database")
 _db_write_lock = threading.RLock()
 
 BANGKOK_TZ = ZoneInfo("Asia/Bangkok")
@@ -174,8 +176,9 @@ def init_db():
             )
         """)
 
-        # Migration: Ensure void tracking and batch_id columns exist in existing dispensing_logs
+        # Migration: Ensure void tracking, multi-lot allocations, and batch_id columns exist in existing dispensing_logs
         for col, col_type in [("is_voided", "INTEGER DEFAULT 0"), ("void_reason", "TEXT DEFAULT ''"), ("voided_by", "TEXT DEFAULT ''"), ("voided_at", "TEXT DEFAULT ''"), ("batch_id", "TEXT DEFAULT ''"),
+                          ("lot_allocations", "TEXT DEFAULT ''"),
                           # price / cost per unit AT THE TIME of dispensing (old rows stay NULL and fall back to the drug's current values)
                           ("unit_price", "REAL"), ("unit_cost", "REAL")]:
             try:
@@ -369,86 +372,7 @@ def get_setting(key, default=None):
 # User Authentication & Audit Log
 # ─────────────────────────────────────────────────────────────
 
-def add_or_update_user(email: str, name: str = '', picture_url: str = '', google_sub: str = '') -> dict:
-    """Upsert a Google-authenticated user. Returns the user dict."""
-    conn = get_db()
-    now = get_now_str()
-    with conn:
-        conn.execute("""
-            INSERT INTO users (email, name, picture_url, google_sub, last_login, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(email) DO UPDATE SET
-                name = excluded.name,
-                picture_url = excluded.picture_url,
-                google_sub = excluded.google_sub,
-                last_login = excluded.last_login
-        """, (email, name, picture_url, google_sub, now, now))
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else {"email": email, "name": name, "picture_url": picture_url}
-
-
-def get_user_by_email(email: str) -> dict | None:
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE email = ? AND is_active = 1", (email,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
-def log_audit_action(user_email: str, user_name: str, action: str,
-                     target_type: str = '', target_id: str = '',
-                     target_name: str = '', detail: str = '', ip_address: str = ''):
-    """Write one audit log row. Non-blocking — errors are silently ignored."""
-    try:
-        conn = get_db()
-        with conn:
-            conn.execute("""
-                INSERT INTO audit_logs
-                    (user_email, user_name, action, target_type, target_id, target_name, detail, ip_address, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (user_email, user_name, action, target_type,
-                   str(target_id), target_name, detail, ip_address, get_now_str()))
-        conn.close()
-    except Exception:
-        pass
-
-
-def get_audit_logs(limit: int = 200, user_email: str = None,
-                   action: str = None, date_filter: str = None) -> list:
-    conn = get_db()
-    cursor = conn.cursor()
-    wheres, params = [], []
-    if user_email:
-        wheres.append("user_email = ?")
-        params.append(user_email)
-    if action:
-        wheres.append("action = ?")
-        params.append(action)
-    if date_filter:
-        wheres.append("DATE(created_at) = ?")
-        params.append(date_filter)
-    sql = "SELECT * FROM audit_logs"
-    if wheres:
-        sql += " WHERE " + " AND ".join(wheres)
-    sql += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    cursor.execute(sql, params)
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return rows
-
-
-def get_all_users() -> list:
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, email, name, picture_url, last_login, is_active, created_at FROM users ORDER BY last_login DESC")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return rows
+# Duplicate user & audit helpers removed (canonical versions defined below near app settings)
 
 def set_setting(key, value):
     conn = get_db()
@@ -555,50 +479,116 @@ def parse_expiry_date(date_str):
             pass
     return None
 
-def get_expiring_drugs(days=60):
-    """
-    Get all drugs expiring within specified days (or already expired).
-    Returns list sorted by days_left ascending (most urgent first).
-    """
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM drugs WHERE expiry_date IS NOT NULL AND TRIM(expiry_date) != ''")
-    rows = [dict(r) for r in cursor.fetchall()]
-    conn.close()
+def _annotate_expiry_fields(record, today=None):
+    """Populate days_left, days_until_expiry, urgency, and color metadata from expiry_date."""
+    if today is None:
+        today = datetime.now(BANGKOK_TZ).date()
+    exp_date = parse_expiry_date(record.get("expiry_date"))
+    if exp_date:
+        days_left = (exp_date - today).days
+        record["days_left"] = days_left
+        record["days_until_expiry"] = days_left
+        record["is_expired"] = days_left < 0
+        record["is_expiring_soon"] = days_left <= 60
+        if days_left < 0:
+            record["urgency"] = "expired"
+            record["urgency_text"] = f"หมดอายุแล้ว ({abs(days_left)} วัน)"
+            record["status_color"] = "#EF4444"
+        elif days_left <= 30:
+            record["urgency"] = "critical"
+            record["urgency_text"] = f"ด่วนมาก ({days_left} วัน)"
+            record["status_color"] = "#F43F5E"
+        elif days_left <= 60:
+            record["urgency"] = "warning"
+            record["urgency_text"] = f"ใกล้หมด ({days_left} วัน)"
+            record["status_color"] = "#F59E0B"
+        else:
+            record["urgency"] = "normal"
+            record["urgency_text"] = f"ปกติ ({days_left} วัน)"
+            record["status_color"] = "#10B981"
+    else:
+        record["days_left"] = None
+        record["days_until_expiry"] = None
+        record["is_expired"] = False
+        record["is_expiring_soon"] = False
+        record["urgency"] = "unknown"
+        record["urgency_text"] = "-"
+        record["status_color"] = "#64748B"
+    return exp_date
+
+
+def _mark_fefo_recommended(lots):
+    """Flag the first active lot with remaining stock > 0 as FEFO recommended."""
+    marked = False
+    for lot in lots:
+        is_rec = (not marked) and bool(lot.get("is_active", 1)) and float(lot.get("stock_qty") or 0) > 0
+        lot["is_fefo_recommended"] = is_rec
+        if is_rec:
+            marked = True
+
+
+def _get_in_stock_expiry_records(conn=None, max_days=60):
+    """Evaluate in-stock drugs using earliest active lot with stock > 0 (fallback to drug expiry)."""
+    should_close = conn is None
+    if conn is None:
+        conn = get_db()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM drugs WHERE stock_qty > 0")
+        drug_rows = [dict(r) for r in cursor.fetchall()]
+
+        cursor.execute("""
+            SELECT drug_id, lot_number, expiry_date, stock_qty, id
+            FROM drug_lots
+            WHERE is_active = 1 AND stock_qty > 0 AND expiry_date IS NOT NULL AND TRIM(expiry_date) != ''
+            ORDER BY drug_id ASC, id ASC
+        """)
+        lot_rows = [dict(r) for r in cursor.fetchall()]
+    finally:
+        if should_close:
+            conn.close()
 
     today = datetime.now(BANGKOK_TZ).date()
-    expiring = []
-    for d in rows:
-        exp_date = parse_expiry_date(d.get("expiry_date"))
+    earliest_lot_by_drug = {}
+    for l in lot_rows:
+        p = parse_expiry_date(l.get("expiry_date"))
+        if not p:
+            continue
+        did = l["drug_id"]
+        cur = earliest_lot_by_drug.get(did)
+        if cur is None or (p, l["id"]) < (cur[0], cur[2]):
+            earliest_lot_by_drug[did] = (p, l, l["id"])
+
+    results = []
+    for d in drug_rows:
+        d_copy = dict(d)
+        lot_pick = earliest_lot_by_drug.get(d["id"])
+        if lot_pick:
+            d_copy["expiry_date"] = lot_pick[1].get("expiry_date") or d_copy.get("expiry_date") or ""
+            if lot_pick[1].get("lot_number"):
+                d_copy["lot_number"] = lot_pick[1]["lot_number"]
+        exp_date = _annotate_expiry_fields(d_copy, today)
         if not exp_date:
             continue
-        days_left = (exp_date - today).days
-        if days_left <= days:
-            d_copy = dict(d)
-            d_copy["days_left"] = days_left
-            d_copy["is_expired"] = days_left < 0
-            if days_left < 0:
-                d_copy["urgency"] = "expired"
-                d_copy["urgency_text"] = f"หมดอายุแล้ว ({abs(days_left)} วัน)"
-                d_copy["status_color"] = "#EF4444"
-            elif days_left <= 30:
-                d_copy["urgency"] = "critical"
-                d_copy["urgency_text"] = f"วิกฤต (เหลือ {days_left} วัน)"
-                d_copy["status_color"] = "#F43F5E"
-            else:
-                d_copy["urgency"] = "warning"
-                d_copy["urgency_text"] = f"ใกล้หมดอายุ (เหลือ {days_left} วัน)"
-                d_copy["status_color"] = "#F59E0B"
-            expiring.append(d_copy)
+        if max_days is not None and d_copy["days_left"] > max_days:
+            continue
+        results.append(d_copy)
 
-    # Sort by days_left ascending
-    expiring.sort(key=lambda x: x["days_left"])
-    return expiring
+    results.sort(key=lambda x: x["days_left"])
+    return results
+
+
+def get_expiring_drugs(days=60):
+    """
+    Get all in-stock drugs expiring within specified days (or already expired).
+    Evaluates active lots with stock > 0 first and sorts by days_left ascending.
+    """
+    return _get_in_stock_expiry_records(max_days=days)
 
 def get_drug_lots(drug_id, active_only=False):
     """
     Fetch all lots for a specific drug, ordered by expiry_date ASC (FEFO).
-    Calculates days_left, urgency status, and returns list of lot dicts.
+    Calculates days_left, urgency status, FEFO flag, and returns list of lot dicts.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -613,30 +603,8 @@ def get_drug_lots(drug_id, active_only=False):
 
     today = datetime.now(BANGKOK_TZ).date()
     for lot in rows:
-        exp_date = parse_expiry_date(lot.get("expiry_date"))
-        if exp_date:
-            days_left = (exp_date - today).days
-            lot["days_left"] = days_left
-            lot["is_expired"] = days_left < 0
-            lot["is_expiring_soon"] = days_left <= 60
-            if days_left < 0:
-                lot["urgency"] = "expired"
-                lot["urgency_text"] = f"หมดอายุแล้ว ({abs(days_left)} วัน)"
-            elif days_left <= 30:
-                lot["urgency"] = "critical"
-                lot["urgency_text"] = f"ด่วนมาก ({days_left} วัน)"
-            elif days_left <= 60:
-                lot["urgency"] = "warning"
-                lot["urgency_text"] = f"ใกล้หมด ({days_left} วัน)"
-            else:
-                lot["urgency"] = "normal"
-                lot["urgency_text"] = f"ปกติ ({days_left} วัน)"
-        else:
-            lot["days_left"] = None
-            lot["is_expired"] = False
-            lot["is_expiring_soon"] = False
-            lot["urgency"] = "unknown"
-            lot["urgency_text"] = "-"
+        _annotate_expiry_fields(lot, today)
+    _mark_fefo_recommended(rows)
     return rows
 
 def get_lot_by_id(lot_id):
@@ -656,17 +624,7 @@ def get_lot_by_id(lot_id):
     if not row:
         return None
     lot = dict(row)
-    today = datetime.now(BANGKOK_TZ).date()
-    exp_date = parse_expiry_date(lot.get("expiry_date"))
-    if exp_date:
-        days_left = (exp_date - today).days
-        lot["days_left"] = days_left
-        lot["is_expired"] = days_left < 0
-        lot["is_expiring_soon"] = days_left <= 60
-    else:
-        lot["days_left"] = None
-        lot["is_expired"] = False
-        lot["is_expiring_soon"] = False
+    _annotate_expiry_fields(lot)
     return lot
 
 def sync_drug_master_fefo(drug_id, conn=None):
@@ -682,9 +640,11 @@ def sync_drug_master_fefo(drug_id, conn=None):
     
     try:
         cur = conn.cursor()
-        # Sum total stock across lots
-        cur.execute("SELECT COALESCE(ROUND(SUM(stock_qty), 6), 0) FROM drug_lots WHERE drug_id = ? AND is_active = 1", (drug_id,))
-        total_stock = cur.fetchone()[0]
+        # Sum total stock across active lots
+        cur.execute("SELECT COUNT(*), COALESCE(ROUND(SUM(stock_qty), 6), 0) FROM drug_lots WHERE drug_id = ? AND is_active = 1", (drug_id,))
+        lot_count, total_stock = cur.fetchone()
+        if not lot_count:
+            return
 
         # Get earliest active lot with stock > 0 for FEFO tracking
         cur.execute("""
@@ -869,66 +829,22 @@ def get_all_drugs(search_query=None, category=None, low_stock_only=False, expiri
 
     lots_by_drug = {}
     for lot in all_lots_rows:
-        exp_date = parse_expiry_date(lot.get("expiry_date"))
-        if exp_date:
-            days_left = (exp_date - today).days
-            lot["days_left"] = days_left
-            lot["is_expired"] = days_left < 0
-            lot["is_expiring_soon"] = days_left <= 60
-            if days_left < 0:
-                lot["urgency"] = "expired"
-                lot["urgency_text"] = f"หมดอายุแล้ว ({abs(days_left)} วัน)"
-            elif days_left <= 30:
-                lot["urgency"] = "critical"
-                lot["urgency_text"] = f"ด่วนมาก ({days_left} วัน)"
-            elif days_left <= 60:
-                lot["urgency"] = "warning"
-                lot["urgency_text"] = f"ใกล้หมด ({days_left} วัน)"
-            else:
-                lot["urgency"] = "normal"
-                lot["urgency_text"] = f"ปกติ ({days_left} วัน)"
-        else:
-            lot["days_left"] = None
-            lot["is_expired"] = False
-            lot["is_expiring_soon"] = False
-            lot["urgency"] = "unknown"
-            lot["urgency_text"] = "-"
-
+        _annotate_expiry_fields(lot, today)
         d_id = lot["drug_id"]
         if d_id not in lots_by_drug:
             lots_by_drug[d_id] = []
         lots_by_drug[d_id].append(lot)
 
+    for d_lots in lots_by_drug.values():
+        _mark_fefo_recommended(d_lots)
+
     processed = []
     for d in rows:
-        exp_date = parse_expiry_date(d.get("expiry_date"))
-        if exp_date:
-            days_left = (exp_date - today).days
-            d["days_left"] = days_left
-            d["is_expired"] = days_left < 0
-            d["is_expiring_soon"] = days_left <= 60
-            if days_left < 0:
-                d["urgency"] = "expired"
-                d["urgency_text"] = f"หมดอายุแล้ว ({abs(days_left)} วัน)"
-            elif days_left <= 30:
-                d["urgency"] = "critical"
-                d["urgency_text"] = f"ด่วนมาก ({days_left} วัน)"
-            elif days_left <= 60:
-                d["urgency"] = "warning"
-                d["urgency_text"] = f"ใกล้หมด ({days_left} วัน)"
-            else:
-                d["urgency"] = "normal"
-                d["urgency_text"] = f"ปกติ ({days_left} วัน)"
-        else:
-            d["days_left"] = None
-            d["is_expired"] = False
-            d["is_expiring_soon"] = False
-            d["urgency"] = "unknown"
-            d["urgency_text"] = "-"
+        _annotate_expiry_fields(d, today)
 
         if expiring_soon_days is not None:
             max_days = int(expiring_soon_days)
-            if d["days_left"] is None or d["days_left"] > max_days:
+            if d["days_left"] is None or d["days_left"] > max_days or float(d.get("stock_qty") or 0) <= 0:
                 continue
 
         drug_lots = lots_by_drug.get(d["id"], [])
@@ -1097,11 +1013,16 @@ def add_drug(data):
     return get_drug_by_id(drug_id)
 
 def update_drug(drug_id, data):
-    """Update existing drug details."""
+    """Update existing drug details and keep primary FEFO lot metadata synchronized."""
     conn = get_db()
     now = get_now_str()
     with conn:
-        conn.execute("""
+        cur = conn.cursor()
+        cur.execute("SELECT code FROM drugs WHERE id = ?", (drug_id,))
+        code_row = cur.fetchone()
+        drug_code = code_row["code"] if code_row else ""
+
+        cur.execute("""
             UPDATE drugs SET
                 name = COALESCE(?, name),
                 generic_name = COALESCE(?, generic_name),
@@ -1151,18 +1072,51 @@ def update_drug(drug_id, data):
             pack_updates["opening_fiscal_year"] = str(data.get("opening_fiscal_year") or "").strip()
         if pack_updates:
             # the keys above are fixed column names, never user input
-            conn.execute(f"UPDATE drugs SET {', '.join(k + ' = ?' for k in pack_updates)} WHERE id = ?",
+            cur.execute(f"UPDATE drugs SET {', '.join(k + ' = ?' for k in pack_updates)} WHERE id = ?",
                          (*pack_updates.values(), drug_id))
+
+        # Keep primary FEFO lot synchronized when master lot/expiry/cost/location are edited
+        if any(k in data for k in ("lot_number", "expiry_date", "cost", "location")):
+            cur.execute("""
+                SELECT * FROM drug_lots
+                WHERE drug_id = ? AND is_active = 1
+                ORDER BY CASE WHEN stock_qty > 0 THEN 0 ELSE 1 END,
+                         CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
+                         expiry_date ASC, id ASC
+            """, (drug_id,))
+            lots = cur.fetchall()
+            if lots:
+                primary = dict(lots[0])
+                p_id = primary["id"]
+                new_ln = primary["lot_number"]
+                new_qr = primary.get("qr_payload") or ""
+                if data.get("lot_number") is not None and str(data["lot_number"]).strip():
+                    cand_ln = str(data["lot_number"]).strip()
+                    cur.execute("SELECT id FROM drug_lots WHERE drug_id = ? AND lot_number = ? AND id != ?", (drug_id, cand_ln, p_id))
+                    if not cur.fetchone():
+                        new_ln = cand_ln
+                        new_qr = f"{drug_code}#{cand_ln}" if drug_code else new_qr
+                new_exp = primary["expiry_date"] if data.get("expiry_date") is None else str(data.get("expiry_date") or "").strip()
+                new_cost = primary["cost_per_unit"] if data.get("cost") is None else float(data.get("cost") or 0.0)
+                new_loc = primary["location"] if data.get("location") is None else str(data.get("location") or "").strip()
+                cur.execute("""
+                    UPDATE drug_lots
+                    SET lot_number = ?, expiry_date = ?, cost_per_unit = ?, location = ?, qr_payload = ?, updated_at = ?
+                    WHERE id = ?
+                """, (new_ln, new_exp, new_cost, new_loc, new_qr, now, p_id))
+                if data.get("stock_qty") is None:
+                    sync_drug_master_fefo(drug_id, conn=conn)
     conn.close()
     return get_drug_by_id(drug_id)
 
 def delete_drug(drug_id):
-    """Delete drug from inventory while strictly preserving all audit history in dispensing_logs and stock_in_logs."""
+    """Delete drug and its lots while strictly preserving all audit history in dispensing_logs and stock_in_logs."""
     conn = get_db()
     with _db_write_lock:
         with conn:
             conn.execute("UPDATE stock_in_logs SET drug_id = NULL WHERE drug_id = ?", (drug_id,))
             conn.execute("UPDATE dispensing_logs SET drug_id = NULL WHERE drug_id = ?", (drug_id,))
+            conn.execute("DELETE FROM drug_lots WHERE drug_id = ?", (drug_id,))
             conn.execute("DELETE FROM drugs WHERE id = ?", (drug_id,))
     conn.close()
     return True
@@ -1171,11 +1125,60 @@ def delete_drug(drug_id):
 # Stock Dispensing & Deduction Flow (Atomic Transaction)
 # ─────────────────────────────────────────────────────────────
 
-def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="เจ้าหน้าที่", patient_name="", drive_file_id=None, drive_file_link=None, notes="", lot_id=None):
+def _deduct_drug_lots_in_tx(cursor, drug_id, qty, now, lot_id=None):
+    """Deduct qty from a specific lot or FEFO active lots inside an active transaction."""
+    target_lot_id = None
+    target_lot_number = ""
+    allocations = []
+
+    if lot_id:
+        cursor.execute("SELECT * FROM drug_lots WHERE id = ? AND drug_id = ?", (int(lot_id), drug_id))
+        lot_row = cursor.fetchone()
+        if not lot_row:
+            return None, None, None, f"ไม่พบข้อมูลล็อตยา #{lot_id} สำหรับยานี้"
+        lot_dict = dict(lot_row)
+        if float(lot_dict.get("stock_qty") or 0) < qty:
+            return None, None, None, ("LOT_INSUFFICIENT", lot_dict)
+        q_clean = _clean_num(qty)
+        cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?", (q_clean, now, lot_dict["id"]))
+        target_lot_id = lot_dict["id"]
+        target_lot_number = lot_dict["lot_number"]
+        allocations.append({"lot_id": target_lot_id, "lot_number": target_lot_number, "qty": q_clean})
+        return target_lot_id, target_lot_number, allocations, None
+
+    cursor.execute("""
+        SELECT * FROM drug_lots
+        WHERE drug_id = ? AND is_active = 1 AND stock_qty > 0
+        ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END, expiry_date ASC, id ASC
+    """, (drug_id,))
+    active_lots = [dict(r) for r in cursor.fetchall()]
+    rem = float(qty)
+    lot_names = []
+    for al in active_lots:
+        avail = float(al.get("stock_qty") or 0)
+        if avail <= 0:
+            continue
+        take = min(avail, rem)
+        take_clean = _clean_num(take)
+        cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?", (take_clean, now, al["id"]))
+        rem = round(rem - float(take_clean), 6)
+        if target_lot_id is None:
+            target_lot_id = al["id"]
+        if al["lot_number"] and al["lot_number"] not in lot_names:
+            lot_names.append(al["lot_number"])
+        allocations.append({"lot_id": al["id"], "lot_number": al["lot_number"], "qty": take_clean})
+        if rem <= 1e-9:
+            break
+    target_lot_number = ", ".join(lot_names)
+    return target_lot_id, target_lot_number, allocations, None
+
+
+def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="เจ้าหน้าที่", patient_name="", drive_file_id=None, drive_file_link=None, notes="", lot_id=None, created_at=None):
     """
     Atomically deduct stock from a drug and insert a dispensing log.
     Supports specific lot deduction or automatic FEFO deduction across active batches.
     Thread-safe and race-condition protected.
+    Supports backdated dispensing (created_at).
     Returns: (success: bool, result_dict or error_message)
     """
     try:
@@ -1192,10 +1195,18 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
         conn = get_db()
         cursor = conn.cursor()
         now = get_now_str()
+        log_created_at = now
+        if created_at and str(created_at).strip():
+            c_at = str(created_at).strip().replace("T", " ")
+            if len(c_at) == 10:
+                c_at = f"{c_at} {now[11:]}"
+            elif len(c_at) == 16:
+                c_at = f"{c_at}:00"
+            log_created_at = c_at
 
         try:
             with conn:
-                # 1. Fetch drug details
+                # 1. Fetch drug details and validate stock BEFORE mutating any lot rows
                 if isinstance(drug_id_or_code, int) or (isinstance(drug_id_or_code, str) and str(drug_id_or_code).isdigit()):
                     cursor.execute("SELECT * FROM drugs WHERE id = ?", (int(drug_id_or_code),))
                 else:
@@ -1203,55 +1214,26 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
 
                 row = cursor.fetchone()
                 if not row:
+                    conn.rollback()
                     return False, f"ไม่พบข้อมูลยา: {drug_id_or_code}"
 
                 drug = dict(row)
                 drug_id = drug["id"]
+                cur_master_stock = _clean_num(drug.get("stock_qty") or 0)
+                if float(cur_master_stock) < float(qty):
+                    conn.rollback()
+                    return False, f"สต็อกไม่เพียงพอ! มียา '{drug['name']}' เหลืออยู่เพียง {cur_master_stock} {drug['unit']} (ต้องการตัด {qty} {drug['unit']})"
 
-                # 2. Check & deduct lot stock
-                target_lot_id = None
-                target_lot_number = ""
-
-                if lot_id:
-                    cursor.execute("SELECT * FROM drug_lots WHERE id = ? AND drug_id = ?", (int(lot_id), drug_id))
-                    lot_row = cursor.fetchone()
-                    if not lot_row:
-                        return False, f"ไม่พบข้อมูลล็อตยา #{lot_id} สำหรับยานี้"
-                    lot_dict = dict(lot_row)
-                    if lot_dict["stock_qty"] < qty:
-                        return False, f"ล็อต '{lot_dict['lot_number']}' มียาคงเหลือเพียง {lot_dict['stock_qty']} {drug['unit']} (ไม่พอตัด {qty} {drug['unit']})"
-                    cursor.execute("""
-                        UPDATE drug_lots 
-                        SET stock_qty = stock_qty - ?, updated_at = ? 
-                        WHERE id = ?
-                    """, (qty, now, lot_dict["id"]))
-                    target_lot_id = lot_dict["id"]
-                    target_lot_number = lot_dict["lot_number"]
-                else:
-                    # FEFO Auto deduction across active lots
-                    cursor.execute("""
-                        SELECT * FROM drug_lots 
-                        WHERE drug_id = ? AND is_active = 1 AND stock_qty > 0 
-                        ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END, expiry_date ASC, id ASC
-                    """, (drug_id,))
-                    active_lots = [dict(r) for r in cursor.fetchall()]
-                    rem = qty
-                    for al in active_lots:
-                        take = min(al["stock_qty"], rem)
-                        take_clean = int(take) if isinstance(take, float) and take.is_integer() else take
-                        cursor.execute("""
-                            UPDATE drug_lots 
-                            SET stock_qty = stock_qty - ?, updated_at = ? 
-                            WHERE id = ?
-                        """, (take_clean, now, al["id"]))
-                        rem -= take
-                        if target_lot_id is None:
-                            target_lot_id = al["id"]
-                            target_lot_number = al["lot_number"]
-                        elif al["lot_number"] not in target_lot_number:
-                            target_lot_number += f", {al['lot_number']}"
-                        if rem <= 0:
-                            break
+                # 2. Check & deduct lot stock (rolled back cleanly if anything below fails)
+                target_lot_id, target_lot_number, allocations, lot_err = _deduct_drug_lots_in_tx(
+                    cursor, drug_id, qty, now, lot_id=lot_id
+                )
+                if lot_err:
+                    conn.rollback()
+                    if isinstance(lot_err, tuple) and lot_err[0] == "LOT_INSUFFICIENT":
+                        ld = lot_err[1]
+                        return False, f"ล็อต '{ld['lot_number']}' มียาคงเหลือเพียง {ld['stock_qty']} {drug['unit']} (ไม่พอตัด {qty} {drug['unit']})"
+                    return False, lot_err
 
                 # 3. Atomic decrement from master drugs table
                 cursor.execute("""
@@ -1263,31 +1245,37 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
 
                 update_row = cursor.fetchone()
                 if not update_row:
+                    conn.rollback()
                     cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (drug_id,))
                     cur_row = cursor.fetchone()
                     cur_stock = cur_row[0] if cur_row else 0
                     return False, f"สต็อกไม่เพียงพอ! มียา '{drug['name']}' เหลืออยู่เพียง {cur_stock} {drug['unit']} (ต้องการตัด {qty} {drug['unit']})"
 
-                new_stock = update_row[0]
-                current_stock = update_row[1]
+                current_stock = _clean_num(update_row[1])
 
-                # Sync master FEFO expiry and lot_number
+                # Sync master FEFO expiry, lot_number and read final post-sync stock
                 sync_drug_master_fefo(drug_id, conn=conn)
+                cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (drug_id,))
+                post_row = cursor.fetchone()
+                new_stock = _clean_num(post_row[0] if post_row else update_row[0])
+
+                alloc_json = json.dumps(allocations, ensure_ascii=False) if allocations else ""
 
                 # 4. Insert dispensing log
                 cursor.execute("""
                     INSERT INTO dispensing_logs (
-                        drug_id, drug_code, drug_name, lot_id, lot_number, quantity,
+                        drug_id, drug_code, drug_name, lot_id, lot_number, lot_allocations, quantity,
                         balance_before, balance_after, channel,
                         dispensed_by, patient_name, drive_file_id,
                         drive_file_link, notes, synced_to_sheet, created_at, unit_price, unit_cost
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
                 """, (
                     drug["id"],
                     drug["code"],
                     drug["name"],
                     target_lot_id,
                     target_lot_number,
+                    alloc_json,
                     qty,
                     current_stock,
                     new_stock,
@@ -1297,7 +1285,7 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     drive_file_id,
                     drive_file_link,
                     notes,
-                    now,
+                    log_created_at,
                     float(drug.get("price") or 0.0),
                     float(drug.get("cost") or 0.0)
                 ))
@@ -1314,6 +1302,7 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     "drug_name": drug["name"],
                     "lot_id": target_lot_id,
                     "lot_number": target_lot_number,
+                    "lot_allocations": allocations,
                     "quantity": qty_int,
                     "unit": drug["unit"],
                     "price": drug_price,
@@ -1331,21 +1320,23 @@ def deduct_stock(drug_id_or_code, quantity, channel="WEB_MANUAL", dispensed_by="
                     "location": drug.get("location", "-"),
                     "category": drug.get("category", "-"),
                     "image_url": drug.get("image_url", ""),
-                    "created_at": now,
+                    "created_at": log_created_at,
                     "drive_file_link": drive_file_link
                 }
                 return True, result
         except Exception as e:
+            conn.rollback()
             return False, f"เกิดข้อผิดพลาดในการตัดสต็อก: {str(e)}"
         finally:
             conn.close()
 
 
-def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้าหน้าที่", patient_name="", requester_dept="", notes=""):
+def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้าหน้าที่", patient_name="", requester_dept="", notes="", created_at=None):
     """
     Atomically deduct stock for multiple drugs in a single prescription / requisition batch.
     items: list of dicts: [{"drug_id": int/str, "quantity": int, "lot_id": int (optional), "notes": str (optional)}]
     If ANY drug has insufficient stock or is invalid, the entire transaction rolls back cleanly.
+    Supports backdated dispensing (created_at).
     Returns: (success: bool, result_dict or error_message)
     """
     if not items or not isinstance(items, list):
@@ -1379,11 +1370,19 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
         conn = get_db()
         cursor = conn.cursor()
         now = get_now_str()
+        log_created_at = now
+        if created_at and str(created_at).strip():
+            c_at = str(created_at).strip().replace("T", " ")
+            if len(c_at) == 10:
+                c_at = f"{c_at} {now[11:]}"
+            elif len(c_at) == 16:
+                c_at = f"{c_at}:00"
+            log_created_at = c_at
         batch_id = f"RX-{datetime.now(BANGKOK_TZ).strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
 
         try:
             with conn:
-                # 1. Pre-validate all drugs and total available stock
+                # 1. Pre-validate all drugs, total available stock, and any explicit lot demands
                 resolved_drugs = {}
                 for drug_ref, total_needed in demand_by_drug.items():
                     if str(drug_ref).isdigit():
@@ -1392,11 +1391,13 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                         cursor.execute("SELECT * FROM drugs WHERE UPPER(code) = UPPER(?) OR LOWER(name) = LOWER(?)", (str(drug_ref).strip(), str(drug_ref).strip()))
                     row = cursor.fetchone()
                     if not row:
+                        conn.rollback()
                         return False, f"ไม่พบข้อมูลยาในระบบ: {drug_ref}"
                     drug_dict = dict(row)
                     cur_stock_val = float(drug_dict.get("stock_qty") or 0.0)
                     cur_stock = int(cur_stock_val) if cur_stock_val.is_integer() else cur_stock_val
                     if cur_stock < total_needed:
+                        conn.rollback()
                         return False, f"สต็อกไม่เพียงพอ! ยา '{drug_dict['name']}' ในคลังมี {cur_stock} {drug_dict['unit']} (ใบสั่งยานี้ต้องการรวม {total_needed} {drug_dict['unit']})"
                     resolved_drugs[str(drug_ref)] = drug_dict
 
@@ -1412,39 +1413,20 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                     item_note = it["notes"] or notes
                     item_lot_id = it.get("lot_id")
 
-                    # Deduct from specific lot or FEFO
-                    target_lot_id = None
-                    target_lot_number = ""
+                    # Check explicit lot if requested and fall back to FEFO only when no specific lot given
+                    use_lot_id = None
                     if item_lot_id:
-                        cursor.execute("SELECT * FROM drug_lots WHERE id = ? AND drug_id = ?", (int(item_lot_id), d_id))
+                        cursor.execute("SELECT id, stock_qty FROM drug_lots WHERE id = ? AND drug_id = ?", (int(item_lot_id), d_id))
                         l_row = cursor.fetchone()
-                        if l_row:
-                            l_dict = dict(l_row)
-                            if l_dict["stock_qty"] >= q:
-                                cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?", (q, now, l_dict["id"]))
-                                target_lot_id = l_dict["id"]
-                                target_lot_number = l_dict["lot_number"]
-                    
-                    if target_lot_id is None:
-                        # FEFO across active lots
-                        cursor.execute("""
-                            SELECT * FROM drug_lots 
-                            WHERE drug_id = ? AND is_active = 1 AND stock_qty > 0 
-                            ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END, expiry_date ASC, id ASC
-                        """, (d_id,))
-                        active_lots = [dict(r) for r in cursor.fetchall()]
-                        rem = q
-                        for al in active_lots:
-                            take = min(al["stock_qty"], rem)
-                            cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?", (take, now, al["id"]))
-                            rem -= take
-                            if target_lot_id is None:
-                                target_lot_id = al["id"]
-                                target_lot_number = al["lot_number"]
-                            elif al["lot_number"] not in target_lot_number:
-                                target_lot_number += f", {al['lot_number']}"
-                            if rem <= 0:
-                                break
+                        if l_row and float(l_row["stock_qty"] or 0) >= q:
+                            use_lot_id = int(item_lot_id)
+
+                    target_lot_id, target_lot_number, allocations, lot_err = _deduct_drug_lots_in_tx(
+                        cursor, d_id, q, now, lot_id=use_lot_id
+                    )
+                    if lot_err:
+                        conn.rollback()
+                        return False, str(lot_err)
 
                     cursor.execute("""
                         UPDATE drugs
@@ -1455,27 +1437,33 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
 
                     update_row = cursor.fetchone()
                     if not update_row:
+                        conn.rollback()
                         return False, f"เกิดข้อผิดพลาดในการตัดสต็อกยา '{drug_dict['name']}' (สต็อกอาจถูกตัดจากจุดอื่นก่อนหน้า)"
 
-                    new_stock = update_row[0]
-                    current_stock = update_row[1]
+                    current_stock = _clean_num(update_row[1])
 
-                    # Sync master FEFO
+                    # Sync master FEFO and read final stock_qty
                     sync_drug_master_fefo(d_id, conn=conn)
+                    cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (d_id,))
+                    post_row = cursor.fetchone()
+                    new_stock = _clean_num(post_row[0] if post_row else update_row[0])
+
+                    alloc_json = json.dumps(allocations, ensure_ascii=False) if allocations else ""
 
                     cursor.execute("""
                         INSERT INTO dispensing_logs (
-                            drug_id, drug_code, drug_name, lot_id, lot_number, quantity,
+                            drug_id, drug_code, drug_name, lot_id, lot_number, lot_allocations, quantity,
                             balance_before, balance_after, channel,
                             dispensed_by, patient_name, drive_file_id,
                             drive_file_link, notes, synced_to_sheet, created_at, batch_id, unit_price, unit_cost
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, ?, ?)
                     """, (
                         d_id,
                         drug_dict["code"],
                         drug_dict["name"],
                         target_lot_id,
                         target_lot_number,
+                        alloc_json,
                         q,
                         current_stock,
                         new_stock,
@@ -1483,7 +1471,7 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                         dispensed_by,
                         patient_name,
                         item_note,
-                        now,
+                        log_created_at,
                         batch_id,
                         float(drug_dict.get("price") or 0.0),
                         float(drug_dict.get("cost") or 0.0)
@@ -1505,6 +1493,7 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                         "category": drug_dict.get("category", "ทั่วไป"),
                         "lot_id": target_lot_id,
                         "lot_number": target_lot_number,
+                        "lot_allocations": allocations,
                         "quantity": q,
                         "unit": drug_dict["unit"],
                         "price": d_price,
@@ -1516,13 +1505,13 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                         "is_low_stock": new_stock <= drug_dict.get("min_threshold", 10),
                         "notes": item_note,
                         "batch_id": batch_id,
-                        "created_at": now
+                        "created_at": log_created_at
                     })
 
                 summary = {
                     "batch_id": batch_id,
                     "total_items": len(dispensed_results),
-                    "total_qty": total_batch_qty,
+                    "total_qty": _clean_num(total_batch_qty),
                     "total_price": total_batch_price,
                     "total_price_formatted": f"฿{total_batch_price:,.2f}",
                     "patient_name": patient_name,
@@ -1531,11 +1520,12 @@ def deduct_stock_batch(items, channel="WEB_RX_CART", dispensed_by="เจ้า�
                     "notes": notes,
                     "items": dispensed_results,
                     "log_ids": [r["log_id"] for r in dispensed_results],
-                    "created_at": now,
+                    "created_at": log_created_at,
                     "requisition_url": f"/api/dispense/requisition/batch/{batch_id}"
                 }
                 return True, summary
         except Exception as e:
+            conn.rollback()
             return False, f"เกิดข้อผิดพลาดในการตัดสต็อกแบบกลุ่ม: {str(e)}"
         finally:
             conn.close()
@@ -1651,9 +1641,35 @@ def get_dispensing_log_by_id(log_id):
     conn.close()
     return dict(row) if row else None
 
-def void_dispensing_log(log_id, reason="ยกเลิกรายการจ่าย", voided_by="เจ้าหน้าที่"):
+def _parse_lot_allocations(log_dict):
+    """Return list of {'lot_id', 'lot_number', 'qty'} from lot_allocations JSON or legacy lot_id."""
+    raw = log_dict.get("lot_allocations") or ""
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list) and parsed:
+                return [
+                    {
+                        "lot_id": a["lot_id"],
+                        "lot_number": a.get("lot_number") or "",
+                        "qty": _clean_num(a.get("qty") or 0),
+                    }
+                    for a in parsed if a.get("lot_id") is not None and float(a.get("qty") or 0) > 0
+                ]
+        except (ValueError, TypeError, KeyError):
+            pass
+    if log_dict.get("lot_id"):
+        return [{
+            "lot_id": log_dict["lot_id"],
+            "lot_number": log_dict.get("lot_number") or "",
+            "qty": _clean_num(log_dict.get("quantity") or 0),
+        }]
+    return []
+
+
+def void_dispensing_log(log_id, reason="ยกเลิกรายการจ่ายยา", voided_by="เจ้าหน้าที่"):
     """
-    Atomically cancel/void a dispensing log, restore drug stock, and mark the log as voided.
+    Atomically cancel/void a dispensing log, restore drug stock across lots, and mark the log as voided.
     Returns: (success: bool, result_dict or error_message)
     """
     with _db_write_lock:
@@ -1666,20 +1682,25 @@ def void_dispensing_log(log_id, reason="ยกเลิกรายการจ�
                 cursor.execute("SELECT * FROM dispensing_logs WHERE id = ?", (log_id,))
                 row = cursor.fetchone()
                 if not row:
+                    conn.rollback()
                     return False, f"ไม่พบรายการจ่ายยา ID #{log_id}"
 
                 log = dict(row)
                 if log.get("is_voided"):
+                    conn.rollback()
                     return False, f"รายการจ่ายยา ID #{log_id} ถูกยกเลิกไปแล้วเมื่อ {log.get('voided_at')}"
 
                 drug_id = log.get("drug_id")
                 qty = log.get("quantity") or 0
-                lot_id = log.get("lot_id")
+                allocs = _parse_lot_allocations(log)
 
-                # 1. Restore stock to drug lot & master if drug still exists
+                # 1. Restore stock to original drug lots & master if drug still exists
                 new_stock = None
-                if lot_id:
-                    cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?", (qty, now, lot_id))
+                for alloc in allocs:
+                    cursor.execute(
+                        "UPDATE drug_lots SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?",
+                        (alloc["qty"], now, alloc["lot_id"])
+                    )
 
                 if drug_id:
                     cursor.execute("""
@@ -1689,9 +1710,13 @@ def void_dispensing_log(log_id, reason="ยกเลิกรายการจ�
                         RETURNING stock_qty
                     """, (qty, now, drug_id))
                     drug_res = cursor.fetchone()
-                    if drug_res:
-                        new_stock = drug_res[0]
                     sync_drug_master_fefo(drug_id, conn=conn)
+                    cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (drug_id,))
+                    post_res = cursor.fetchone()
+                    if post_res:
+                        new_stock = _clean_num(post_res[0])
+                    elif drug_res:
+                        new_stock = _clean_num(drug_res[0])
 
                 # 2. Mark log as voided
                 cursor.execute("""
@@ -1711,7 +1736,169 @@ def void_dispensing_log(log_id, reason="ยกเลิกรายการจ�
                     "voided_at": now
                 }
         except Exception as e:
+            conn.rollback()
             return False, f"เกิดข้อผิดพลาดในการยกเลิกรายการจ่าย: {str(e)}"
+        finally:
+            conn.close()
+
+
+def update_dispensing_log(log_id, quantity=None, patient_name=None, dispensed_by=None,
+                          notes=None, created_at=None, channel=None):
+    """
+    Update an existing dispensing log retrospectively.
+    If quantity changed, adjusts drug stock and lot allocations accurately across FEFO lots:
+    - If new_qty > old_qty: deducts additional stock from existing/FEFO lots.
+    - If new_qty < old_qty: restores returned stock back into original lots cleanly.
+    """
+    with _db_write_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+        now_str = get_now_str()
+        try:
+            with conn:
+                cursor.execute("SELECT * FROM dispensing_logs WHERE id = ?", (log_id,))
+                row = cursor.fetchone()
+                if not row:
+                    conn.rollback()
+                    return False, f"ไม่พบรายการจ่ายยารหัส #{log_id}"
+                old_log = dict(row)
+                if old_log.get("is_voided"):
+                    conn.rollback()
+                    return False, "ไม่สามารถแก้ไขรายการจ่ายยาที่ถูกยกเลิกไปแล้วได้"
+                
+                drug_id = old_log.get("drug_id")
+                lot_id = old_log.get("lot_id")
+                allocs = _parse_lot_allocations(old_log)
+
+                new_qty = old_log["quantity"]
+                if quantity is not None:
+                    try:
+                        q_val = float(quantity)
+                        if q_val <= 0:
+                            conn.rollback()
+                            return False, "จำนวนที่ตัดจ่ายต้องมากกว่า 0"
+                        new_qty = int(q_val) if q_val.is_integer() else q_val
+                    except (ValueError, TypeError):
+                        conn.rollback()
+                        return False, "จำนวนที่ตัดจ่ายต้องเป็นตัวเลขมากกว่า 0"
+
+                qty_diff = round(float(new_qty) - float(old_log["quantity"]), 6)
+
+                if abs(qty_diff) > 1e-9 and drug_id:
+                    cursor.execute("SELECT stock_qty, name, unit FROM drugs WHERE id = ?", (drug_id,))
+                    d_row = cursor.fetchone()
+                    if d_row:
+                        cur_stock = float(d_row[0] or 0.0)
+                        if qty_diff > 0 and cur_stock + 1e-9 < qty_diff:
+                            conn.rollback()
+                            unit_label = d_row[2] or "หน่วย"
+                            return False, f"สต็อกคงเหลือไม่เพียงพอสำหรับการปรับเพิ่ม! ยา '{d_row[1]}' เหลือในคลัง {_clean_num(cur_stock)} {unit_label} (ต้องการตัดเพิ่ม {_clean_num(qty_diff)} {unit_label})"
+
+                        if qty_diff > 0:
+                            rem = qty_diff
+                            preferred_lot_id = allocs[-1]["lot_id"] if allocs else lot_id
+                            if preferred_lot_id:
+                                cursor.execute("SELECT id, lot_number, stock_qty FROM drug_lots WHERE id = ? AND is_active = 1 AND stock_qty > 0", (preferred_lot_id,))
+                                pl_row = cursor.fetchone()
+                                if pl_row:
+                                    take = min(float(pl_row["stock_qty"]), rem)
+                                    take_clean = _clean_num(take)
+                                    cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?", (take_clean, now_str, pl_row["id"]))
+                                    rem = round(rem - float(take_clean), 6)
+                                    hit = next((a for a in allocs if a["lot_id"] == pl_row["id"]), None)
+                                    if hit:
+                                        hit["qty"] = _clean_num(float(hit["qty"]) + float(take_clean))
+                                    else:
+                                        allocs.append({"lot_id": pl_row["id"], "lot_number": pl_row["lot_number"], "qty": take_clean})
+                            if rem > 1e-9:
+                                _, _, extra_allocs, _ = _deduct_drug_lots_in_tx(cursor, drug_id, rem, now_str, lot_id=None)
+                                for ea in (extra_allocs or []):
+                                    hit = next((a for a in allocs if a["lot_id"] == ea["lot_id"]), None)
+                                    if hit:
+                                        hit["qty"] = _clean_num(float(hit["qty"]) + float(ea["qty"]))
+                                    else:
+                                        allocs.append(ea)
+                        else:
+                            restore_rem = abs(qty_diff)
+                            for a in reversed(allocs):
+                                if restore_rem <= 1e-9:
+                                    break
+                                take_back = min(float(a["qty"]), restore_rem)
+                                take_back_clean = _clean_num(take_back)
+                                cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?", (take_back_clean, now_str, a["lot_id"]))
+                                a["qty"] = _clean_num(float(a["qty"]) - float(take_back_clean))
+                                restore_rem = round(restore_rem - float(take_back_clean), 6)
+                            allocs = [a for a in allocs if float(a.get("qty") or 0) > 1e-9]
+                            if restore_rem > 1e-9:
+                                fallback_lid = lot_id
+                                if not fallback_lid:
+                                    cursor.execute("SELECT id FROM drug_lots WHERE drug_id = ? AND is_active = 1 ORDER BY id ASC LIMIT 1", (drug_id,))
+                                    fr = cursor.fetchone()
+                                    fallback_lid = fr[0] if fr else None
+                                if fallback_lid:
+                                    cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?", (_clean_num(restore_rem), now_str, fallback_lid))
+
+                        cursor.execute("""
+                            UPDATE drugs 
+                            SET stock_qty = stock_qty - ?, updated_at = ?
+                            WHERE id = ?
+                        """, (_clean_num(qty_diff), now_str, drug_id))
+
+                        sync_drug_master_fefo(drug_id, conn=conn)
+
+                new_lot_id = allocs[0]["lot_id"] if allocs else lot_id
+                new_lot_names = list(dict.fromkeys(a["lot_number"] for a in allocs if a.get("lot_number")))
+                new_lot_number = ", ".join(new_lot_names) if new_lot_names else (old_log.get("lot_number") or "")
+                new_alloc_json = json.dumps(allocs, ensure_ascii=False) if allocs else ""
+
+                new_patient = old_log["patient_name"] if patient_name is None else str(patient_name).strip()
+                new_dispensed_by = old_log["dispensed_by"] if dispensed_by is None else str(dispensed_by).strip()
+                new_notes = old_log["notes"] if notes is None else str(notes).strip()
+                new_channel = old_log["channel"] if channel is None else str(channel).strip()
+                new_created_at = old_log["created_at"] if created_at is None else str(created_at).strip()
+
+                if new_created_at:
+                    new_created_at = new_created_at.replace("T", " ")
+                    if len(new_created_at) == 10:
+                        new_created_at = f"{new_created_at} {now_str[11:]}"
+                    elif len(new_created_at) == 16:
+                        new_created_at = f"{new_created_at}:00"
+
+                new_balance_after = _clean_num(old_log["balance_before"] - new_qty)
+
+                cursor.execute("""
+                    UPDATE dispensing_logs
+                    SET quantity = ?,
+                        lot_id = ?,
+                        lot_number = ?,
+                        lot_allocations = ?,
+                        patient_name = ?,
+                        dispensed_by = ?,
+                        notes = ?,
+                        channel = ?,
+                        created_at = ?,
+                        balance_after = ?
+                    WHERE id = ?
+                """, (
+                    new_qty,
+                    new_lot_id,
+                    new_lot_number,
+                    new_alloc_json,
+                    new_patient,
+                    new_dispensed_by,
+                    new_notes,
+                    new_channel,
+                    new_created_at,
+                    new_balance_after,
+                    log_id
+                ))
+
+                cursor.execute("SELECT * FROM dispensing_logs WHERE id = ?", (log_id,))
+                updated_row = cursor.fetchone()
+                return True, dict(updated_row) if updated_row else {}
+        except Exception as e:
+            conn.rollback()
+            return False, f"เกิดข้อผิดพลาดในการแก้ไขรายการจ่าย: {str(e)}"
         finally:
             conn.close()
 
@@ -1822,6 +2009,7 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
 
                 row = cursor.fetchone()
                 if not row:
+                    conn.rollback()
                     return False, f"ไม่พบข้อมูลยา: {drug_id_or_code}"
 
                 drug = dict(row)
@@ -1894,11 +2082,13 @@ def stock_in(drug_id_or_code, quantity, lot_number="", cost_per_unit=None, expir
                 """, (qty, weighted_unit_cost, now, drug_id, qty))
 
                 row_update = cursor.fetchone()
-                new_stock = row_update[0]
-                current_stock = row_update[1]
+                current_stock = _clean_num(row_update[1])
 
-                # Sync master FEFO lot and expiry
+                # Sync master FEFO lot, expiry and read final post-sync stock_qty
                 sync_drug_master_fefo(drug_id, conn=conn)
+                cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (drug_id,))
+                post_row = cursor.fetchone()
+                new_stock = _clean_num(post_row[0] if post_row else row_update[0])
 
                 # 4. Insert stock_in_logs including lot_id
                 cursor.execute("""
@@ -2016,24 +2206,46 @@ def get_stock_in_log(log_id):
     conn.close()
     return dict(row) if row else None
 
+def _recalc_drug_weighted_cost_in_tx(cursor, drug_id, fallback_cost=None, now_str=None):
+    """Recalculate drugs.cost as weighted average across active lots with stock > 0."""
+    cursor.execute("""
+        SELECT stock_qty, cost_per_unit
+        FROM drug_lots
+        WHERE drug_id = ? AND is_active = 1 AND stock_qty > 0 AND COALESCE(cost_per_unit, 0) > 0
+    """, (drug_id,))
+    rows = cursor.fetchall()
+    tot_q = sum(float(r[0] or 0) for r in rows)
+    tot_v = sum(float(r[0] or 0) * float(r[1] or 0) for r in rows)
+    if tot_q > 0:
+        new_wac = tot_v / tot_q
+    elif fallback_cost is not None and float(fallback_cost or 0) > 0:
+        new_wac = float(fallback_cost)
+    else:
+        return
+    cursor.execute("UPDATE drugs SET cost = ?, updated_at = ? WHERE id = ?", (new_wac, now_str or get_now_str(), drug_id))
+
+
 def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None,
                         cost_per_unit=None, supplier=None, received_by=None,
                         notes=None, created_at=None):
     """
     Update a stock-in log retrospectively.
-    If quantity changed, adjusts drug stock accordingly and updates audit balances.
+    Synchronizes drugs, drug_lots, WAC cost, and FEFO master metadata atomically.
     """
     with _db_write_lock:
         conn = get_db()
         cursor = conn.cursor()
+        now_str = get_now_str()
         try:
             with conn:
                 cursor.execute("SELECT * FROM stock_in_logs WHERE id = ?", (log_id,))
                 row = cursor.fetchone()
                 if not row:
+                    conn.rollback()
                     return False, f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"
                 old_log = dict(row)
                 if old_log.get("is_voided"):
+                    conn.rollback()
                     return False, "ไม่สามารถแก้ไขรายการรับเข้าที่ถูกยกเลิกไปแล้วได้"
                 drug_id = old_log.get("drug_id")
 
@@ -2042,38 +2254,136 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                     try:
                         q_val = float(quantity)
                         if q_val <= 0:
+                            conn.rollback()
                             return False, "จำนวนรับเข้าต้องมากกว่า 0"
                         new_qty = int(q_val) if q_val.is_integer() else q_val
                     except (ValueError, TypeError):
+                        conn.rollback()
                         return False, "จำนวนรับเข้าต้องเป็นตัวเลขมากกว่า 0"
 
-                # Check drug stock adjustment if quantity changed
-                diff = new_qty - old_log["quantity"]
-                if diff != 0 and drug_id:
-                    cursor.execute("SELECT stock_qty, name FROM drugs WHERE id = ?", (drug_id,))
-                    d_row = cursor.fetchone()
-                    if d_row:
-                        cur_stock_val = float(d_row[0] or 0.0)
-                        cur_stock = int(cur_stock_val) if cur_stock_val.is_integer() else cur_stock_val
-                        if cur_stock + diff < 0:
-                            return False, f"ไม่สามารถลดยอดรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือ {cur_stock} หน่วย ไม่เพียงพอสำหรับการปรับลดยอด {abs(diff)} หน่วย"
-                        now_str = get_now_str()
-                        cursor.execute("""
-                            UPDATE drugs 
-                            SET stock_qty = stock_qty + ?, updated_at = ?
-                            WHERE id = ?
-                        """, (diff, now_str, drug_id))
+                if cost_per_unit in (None, ""):
+                    new_cost = old_log["cost_per_unit"]
+                else:
+                    try:
+                        new_cost = float(cost_per_unit)
+                    except (ValueError, TypeError):
+                        conn.rollback()
+                        return False, "ราคาทุนต้องเป็นตัวเลข"
 
-                new_cost = old_log["cost_per_unit"] if cost_per_unit is None else float(cost_per_unit or 0.0)
-                new_total_cost = new_qty * new_cost
-                new_lot = old_log["lot_number"] if lot_number is None else str(lot_number).strip()
+                new_total_cost = new_qty * float(new_cost or 0.0)
+                new_lot = old_log["lot_number"] if lot_number is None else (str(lot_number).strip() or old_log["lot_number"])
                 new_exp = old_log["expiry_date"] if expiry_date is None else str(expiry_date).strip()
                 new_sup = old_log["supplier"] if supplier is None else str(supplier).strip()
                 new_rec = old_log["received_by"] if received_by is None else str(received_by).strip()
                 new_notes = old_log["notes"] if notes is None else str(notes).strip()
                 new_created_at = old_log["created_at"] if created_at is None else str(created_at).strip()
+                if new_created_at:
+                    new_created_at = new_created_at.replace("T", " ")
+                    if len(new_created_at) == 10:
+                        new_created_at = f"{new_created_at} {now_str[11:]}"
+                    elif len(new_created_at) == 16:
+                        new_created_at = f"{new_created_at}:00"
 
-                new_balance_after = old_log["balance_before"] + new_qty
+                diff = round(float(new_qty) - float(old_log["quantity"]), 6)
+                old_lot_id = old_log.get("lot_id")
+                target_lot_id = old_lot_id
+
+                if drug_id:
+                    cursor.execute("SELECT stock_qty, name, code, location FROM drugs WHERE id = ?", (drug_id,))
+                    d_row = cursor.fetchone()
+                    if d_row:
+                        cur_stock = float(d_row[0] or 0.0)
+                        drug_name = d_row[1]
+                        drug_code = d_row[2] or old_log.get("drug_code") or ""
+                        drug_loc = d_row[3] or ""
+
+                        if diff < 0 and cur_stock + diff < -1e-9:
+                            conn.rollback()
+                            return False, f"ไม่สามารถลดยอดรับเข้าได้: ยา '{drug_name}' ในคลังคงเหลือ {_clean_num(cur_stock)} หน่วย ไม่เพียงพอสำหรับการปรับลดยอด {_clean_num(abs(diff))} หน่วย"
+
+                        if old_lot_id:
+                            cursor.execute("SELECT * FROM drug_lots WHERE id = ?", (old_lot_id,))
+                            lot_row = cursor.fetchone()
+                            if lot_row:
+                                lot_dict = dict(lot_row)
+                                lot_changed = bool(new_lot and new_lot != (lot_dict.get("lot_number") or ""))
+                                if lot_changed:
+                                    # Check if any other active stock-in log shares old_lot_id
+                                    cursor.execute(
+                                        "SELECT COUNT(*) FROM stock_in_logs WHERE lot_id = ? AND id != ? AND (is_voided IS NULL OR is_voided = 0)",
+                                        (old_lot_id, log_id)
+                                    )
+                                    shared_cnt = cursor.fetchone()[0]
+                                    cursor.execute(
+                                        "SELECT id FROM drug_lots WHERE drug_id = ? AND lot_number = ? AND id != ?",
+                                        (drug_id, new_lot, old_lot_id)
+                                    )
+                                    colliding_lot = cursor.fetchone()
+
+                                    if shared_cnt == 0 and not colliding_lot:
+                                        if float(lot_dict.get("stock_qty") or 0) + diff < -1e-9:
+                                            conn.rollback()
+                                            return False, f"ไม่สามารถลดยอดรับเข้าได้: ล็อต '{lot_dict['lot_number']}' คงเหลือเพียง {_clean_num(lot_dict['stock_qty'])} หน่วย"
+                                        new_lot_stock = max(0, _clean_num(float(lot_dict.get("stock_qty") or 0) + diff))
+                                        new_init_stock = max(0, _clean_num(float(lot_dict.get("initial_qty") or 0) + diff))
+                                        cursor.execute("""
+                                            UPDATE drug_lots
+                                            SET lot_number = ?, stock_qty = ?, initial_qty = ?,
+                                                expiry_date = ?, cost_per_unit = ?, qr_payload = ?, updated_at = ?
+                                            WHERE id = ?
+                                        """, (new_lot, new_lot_stock, new_init_stock, new_exp, float(new_cost or 0.0), f"{drug_code}#{new_lot}", now_str, old_lot_id))
+                                    else:
+                                        # Split old_log's portion out of old_lot_id into the target/new lot
+                                        old_qty_num = float(old_log["quantity"])
+                                        if float(lot_dict.get("stock_qty") or 0) + 1e-9 < old_qty_num:
+                                            conn.rollback()
+                                            return False, f"ไม่สามารถเปลี่ยนเลขล็อตได้: ล็อต '{lot_dict['lot_number']}' คงเหลือเพียง {_clean_num(lot_dict['stock_qty'])} หน่วย (น้อยกว่ายอดใบรับเดิม {_clean_num(old_qty_num)})"
+                                        cursor.execute("""
+                                            UPDATE drug_lots
+                                            SET stock_qty = MAX(0, stock_qty - ?), initial_qty = MAX(0, initial_qty - ?), updated_at = ?
+                                            WHERE id = ?
+                                        """, (_clean_num(old_qty_num), _clean_num(old_qty_num), now_str, old_lot_id))
+                                        if colliding_lot:
+                                            target_lot_id = colliding_lot[0]
+                                            cursor.execute("""
+                                                UPDATE drug_lots
+                                                SET stock_qty = stock_qty + ?, initial_qty = initial_qty + ?,
+                                                    cost_per_unit = ?, expiry_date = COALESCE(NULLIF(?, ''), expiry_date), updated_at = ?, is_active = 1
+                                                WHERE id = ?
+                                            """, (new_qty, new_qty, float(new_cost or 0.0), new_exp, now_str, target_lot_id))
+                                        else:
+                                            cursor.execute("""
+                                                INSERT INTO drug_lots (
+                                                    drug_id, lot_number, stock_qty, initial_qty, cost_per_unit,
+                                                    expiry_date, location, qr_payload, notes, created_at, updated_at, is_active
+                                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                                            """, (drug_id, new_lot, new_qty, new_qty, float(new_cost or 0.0), new_exp, drug_loc, f"{drug_code}#{new_lot}", new_notes, now_str, now_str))
+                                            target_lot_id = cursor.lastrowid
+                                else:
+                                    if diff < 0 and float(lot_dict.get("stock_qty") or 0) + diff < -1e-9:
+                                        conn.rollback()
+                                        return False, f"ไม่สามารถลดยอดรับเข้าได้: ล็อต '{lot_dict['lot_number']}' คงเหลือเพียง {_clean_num(lot_dict['stock_qty'])} หน่วย"
+                                    new_lot_stock = max(0, _clean_num(float(lot_dict.get("stock_qty") or 0) + diff))
+                                    new_init_stock = max(0, _clean_num(float(lot_dict.get("initial_qty") or 0) + diff))
+                                    cursor.execute("""
+                                        UPDATE drug_lots
+                                        SET stock_qty = ?, initial_qty = ?,
+                                            expiry_date = COALESCE(NULLIF(?, ''), expiry_date),
+                                            cost_per_unit = ?, updated_at = ?
+                                        WHERE id = ?
+                                    """, (new_lot_stock, new_init_stock, new_exp, float(new_cost or 0.0), now_str, old_lot_id))
+
+                        if abs(diff) > 1e-9:
+                            cursor.execute("""
+                                UPDATE drugs 
+                                SET stock_qty = stock_qty + ?, updated_at = ?
+                                WHERE id = ?
+                            """, (_clean_num(diff), now_str, drug_id))
+
+                        _recalc_drug_weighted_cost_in_tx(cursor, drug_id, fallback_cost=new_cost, now_str=now_str)
+                        sync_drug_master_fefo(drug_id, conn=conn)
+
+                new_balance_after = _clean_num(old_log["balance_before"] + new_qty)
 
                 cursor.execute("""
                     UPDATE stock_in_logs
@@ -2082,6 +2392,7 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                         cost_per_unit = ?,
                         total_cost = ?,
                         lot_number = ?,
+                        lot_id = ?,
                         expiry_date = ?,
                         supplier = ?,
                         received_by = ?,
@@ -2091,9 +2402,10 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                 """, (
                     new_qty,
                     new_balance_after,
-                    new_cost,
+                    float(new_cost or 0.0),
                     new_total_cost,
                     new_lot,
+                    target_lot_id,
                     new_exp,
                     new_sup,
                     new_rec,
@@ -2114,6 +2426,7 @@ def update_stock_in_log(log_id, quantity=None, lot_number=None, expiry_date=None
                 updated_row = dict(cursor.fetchone())
                 return True, updated_row
         except Exception as e:
+            conn.rollback()
             logger.error(f"Error updating stock in log {log_id}: {e}", exc_info=True)
             return False, f"เกิดข้อผิดพลาดในการแก้ไขข้อมูล: {str(e)}"
         finally:
@@ -2133,9 +2446,11 @@ def void_stock_in_log(log_id, reason="ยกเลิกรายการรั
                 cursor.execute("SELECT * FROM stock_in_logs WHERE id = ?", (log_id,))
                 row = cursor.fetchone()
                 if not row:
+                    conn.rollback()
                     return False, f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"
                 old_log = dict(row)
                 if old_log.get("is_voided"):
+                    conn.rollback()
                     return False, f"รายการรับยาเข้ารหัส #{log_id} ถูกยกเลิกไปแล้วเมื่อ {old_log.get('voided_at')}"
 
                 drug_id = old_log.get("drug_id")
@@ -2149,10 +2464,16 @@ def void_stock_in_log(log_id, reason="ยกเลิกรายการรั
                         cur_stock_val = float(d_row[0] or 0.0)
                         cur_stock = int(cur_stock_val) if cur_stock_val.is_integer() else cur_stock_val
                         if cur_stock < qty:
+                            conn.rollback()
                             return False, f"ไม่สามารถยกเลิกรายการรับเข้าได้: ยา '{d_row[1]}' ในคลังคงเหลือเพียง {cur_stock} หน่วย (น้อยกว่ายอดรับเข้า {qty} หน่วย เนื่องจากอาจถูกตัดจ่ายไปแล้ว ระบบบล็อกไว้เพื่อป้องกันสต็อกติดลบ)"
                         
                         if old_log.get("lot_id"):
-                            cursor.execute("UPDATE drug_lots SET stock_qty = MAX(0, stock_qty - ?), updated_at = ? WHERE id = ?", (qty, now_str, old_log["lot_id"]))
+                            cursor.execute("SELECT lot_number, stock_qty FROM drug_lots WHERE id = ?", (old_log["lot_id"],))
+                            l_row = cursor.fetchone()
+                            if l_row and float(l_row["stock_qty"] or 0) + 1e-9 < float(qty):
+                                conn.rollback()
+                                return False, f"ไม่สามารถยกเลิกรายการรับเข้าได้: ล็อต '{l_row['lot_number']}' คงเหลือเพียง {_clean_num(l_row['stock_qty'])} หน่วย (น้อยกว่ายอดรับเข้า {qty} หน่วย)"
+                            cursor.execute("UPDATE drug_lots SET stock_qty = stock_qty - ?, initial_qty = MAX(0, initial_qty - ?), updated_at = ? WHERE id = ?", (qty, qty, now_str, old_log["lot_id"]))
 
                         cursor.execute("""
                             UPDATE drugs 
@@ -2161,9 +2482,14 @@ def void_stock_in_log(log_id, reason="ยกเลิกรายการรั
                             RETURNING stock_qty
                         """, (qty, now_str, drug_id))
                         res_d = cursor.fetchone()
-                        if res_d:
-                            new_stock = res_d[0]
+                        _recalc_drug_weighted_cost_in_tx(cursor, drug_id, now_str=now_str)
                         sync_drug_master_fefo(drug_id, conn=conn)
+                        cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (drug_id,))
+                        post_d = cursor.fetchone()
+                        if post_d:
+                            new_stock = _clean_num(post_d[0])
+                        elif res_d:
+                            new_stock = _clean_num(res_d[0])
 
                 cursor.execute("""
                     UPDATE stock_in_logs 
@@ -2178,6 +2504,7 @@ def void_stock_in_log(log_id, reason="ยกเลิกรายการรั
                 old_log["new_stock"] = new_stock
                 return True, old_log
         except Exception as e:
+            conn.rollback()
             logger.error(f"Error voiding stock in log {log_id}: {e}", exc_info=True)
             return False, f"เกิดข้อผิดพลาดในการยกเลิกรายการรับเข้า: {str(e)}"
         finally:
@@ -2250,9 +2577,8 @@ def get_analytics_summary():
         rec_qty = cursor.fetchone()[0] or 0
         received_series.append(rec_qty)
 
-    # 5. Expiry Risk Breakdown
-    cursor.execute("SELECT expiry_date FROM drugs WHERE expiry_date IS NOT NULL AND TRIM(expiry_date) != ''")
-    expiry_rows = cursor.fetchall()
+    # 5. Expiry Risk Breakdown (active in-stock drugs & active FEFO lots only)
+    expiry_items = _get_in_stock_expiry_records(conn=conn, max_days=None)
     conn.close()
 
     expired_count = 0
@@ -2260,11 +2586,8 @@ def get_analytics_summary():
     warning_count = 0   # 31-60 days
     safe_count = 0      # >60 days
 
-    for r in expiry_rows:
-        parsed = parse_expiry_date(r["expiry_date"])
-        if not parsed:
-            continue
-        days_left = (parsed - today).days
+    for r in expiry_items:
+        days_left = r["days_left"]
         if days_left < 0:
             expired_count += 1
         elif days_left <= 30:
@@ -2353,15 +2676,18 @@ def add_or_update_user(email: str, name: str = "", picture_url: str = "", google
                 last_login = excluded.last_login
         """, (email.strip(), name.strip(), picture_url.strip(), google_sub.strip(), now, now))
     conn.close()
-    return get_user_by_email(email)
+    return get_user_by_email(email, active_only=False)
 
-def get_user_by_email(email: str):
+def get_user_by_email(email: str, active_only: bool = True):
     """Retrieve user record by email."""
     if not email:
         return None
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE email = ?", (email.strip(),))
+    sql = "SELECT * FROM users WHERE email = ?"
+    if active_only:
+        sql += " AND is_active = 1"
+    cursor.execute(sql, (email.strip(),))
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
@@ -2451,13 +2777,12 @@ def normalize_ymd(date_str):
         return None
 
 
-def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = None):
+def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = None, unit_mode: str = "auto"):
     """
     Retrieve unified chronological Stock Card ledger data for a specific drug.
     Combines stock-in (receive), dispensing logs and manual stock adjustments, calculates opening balance
     (ยอดยกมา), running balance, and details formatted for the official hospital ledger card.
-    Dispensing rows are valued with the cost recorded at the time of dispensing (falls back to the current cost
-    for old rows that pre-date the snapshot).
+    unit_mode: 'auto' / 'pack' shows pack quantities when pack_size > 1; 'unit' always shows base units.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -2513,9 +2838,10 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
 
     # Opening balance = today's stock minus everything that happened in and after the period
     opening_balance = current_stock - (total_in_period - total_out_period + adj_period) - (total_in_after - total_out_after + adj_after)
+    opening_clamped = False
     if opening_balance < 0:
         opening_balance = 0
-    opening_clamped = False
+        opening_clamped = True
     opening_balance = _clean_num(opening_balance)
 
     unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
@@ -2589,41 +2915,60 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         except (ValueError, TypeError):
             return str(val)
 
+    opening_price = _clean_num(round(unit_cost, 4)) if unit_cost else 0
+    opening_price_formatted = format_balance_val(opening_price)
+
     running_balance = opening_balance
     for item in items:
         running_balance = _clean_num(running_balance + (item["qty_in"] or 0) - (item["qty_out"] or 0))
         item["balance"] = running_balance
-        item["balance_value"] = running_balance * (item["price"] or unit_cost)
+        item_p = item.get("price") if (item.get("price") is not None and item.get("price") > 0) else unit_cost
+        item["price"] = item_p
+        item["price_formatted"] = format_balance_val(item_p)
+        item["balance_value"] = round(running_balance * item_p, 2)
         item["balance_value_formatted"] = format_balance_val(item["balance_value"])
 
-    opening_value = opening_balance * unit_cost
+    opening_value = round(opening_balance * unit_cost, 2)
     opening_value_formatted = format_balance_val(opening_value)
 
-    # Quantities were computed in the drug's base unit (tablets). A drug with a pack size (100 tablets = 1 box)
-    # is shown in packs; values (baht) are unaffected because they were already computed from the base unit.
     pack_size = drug.get("pack_size") or 0
     pack_unit = ""
     pack_note = ""
+    base_unit = (drug.get("unit") or "หน่วย").strip() or "หน่วย"
+    use_pack = bool(pack_size and pack_size > 1 and str(unit_mode or "auto").lower() != "unit")
     if pack_size and pack_size > 1:
         pack_unit = (drug.get("pack_unit") or "กล่อง").strip() or "กล่อง"
-        base_unit = (drug.get("unit") or "หน่วย").strip() or "หน่วย"
         if base_unit == pack_unit:
             d_form = (drug.get("dosage_form") or "").lower()
             base_unit = "เม็ด" if ("tab" in d_form or "เม็ด" in d_form) else ("แคปซูล" if "cap" in d_form else "หน่วย")
 
+    if use_pack:
         def _to_pack(x):
             return None if x is None else _clean_num(round(float(x) / pack_size, 4))
 
         for item in items:
+            base_qty = float(item.get("qty_in") or item.get("qty_out") or 0)
             item["qty_in"] = _to_pack(item["qty_in"])
             item["qty_out"] = _to_pack(item["qty_out"])
             item["balance"] = _to_pack(item["balance"])
 
-            # Recalculate balance_value accurately for pack ledger
-            # Ensure price per pack is used (e.g. 165 baht per box)
+            # Determine per-pack price robustly even if unit_cost==0 or pack_size==2
             raw_p = float(item.get("price") or unit_cost or 0.0)
-            pack_price = raw_p if raw_p >= (unit_cost * pack_size * 0.5) else (raw_p * pack_size)
+            raw_tot = float(item.get("total_price") or 0.0)
+            if item["type"] == "RECEIVE" and base_qty > 0 and raw_p > 0 and raw_tot > 0:
+                if abs(raw_tot - raw_p * base_qty) <= max(0.05, raw_tot * 0.01):
+                    pack_price = _clean_num(round(raw_p * pack_size, 2))
+                elif abs(raw_tot - raw_p * (base_qty / pack_size)) <= max(0.05, raw_tot * 0.01):
+                    pack_price = _clean_num(round(raw_p, 2))
+                else:
+                    pack_price = _clean_num(round(raw_p * pack_size, 2)) if (unit_cost <= 0 or raw_p < unit_cost * pack_size * 0.5) else _clean_num(round(raw_p, 2))
+            elif raw_p > 0:
+                pack_price = _clean_num(round(raw_p * pack_size, 2)) if (unit_cost <= 0 or raw_p < unit_cost * pack_size * 0.5) else _clean_num(round(raw_p, 2))
+            else:
+                pack_price = 0
+
             item["price"] = pack_price
+            item["price_formatted"] = format_balance_val(pack_price)
             if item["balance"] is not None:
                 item["balance_value"] = _clean_num(round(item["balance"] * pack_price, 2))
                 item["balance_value_formatted"] = format_balance_val(item["balance_value"])
@@ -2633,23 +2978,31 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
         total_in_period = _to_pack(total_in_period)
         total_out_period = _to_pack(total_out_period)
 
-        pack_unit_cost = unit_cost if unit_cost >= (unit_cost * pack_size * 0.5) else (unit_cost * pack_size)
+        pack_unit_cost = _clean_num(round(unit_cost * pack_size, 2)) if unit_cost > 0 else 0
+        opening_price = pack_unit_cost
+        opening_price_formatted = format_balance_val(opening_price)
         opening_value = _clean_num(round((opening_balance or 0) * pack_unit_cost, 2))
         opening_value_formatted = format_balance_val(opening_value)
         pack_note = f"หน่วยนับในบัญชี: {pack_unit} (1 {pack_unit} = {_clean_num(pack_size)} {base_unit})"
+    elif pack_size and pack_size > 1:
+        pack_note = f"หน่วยนับในบัญชี: {base_unit} (หน่วยย่อย | 1 {pack_unit} = {_clean_num(pack_size)} {base_unit})"
 
     conn.close()
     return {
         "pack_size": pack_size or None,
         "pack_unit": pack_unit,
+        "base_unit": base_unit,
+        "unit_mode": "pack" if use_pack else "unit",
         "pack_note": pack_note,
         "drug": drug,
         "opening_fiscal_year": (drug.get("opening_fiscal_year") or "").strip(),
         "opening_balance": opening_balance,
+        "opening_price": opening_price,
+        "opening_price_formatted": opening_price_formatted,
         "opening_value": opening_value,
         "opening_value_formatted": opening_value_formatted,
         "opening_clamped": opening_clamped,
-        "unit_cost": unit_cost,
+        "unit_cost": opening_price,
         "closing_balance": running_balance,
         "total_in": _clean_num(total_in_period),
         "total_out": _clean_num(total_out_period),
@@ -2727,7 +3080,6 @@ def get_daily_requisition_data(date_str: str = None):
         ORDER BY dispensing_logs.created_at ASC, dispensing_logs.id ASC
     """, (start_ts, end_ts))
     raw_disp = [dict(r) for r in cursor.fetchall()]
-    conn.close()
 
     items_map = {}
 
@@ -2763,6 +3115,27 @@ def get_daily_requisition_data(date_str: str = None):
         it = _bucket(log)
         it["qty_dispensed"] = _clean_num((it["qty_dispensed"] or 0) + (log.get("quantity") or 0))
         _touch(it, log)
+
+    # Recompute exact chronological end-of-day remaining stock (handles backdated/edited entries cleanly)
+    not_voided = "(is_voided IS NULL OR is_voided = 0)"
+    for it in items_map.values():
+        did = it.get("drug_id")
+        if not did:
+            continue
+        cursor.execute("SELECT stock_qty FROM drugs WHERE id = ?", (did,))
+        dr = cursor.fetchone()
+        if not dr:
+            continue
+        cur_qty = float(dr[0] or 0.0)
+        cursor.execute(f"SELECT COALESCE(SUM(quantity), 0) FROM stock_in_logs WHERE drug_id = ? AND created_at > ? AND {not_voided}", (did, end_ts))
+        in_after = float(cursor.fetchone()[0] or 0.0)
+        cursor.execute(f"SELECT COALESCE(SUM(quantity), 0) FROM dispensing_logs WHERE drug_id = ? AND created_at > ? AND {not_voided}", (did, end_ts))
+        out_after = float(cursor.fetchone()[0] or 0.0)
+        cursor.execute("SELECT COALESCE(SUM(quantity_delta), 0) FROM stock_adjustments WHERE drug_id = ? AND created_at > ?", (did, end_ts))
+        adj_after = float(cursor.fetchone()[0] or 0.0)
+        eod_bal = cur_qty - (in_after - out_after + adj_after)
+        it["remaining_stock"] = _clean_num(max(0, eod_bal))
+    conn.close()
 
     items = list(items_map.values())
     for it in items:

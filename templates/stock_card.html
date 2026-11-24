@@ -20,7 +20,7 @@
         html, body {
             width: 100%;
             max-width: 100vw;
-            overflow-x: hidden;
+            overflow-x: clip;
             position: relative;
         }
 
@@ -143,7 +143,7 @@
             gap: 0.45rem;
             cursor: pointer;
             border: 1px solid transparent;
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
             text-decoration: none;
             white-space: nowrap;
         }
@@ -432,7 +432,7 @@
                 align-items: center;
                 gap: 5px;
                 white-space: nowrap;
-                transition: all 0.15s ease;
+                transition: background-color 0.15s ease, color 0.15s ease;
             }
 
             .btn-mode-tab.active {
@@ -826,6 +826,10 @@
                     <button type="button" class="btn-preset" onclick="setPreset('fiscal_year', 2569)">ปีงบ 69</button>
                     <button type="button" class="btn-preset" onclick="setPreset('fiscal_year', 2568)">ปีงบ 68</button>
                     <button type="button" class="btn-preset" onclick="setPreset('all')">ทั้งหมด</button>
+                    <select id="selectUnitMode" class="toolbar-select" style="max-width: 155px; margin-left: 0.25rem; display: {% if pack_size and pack_size > 1 %}inline-block{% else %}none{% endif %};" onchange="refreshStockCardData()" title="สลับการแสดงผลหน่วยนับ">
+                        <option value="auto" {% if unit_mode != 'unit' %}selected{% endif %}>หน่วยกล่อง ({{ pack_unit or 'กล่อง' }})</option>
+                        <option value="unit" {% if unit_mode == 'unit' %}selected{% endif %}>หน่วยย่อย ({{ base_unit or 'เม็ด/ขวด' }})</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -911,7 +915,7 @@
                         ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">{{ opening_fiscal_year }}</span>
                     </td>
                     <td class="col-balance" id="cellOpeningBalance">{{ opening_balance }}</td>
-                    <td class="col-price" id="cellOpeningPrice">{{ opening_value_formatted }}</td>
+                    <td class="col-price" id="cellOpeningPrice">{{ opening_price_formatted or opening_value_formatted }}</td>
                     <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp ยอดยกมา">{{ (opening_lot_exp if opening_lot_exp is defined else '-') | safe }}</td>
                     <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">{{ opening_sign | default('') }}</td>
                 </tr>
@@ -921,10 +925,10 @@
                 <tr>
                     <td class="col-date">{{ tx.date_short }}</td>
                     <td class="col-particulars">{{ tx.particulars_html | safe }}</td>
-                    <td class="col-qty-in">{% if tx.type == 'RECEIVE' %}{{ tx.qty_in }}{% else %}-{% endif %}</td>
-                    <td class="col-qty-out">{% if tx.type == 'DISPENSE' %}{{ tx.qty_out }}{% else %}-{% endif %}</td>
+                    <td class="col-qty-in">{{ tx.qty_in if tx.qty_in is not none else '-' }}</td>
+                    <td class="col-qty-out">{{ tx.qty_out if tx.qty_out is not none else '-' }}</td>
                     <td class="col-balance">{{ tx.balance }}</td>
-                    <td class="col-price">{{ tx.balance_value_formatted or '-' }}</td>
+                    <td class="col-price">{{ tx.price_formatted or tx.price or '-' }}</td>
                     <td class="col-lot-exp">{{ tx.lot_exp_html | safe }}</td>
                     <td class="col-sign" contenteditable="true" title="คลิกเพื่อพิมพ์ชื่อ หรือเว้นว่างเพื่อเซ็นสด"></td>
                 </tr>
@@ -1006,7 +1010,9 @@
 
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code') || '';
-            let apiUrl = `/api/stock-card/data?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+            const unitSel = document.getElementById('selectUnitMode');
+            const unitMode = (unitSel && unitSel.style.display !== 'none') ? unitSel.value : (urlParams.get('unit_mode') || 'auto');
+            let apiUrl = `/api/stock-card/data?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&unit_mode=${encodeURIComponent(unitMode)}`;
             if (code) {
                 apiUrl += `&code=${encodeURIComponent(code)}`;
             }
@@ -1025,12 +1031,13 @@
                     }
                     renderStockCard(data.data);
 
-                    // Sync URL so refreshing (F5) keeps the selected drug and date filter
+                    // Sync URL so refreshing (F5) keeps the selected drug, unit mode, and date filter
                     try {
                         const newUrl = new URL(window.location.href);
                         newUrl.searchParams.set('drug_id', drugId);
                         if (startDate) newUrl.searchParams.set('start_date', startDate); else newUrl.searchParams.delete('start_date');
                         if (endDate) newUrl.searchParams.set('end_date', endDate); else newUrl.searchParams.delete('end_date');
+                        if (unitMode && unitMode !== 'auto') newUrl.searchParams.set('unit_mode', unitMode); else newUrl.searchParams.delete('unit_mode');
                         window.history.replaceState({}, '', newUrl.toString());
                     } catch (e) {
                         // Ignore state sync error on older browsers
@@ -1084,6 +1091,20 @@
             const noteEl = document.getElementById('packNote');
             if (noteEl) noteEl.innerText = d.pack_note || '';
 
+            const unitSel = document.getElementById('selectUnitMode');
+            if (unitSel) {
+                if (d.pack_size && Number(d.pack_size) > 1) {
+                    const pUnit = d.pack_unit || 'กล่อง';
+                    const bUnit = d.base_unit || drug.unit || 'หน่วย';
+                    unitSel.options[0].text = `หน่วยกล่อง (${pUnit})`;
+                    unitSel.options[1].text = `หน่วยย่อย (${bUnit})`;
+                    unitSel.value = (d.unit_mode === 'unit') ? 'unit' : 'auto';
+                    unitSel.style.display = 'inline-block';
+                } else {
+                    unitSel.style.display = 'none';
+                }
+            }
+
             // 1. Update header fields
             const genericEl = document.getElementById('metaGenericName');
             if (genericEl) genericEl.innerText = drug.generic_name || drug.name || '-';
@@ -1129,10 +1150,12 @@
             const rawCost = (drug.cost != null && drug.cost > 0) 
                 ? Number(drug.cost) 
                 : ((drug.price != null && drug.price > 0) ? Number(drug.price) : 0);
-            const unitCost = (packSize > 1 && rawCost < 10) ? (rawCost * packSize) : rawCost;
+            const unitCost = (d.opening_price != null && Number(d.opening_price) > 0)
+                ? Number(d.opening_price)
+                : ((packSize > 1) ? (rawCost * packSize) : rawCost);
             const openingBal = (d.opening_balance != null) ? Number(d.opening_balance) : 0;
             const openingVal = (d.opening_value != null) ? Number(d.opening_value) : (openingBal * unitCost);
-            const openingPriceFormatted = formatBalanceValue(openingVal);
+            const openingPriceFormatted = d.opening_price_formatted || ((unitCost > 0) ? formatBalanceValue(unitCost) : '-');
             const openingBalFormatted = (d.opening_balance != null) ? fmtQ(d.opening_balance) : '0';
 
             // 3. Build Opening Balance Row
@@ -1204,7 +1227,7 @@
                 const txPrice = (tx.price != null && Number(tx.price) > 0) ? Number(tx.price) : unitCost;
                 const balNum = (tx.balance != null) ? Number(tx.balance) : 0;
                 const balVal = (tx.balance_value != null) ? Number(tx.balance_value) : (balNum * txPrice);
-                const priceDisplay = formatBalanceValue(balVal);
+                const priceDisplay = tx.price_formatted || ((txPrice > 0) ? formatBalanceValue(txPrice) : '-');
                 const balDisplay = (tx.balance != null) ? fmtQ(tx.balance) : '-';
                 const qtyInDisplay = (tx.qty_in != null) ? fmtQ(tx.qty_in) : '-';
                 const qtyOutDisplay = (tx.qty_out != null) ? fmtQ(tx.qty_out) : '-';
@@ -1277,7 +1300,9 @@
             const openingSign = (signEl && signEl.innerText.trim()) ? signEl.innerText.trim() : {{ (opening_sign | default('')) | tojson }};
             const fyEl = document.getElementById('textFiscalYear');
             const fiscalYear = (fyEl && fyEl.innerText.trim()) ? fyEl.innerText.trim() : '';
-            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&opening_sign=${encodeURIComponent(openingSign)}&fiscal_year=${encodeURIComponent(fiscalYear)}`;
+            const unitSel = document.getElementById('selectUnitMode');
+            const unitMode = (unitSel && unitSel.style.display !== 'none') ? unitSel.value : 'auto';
+            let exportUrl = `/api/stock-card/export-excel?drug_id=${encodeURIComponent(drugId)}&start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&opening_sign=${encodeURIComponent(openingSign)}&fiscal_year=${encodeURIComponent(fiscalYear)}&unit_mode=${encodeURIComponent(unitMode)}`;
             if (code) {
                 exportUrl += `&code=${encodeURIComponent(code)}`;
             }

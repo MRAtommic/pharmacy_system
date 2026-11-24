@@ -90,7 +90,7 @@ def _passcode_ok(code) -> bool:
         return False
     if _passcode_rate_limited():
         return False
-    expected = os.environ.get('STAFF_PASSCODE') or _LEGACY_DEFAULT_PASSCODE
+    expected = (os.environ.get('STAFF_PASSCODE') or _LEGACY_DEFAULT_PASSCODE).strip()
     if hmac.compare_digest(code.encode('utf-8'), expected.encode('utf-8')):
         return True
     with _failed_lock:
@@ -286,8 +286,9 @@ def stock_card_view():
     now = datetime.now()
     default_start = database.normalize_ymd(request.args.get("start_date")) or f"{now.year}-{now.month:02d}-01"
     default_end = database.normalize_ymd(request.args.get("end_date")) or now.strftime("%Y-%m-%d")
+    unit_mode = (request.args.get("unit_mode") or "auto").strip().lower()
 
-    card_data = database.get_stock_card_data(selected_drug_id, default_start, default_end) if selected_drug_id else None
+    card_data = database.get_stock_card_data(selected_drug_id, default_start, default_end, unit_mode=unit_mode) if selected_drug_id else None
     
     selected_drug = card_data["drug"] if card_data else None
     transactions = card_data["transactions"] if card_data else []
@@ -347,6 +348,7 @@ def stock_card_view():
     used_rows = 1 + len(transactions)
     empty_rows_count = max(0, 24 - used_rows)
     opening_value_formatted = card_data.get("opening_value_formatted", "0") if card_data else "0"
+    opening_price_formatted = card_data.get("opening_price_formatted", opening_value_formatted) if card_data else "0"
 
     opening_lot = html_escape((selected_drug.get("lot_number") or "").strip()) if selected_drug else ""
     opening_exp = html_escape((selected_drug.get("expiry_date") or "").strip()) if selected_drug else ""
@@ -373,6 +375,7 @@ def stock_card_view():
         end_date=default_end,
         opening_date_short=opening_date_short,
         opening_balance=opening_balance,
+        opening_price_formatted=opening_price_formatted,
         opening_value_formatted=opening_value_formatted,
         opening_lot_exp=opening_lot_exp,
         transactions=transactions,
@@ -382,6 +385,10 @@ def stock_card_view():
         pack_note=(card_data or {}).get("pack_note", ""),
         hospital_name=Config.ORG_NAME,
         opening_fiscal_year=opening_fy,   # balance carried over from fiscal year
+        unit_mode=(card_data or {}).get("unit_mode", "auto"),
+        pack_size=(card_data or {}).get("pack_size"),
+        pack_unit=(card_data or {}).get("pack_unit", ""),
+        base_unit=(card_data or {}).get("base_unit", ""),
         current_user=u,
         base_url=Config.BASE_URL
     )
@@ -399,7 +406,8 @@ def api_stock_card_data():
         
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
-    data = database.get_stock_card_data(drug_id, start_date, end_date)
+    unit_mode = (request.args.get("unit_mode") or "auto").strip().lower()
+    data = database.get_stock_card_data(drug_id, start_date, end_date, unit_mode=unit_mode)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
         
@@ -418,8 +426,9 @@ def export_stock_card_excel():
 
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
+    unit_mode = (request.args.get("unit_mode") or "auto").strip().lower()
     opening_sign = request.args.get("opening_sign") or Config.ORG_OPENING_SIGN
-    data = database.get_stock_card_data(drug_id, start_date, end_date)
+    data = database.get_stock_card_data(drug_id, start_date, end_date, unit_mode=unit_mode)
     if not data:
         return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
 
@@ -480,15 +489,24 @@ def export_stock_card_excel():
     ws.cell(row=r_idx, column=1, value=f"ยอดยกมา จากปีงบประมาณ {fiscal_year_text}").alignment = align_center
     ws.cell(row=r_idx, column=1).font = font_bold
     unit_cost = (drug.get("cost") if (drug.get("cost") is not None and drug.get("cost") > 0) else (drug.get("price") or 0.0)) or 0.0
-    opening_val = data.get("opening_value")
-    if opening_val is None:
-        opening_val = data["opening_balance"] * unit_cost
-    if isinstance(opening_val, float) and opening_val.is_integer():
-        opening_val = int(opening_val)
-    elif isinstance(opening_val, float):
-        opening_val = round(opening_val, 2)
+    opening_price_val = data.get("opening_price")
+    if opening_price_val is None:
+        opening_price_val = unit_cost
+    try:
+        op_num = float(opening_price_val)
+        opening_price_cell = int(op_num) if op_num.is_integer() else round(op_num, 2)
+    except (TypeError, ValueError):
+        opening_price_cell = "-"
+    if not opening_price_cell or opening_price_cell == 0:
+        opening_price_cell = "-"
 
     ws.cell(row=r_idx, column=5, value=data["opening_balance"]).alignment = align_center
+    op_p_cell = ws.cell(row=r_idx, column=6, value=opening_price_cell)
+    op_p_cell.alignment = align_right
+    if isinstance(opening_price_cell, float):
+        op_p_cell.number_format = "#,##0.00"
+    elif isinstance(opening_price_cell, int):
+        op_p_cell.number_format = "#,##0"
     opening_lot = (drug.get("lot_number") or "").strip()
     opening_exp = (drug.get("expiry_date") or "").strip()
     if opening_lot and opening_exp:
@@ -531,20 +549,31 @@ def export_stock_card_excel():
             qty_out = tx.get("qty_out") or tx.get("quantity") or "-"
             part = f"รับจาก...-.....GPO/...-.....บริษัท/จ่าย...{qty_out}....."
 
-        bal_val = tx.get("balance_value")
-        if bal_val is None:
-            bal_val = (tx.get("balance") or 0) * unit_cost
-        if isinstance(bal_val, float) and bal_val.is_integer():
-            bal_val = int(bal_val)
-        elif isinstance(bal_val, float):
-            bal_val = round(bal_val, 2)
+        tx_price_val = tx.get("price")
+        if tx_price_val is None or tx_price_val == "" or float(tx_price_val or 0) <= 0:
+            tx_price_val = opening_price_cell if isinstance(opening_price_cell, (int, float)) else 0
+        try:
+            tp_num = float(tx_price_val)
+            if tp_num <= 0:
+                tx_price_cell = "-"
+            elif tp_num.is_integer():
+                tx_price_cell = int(tp_num)
+            else:
+                tx_price_cell = round(tp_num, 2)
+        except (TypeError, ValueError):
+            tx_price_cell = "-"
 
         ws.cell(row=r_idx, column=1, value=d_short).alignment = align_center
         ws.cell(row=r_idx, column=2, value=part).alignment = align_left
         ws.cell(row=r_idx, column=3, value=tx["qty_in"] if tx["qty_in"] is not None else "-").alignment = align_center
         ws.cell(row=r_idx, column=4, value=tx["qty_out"] if tx["qty_out"] is not None else "-").alignment = align_center
         ws.cell(row=r_idx, column=5, value=tx["balance"]).alignment = align_center
-        ws.cell(row=r_idx, column=6, value=bal_val).alignment = align_right
+        p_cell = ws.cell(row=r_idx, column=6, value=tx_price_cell)
+        p_cell.alignment = align_right
+        if isinstance(tx_price_cell, float):
+            p_cell.number_format = "#,##0.00"
+        elif isinstance(tx_price_cell, int):
+            p_cell.number_format = "#,##0"
         lot = (tx.get("lot_number") or "").strip()
         exp = (tx.get("expiry_date") or "").strip()
         if lot and exp:
@@ -805,7 +834,7 @@ def login_page():
         audit('LOGIN', 'AUTH', 'passcode', 'Admin', 'เข้าสู่ระบบด้วย Passcode')
         return redirect(next_url)
     error = request.args.get('error', '')
-    return render_template("login.html", error=error, base_url=Config.BASE_URL)
+    return render_template("login.html", error=error, base_url=Config.BASE_URL, hospital_name=Config.ORG_NAME)
 
 @app.route("/api/auth/passcode", methods=["POST"])
 def passcode_login():
@@ -1226,10 +1255,12 @@ def dispense_stock():
             "error": "ระบบกำลังประมวลผลคำขอตัดสต็อกรายการนี้อยู่ กรุณาอย่ากดซ้ำค่ะ"
         }), 429
 
+    created_at = data.get("created_at") or data.get("dispense_date")
     success, result = database.deduct_stock(
         drug_id, quantity,
         channel=channel, dispensed_by=dispensed_by,
-        patient_name=patient_name, notes=notes, lot_id=lot_id
+        patient_name=patient_name, notes=notes, lot_id=lot_id,
+        created_at=created_at
     )
 
     if not success:
@@ -1295,13 +1326,15 @@ def batch_dispense():
     notes = _clean_text(data.get("notes"), 500)
     channel = _clean_channel(data.get("channel"), "WEB_RX_CART")
 
+    created_at = data.get("created_at") or data.get("dispense_date")
     success, result = database.deduct_stock_batch(
         items=items,
         channel=channel,
         dispensed_by=dispensed_by,
         patient_name=patient_name,
         requester_dept=requester_dept,
-        notes=notes
+        notes=notes,
+        created_at=created_at
     )
 
     if not success:
@@ -1389,6 +1422,37 @@ def list_logs():
         end_date=end_date
     )
     return jsonify({"ok": True, "logs": logs, "count": len(logs)})
+
+@app.route("/api/dispense/logs/<int:log_id>", methods=["GET"])
+@login_required
+def get_single_dispense_log(log_id):
+    log = database.get_dispensing_log_by_id(log_id)
+    if not log:
+        return jsonify({"ok": False, "error": f"ไม่พบรายการจ่ายยารหัส #{log_id}"}), 404
+    return jsonify({"ok": True, "log": log})
+
+@app.route("/api/dispense/logs/<int:log_id>", methods=["PUT"])
+@login_required
+def update_dispense_log(log_id):
+    data = request.json or {}
+    success, res = database.update_dispensing_log(
+        log_id=log_id,
+        quantity=data.get("quantity"),
+        patient_name=data.get("patient_name"),
+        dispensed_by=data.get("dispensed_by"),
+        notes=data.get("notes"),
+        created_at=data.get("created_at"),
+        channel=data.get("channel")
+    )
+    if not success:
+        return jsonify({"ok": False, "error": res}), 400
+
+    u = current_user()
+    audit('EDIT_DISPENSE', 'dispense_log', log_id, res.get('drug_name', ''),
+          f"แก้ไขรายการจ่าย #{log_id}: จำนวน {res.get('quantity')} {res.get('unit','')} | ผู้รับ: {res.get('patient_name','')} | วันที่: {res.get('created_at','')}")
+
+    trigger_bg_sheet_sync()
+    return jsonify({"ok": True, "log": res, "message": "แก้ไขรายการจ่ายยาเรียบร้อยแล้ว"})
 
 # ─────────────────────────────────────────────────────────────
 # Stock In & Receiving API (Batch & Lot Management)
@@ -1516,12 +1580,36 @@ def update_stock_in_endpoint(log_id):
     if not rec_by or rec_by in ("เภสัชกร/เจ้าหน้าที่", "เจ้าหน้าที่"):
         rec_by = current_user().get('name') or current_user().get('email') or 'ผู้ดูแลระบบคลังยา (Admin)'
 
+    quantity = data.get("quantity")
+    cost_per_unit = data.get("cost_per_unit")
+    if str(data.get("input_unit") or "").lower() == "pack":
+        existing_log = database.get_stock_in_log(log_id)
+        if not existing_log:
+            return jsonify({"ok": False, "error": f"ไม่พบรายการรับยาเข้ารหัส #{log_id}"}), 404
+        drug_id = existing_log.get("drug_id")
+        drug_row = database.get_drug_by_id(drug_id) if drug_id else None
+        pack_size = (drug_row or {}).get("pack_size") or 0
+        if not pack_size or pack_size <= 1:
+            return jsonify({"ok": False, "error": "ยานี้ยังไม่ได้ตั้ง 'จำนวนต่อกล่อง' จึงแก้ไขเป็นกล่องไม่ได้"}), 400
+        if quantity is not None:
+            try:
+                q_pack = float(quantity)
+                q_base = round(q_pack * pack_size, 6)
+                quantity = int(q_base) if float(q_base).is_integer() else q_base
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "จำนวนรับเข้าต้องเป็นตัวเลข"}), 400
+        if cost_per_unit not in (None, ""):
+            try:
+                cost_per_unit = round(float(cost_per_unit) / pack_size, 6)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "ราคาทุนต้องเป็นตัวเลข"}), 400
+
     success, result = database.update_stock_in_log(
         log_id,
-        quantity=data.get("quantity"),
+        quantity=quantity,
         lot_number=data.get("lot_number"),
         expiry_date=data.get("expiry_date"),
-        cost_per_unit=data.get("cost_per_unit"),
+        cost_per_unit=cost_per_unit,
         supplier=data.get("supplier"),
         received_by=rec_by,
         notes=data.get("notes"),
@@ -1691,7 +1779,7 @@ def google_user_login():
     """Initiate Google sign-in for user authentication (session login)."""
     client_id = Config.GOOGLE_OAUTH2_CLIENT_ID
     if not client_id:
-        return render_template("login.html", error="ยังไม่ได้ตั้งค่า Google OAuth2 Client ID", base_url=Config.BASE_URL)
+        return render_template("login.html", error="ยังไม่ได้ตั้งค่า Google OAuth2 Client ID", base_url=Config.BASE_URL, hospital_name=Config.ORG_NAME)
 
     redirect_uri = _determine_user_login_redirect_uri()
     state_token  = secrets.token_urlsafe(32)
@@ -1997,7 +2085,7 @@ def export_inventory_excel():
     thin_border   = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
     # ── Title row ──
-    ws.merge_cells("A1:K1")
+    ws.merge_cells("A1:M1")
     title_cell = ws["A1"]
     title_cell.value = f"รายงานคลังยา — PharmaCore  (ส่งออก {datetime.now().strftime('%d/%m/%Y %H:%M')})"
     title_cell.font  = Font(name="Calibri", bold=True, color="1E3A5F", size=14)
@@ -2056,7 +2144,7 @@ def export_inventory_excel():
 
     # ── Freeze panes (keep header visible) ──
     ws.freeze_panes = "A3"
-    ws.auto_filter.ref = f"A2:K{len(drugs) + 2}"
+    ws.auto_filter.ref = f"A2:M{len(drugs) + 2}"
 
     buf = BytesIO()
     _save_workbook_safe(wb, buf)
@@ -2084,6 +2172,7 @@ def export_logs_excel():
     start_date     = request.args.get("start_date")
     end_date       = request.args.get("end_date")
     channel_filter = request.args.get("channel")
+    include_voided = request.args.get("include_voided") == "1"
     logs = database.get_dispensing_logs(
         limit=10000,
         date_filter=date_filter,
@@ -2091,6 +2180,8 @@ def export_logs_excel():
         start_date=start_date,
         end_date=end_date
     )
+    if not include_voided:
+        logs = [l for l in logs if not l.get("is_voided")]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -2609,6 +2700,7 @@ def export_stock_in_excel():
     start_date  = request.args.get("start_date")
     end_date    = request.args.get("end_date")
     drug_id     = request.args.get("drug_id")
+    include_voided = request.args.get("include_voided") == "1"
     logs = database.get_stock_in_logs(
         limit=10000,
         drug_id=drug_id,
@@ -2616,6 +2708,8 @@ def export_stock_in_excel():
         start_date=start_date,
         end_date=end_date
     )
+    if not include_voided:
+        logs = [l for l in logs if not l.get("is_voided")]
 
     wb = openpyxl.Workbook()
     ws = wb.active

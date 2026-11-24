@@ -20,7 +20,7 @@
         html, body {
             width: 100%;
             max-width: 100vw;
-            overflow-x: hidden;
+            overflow-x: clip;
             position: relative;
         }
 
@@ -129,7 +129,7 @@
             gap: 0.45rem;
             cursor: pointer;
             border: 1px solid transparent;
-            transition: all 0.15s ease;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
             text-decoration: none;
             white-space: nowrap;
         }
@@ -404,7 +404,7 @@
                 align-items: center;
                 gap: 5px;
                 white-space: nowrap;
-                transition: all 0.15s ease;
+                transition: background-color 0.15s ease, color 0.15s ease;
             }
 
             .btn-mode-tab.active {
@@ -906,14 +906,24 @@
 
         function setPresetDate(preset) {
             const dateInput = document.getElementById('inputRequisitionDate');
+            const now = new Date();
+            const fmtLocal = (dt) => {
+                const y = dt.getFullYear();
+                const m = String(dt.getMonth() + 1).padStart(2, '0');
+                const d = String(dt.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            };
             if (preset === 'today') {
-                dateInput.value = '2026-10-15';
+                dateInput.value = fmtLocal(now);
             } else if (preset === 'yesterday') {
-                dateInput.value = '2026-10-14';
+                const yd = new Date(now);
+                yd.setDate(yd.getDate() - 1);
+                dateInput.value = fmtLocal(yd);
             } else if (preset === 'sep30') {
-                dateInput.value = '2026-09-30';
+                const fyEndYear = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+                dateInput.value = `${fyEndYear}-09-30`;
             } else if (preset === 'sample') {
-                dateInput.value = '2025-07-06';
+                dateInput.value = fmtLocal(now);
             }
             syncQuickDateDropdown(dateInput.value);
             refreshRequisitionDate();
