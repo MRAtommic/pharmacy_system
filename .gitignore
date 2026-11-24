@@ -21,9 +21,6 @@ agy_project/
 test_*.db
 test_*.db-*
 
-# runtime data - never commit (the app creates the database on first start)
-pharmacy.db
-*.db
-*.sqlite*
-/data/
-static/uploads/drugs/drug_*
+# include production database and uploaded drug images
+!pharmacy.db
+!static/uploads/drugs/*
