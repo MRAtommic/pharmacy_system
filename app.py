@@ -1143,6 +1143,56 @@ def remove_drug(drug_id):
     trigger_bg_sheet_sync()
     return jsonify({"ok": True, "message": "ลบยาออกจากคลังเรียบร้อยแล้ว"})
 
+
+@app.route("/api/drugs/<int:drug_id>/opening-balance", methods=["POST"])
+@login_required
+def set_opening_balance_endpoint(drug_id):
+    data = request.get_json(silent=True) or {}
+    qty = data.get("opening_balance")
+    if qty is None or qty == "":
+        return jsonify({"ok": False, "error": "กรุณาระบุจำนวนยอดยกมา"}), 400
+    try:
+        qty_val = float(qty)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "จำนวนยอดยกมาต้องเป็นตัวเลข"}), 400
+
+    if str(data.get("input_unit") or "").lower() == "pack":
+        drug_row = database.get_drug_by_id(drug_id)
+        if not drug_row:
+            return jsonify({"ok": False, "error": "ไม่พบข้อมูลยา"}), 404
+        pack_size = drug_row.get("pack_size") or 0
+        if not pack_size or pack_size <= 1:
+            return jsonify({"ok": False, "error": "ยานี้ยังไม่ได้ตั้ง 'จำนวนต่อกล่อง'"}), 400
+        q_base = round(qty_val * pack_size, 6)
+        qty_val = int(q_base) if float(q_base).is_integer() else q_base
+
+    u = current_user()
+    adj_by = (u.get("name") or u.get("email") or "ผู้ดูแลระบบคลังยา") if u else "ผู้ดูแลระบบคลังยา"
+    ok, res = database.set_opening_balance(
+        drug_id,
+        qty_val,
+        fiscal_year=data.get("fiscal_year"),
+        start_date=data.get("start_date"),
+        end_date=data.get("end_date"),
+        adjusted_by=adj_by,
+    )
+    if not ok:
+        return jsonify({"ok": False, "error": res}), 400
+
+    audit(
+        "ADJUST_OPENING_BALANCE",
+        "drug",
+        drug_id,
+        res.get("drug_name", ""),
+        f"แก้ไขยอดยกมา (ปีงบ {res.get('fiscal_year') or '-'}): {res.get('old_opening')} -> {res.get('new_opening')} {res.get('unit', '')}",
+    )
+    trigger_bg_sheet_sync()
+    return jsonify({
+        "ok": True,
+        "result": res,
+        "message": f"บันทึกยอดยกมา '{res.get('drug_name')}' เรียบร้อยแล้ว",
+    })
+
 # ─────────────────────────────────────────────────────────────
 # Category Master Management API (CRUD)
 # ─────────────────────────────────────────────────────────────

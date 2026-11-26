@@ -204,6 +204,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (codeParam) {
         setTimeout(() => handleScannedCode(lotParam ? `${codeParam}#${lotParam}` : codeParam), 600);
     }
+    const editStockInParam = urlParams.get('edit_stock_in');
+    if (editStockInParam) {
+        setTimeout(async () => {
+            if (typeof switchTab === 'function') switchTab('stock-in');
+            if (typeof loadStockInLogs === 'function') await loadStockInLogs();
+            openEditStockInModal(Number(editStockInParam));
+        }, 400);
+    }
 
     // Check Google OAuth redirect result
     const googleConnected = urlParams.get('google_connected');
@@ -918,6 +926,16 @@ function setDrugStockFieldMode(isEdit) {
     if (label) label.textContent = isEdit ? 'จำนวนคงเหลือ (แก้ผ่านรับยาเข้า/แก้ไขล็อต)' : 'จำนวนสต็อกเริ่มต้น *';
     const unitSel = document.getElementById('drugStockUnitSelect');
     if (unitSel) unitSel.dataset.edit = isEdit ? '1' : '';   // the stock can only be typed when a drug is created
+    const obBtn = document.getElementById('btnOpenAdjustFromDrugModal');
+    if (obBtn) obBtn.style.display = isEdit ? 'inline-flex' : 'none';
+}
+
+function openOpeningBalanceFromDrugModal() {
+    const id = document.getElementById('drugFormId')?.value;
+    if (!id) return;
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    const qs = urlCode ? `&code=${encodeURIComponent(urlCode)}` : '';
+    window.location.href = `/stock-card?drug_id=${encodeURIComponent(id)}&edit_opening=1${qs}`;
 }
 
 function openEditDrugModal(id) {
@@ -4926,15 +4944,13 @@ function openEditStockInModal(logId) {
     document.getElementById('editPreviewCurrentStock').textContent = curStock;
     document.getElementById('editPreviewUnit').textContent = unitStr;
 
-    // Created At datetime-local formatted
-    const createdAtInput = document.getElementById('editStockInCreatedAt');
-    if (createdAtInput) {
-        let val = (log.created_at || '').trim();
-        if (val.includes(' ')) {
-            val = val.replace(' ', 'T');
-        }
-        createdAtInput.value = val;
-    }
+    // Created At date + time formatted (works reliably across mobile & desktop browsers)
+    const dateInput = document.getElementById('editStockInDate');
+    const timeInput = document.getElementById('editStockInTime');
+    const rawDt = (log.created_at || '').trim().replace('T', ' ');
+    const [dPart, tPart] = rawDt.split(' ');
+    if (dateInput) dateInput.value = (dPart && /^\d{4}-\d{2}-\d{2}$/.test(dPart)) ? dPart : '';
+    if (timeInput) timeInput.value = (tPart && /^\d{2}:\d{2}/.test(tPart)) ? tPart.slice(0, 8) : '00:00:00';
 
     const baseQty = Number(log.quantity || 0);
     const ps = stockInPackSize(drug);
@@ -5105,7 +5121,8 @@ function calcEditStockInImpact() {
     }
 
     const curStock = parseFloat(document.getElementById('editPreviewCurrentStock')?.textContent || '0');
-    const diff = Math.round((newBaseQty - origQty) * 1000000) / 1000000;
+    let diff = Math.round((newBaseQty - origQty) * 1000000) / 1000000;
+    if (Math.abs(diff) < 1e-4) diff = 0;
     const unitLabel = (drug && drug.unit) || document.getElementById('editPreviewUnit')?.textContent || 'หน่วย';
     const hintEl = document.getElementById('editStockInImpactHint');
     const saveBtn = document.getElementById('btnSaveEditStockIn');
@@ -5161,10 +5178,11 @@ async function saveEditStockIn(event) {
     const btn = document.getElementById('btnSaveEditStockIn');
     if (btn) btn.disabled = true;
 
-    let createdAtVal = document.getElementById('editStockInCreatedAt')?.value || '';
-    if (createdAtVal.includes('T')) {
-        createdAtVal = createdAtVal.replace('T', ' ');
-    }
+    const dateVal = (document.getElementById('editStockInDate')?.value || '').trim();
+    let timeVal = (document.getElementById('editStockInTime')?.value || '').trim();
+    if (!timeVal) timeVal = '00:00:00';
+    else if (timeVal.length === 5) timeVal = `${timeVal}:00`;
+    const createdAtVal = dateVal ? `${dateVal} ${timeVal}` : '';
 
     const payload = {
         quantity: qtyVal,

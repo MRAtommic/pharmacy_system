@@ -713,6 +713,85 @@
             display: none;
         }
 
+        .stock-card-row-edit {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 4px;
+            color: #0F766E;
+            text-decoration: none;
+            font-size: 11px;
+            opacity: 0.7;
+            vertical-align: middle;
+        }
+        .stock-card-row-edit:hover {
+            opacity: 1;
+        }
+
+        .ob-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.55);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            font-family: 'Anuphan', sans-serif;
+        }
+        .ob-modal-overlay.active {
+            display: flex;
+        }
+        .ob-modal-box {
+            background: #FFFFFF;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            border: 1px solid #E2E8F0;
+        }
+        .ob-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.9rem 1.15rem;
+            border-bottom: 1px solid #E2E8F0;
+            background: #F8FAFC;
+        }
+        .ob-modal-body {
+            padding: 1.15rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+        }
+        .ob-field label {
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 0.3rem;
+        }
+        .ob-field input,
+        .ob-field select {
+            width: 100%;
+            padding: 0.5rem 0.7rem;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            color: #0F172A;
+            background: #FFFFFF;
+        }
+        .ob-modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            padding: 0.85rem 1.15rem;
+            border-top: 1px solid #E2E8F0;
+            background: #F8FAFC;
+        }
+
         /* ── Print Specific Adjustments ── */
         @media print {
             body {
@@ -723,7 +802,9 @@
 
             .print-toolbar,
             .mobile-view-bar,
-            .mobile-hint {
+            .mobile-hint,
+            .no-print,
+            .ob-modal-overlay {
                 display: none !important;
             }
 
@@ -787,6 +868,9 @@
                     <i class="fas fa-arrow-left"></i> <span class="btn-text">กลับคลังยา</span><span class="btn-text-mobile">กลับ</span>
                 </a>
                 <div class="toolbar-group-actions">
+                    <button type="button" class="btn-tool btn-outline-tool" onclick="openOpeningBalanceModal()" title="แก้ไขยอดยกมาและปีงบประมาณ">
+                        <i class="fas fa-pen-to-square" style="color: #0F766E;"></i> <span class="btn-text">แก้ไขยอดยกมา</span><span class="btn-text-mobile">แก้ยอดยกมา</span>
+                    </button>
                     <button type="button" class="btn-tool btn-outline-tool" onclick="exportStockCardExcel()" title="ดาวน์โหลดเป็นไฟล์ Excel">
                         <i class="fas fa-file-excel" style="color: #10B981;"></i> <span class="btn-text">ส่งออก Excel</span><span class="btn-text-mobile">Excel</span>
                     </button>
@@ -923,7 +1007,12 @@
                 <!-- Transaction Rows & Template Fillers -->
                 {% for tx in transactions %}
                 <tr>
-                    <td class="col-date">{{ tx.date_short }}</td>
+                    <td class="col-date">
+                        {{ tx.date_short }}
+                        {% if tx.type == 'RECEIVE' and tx.raw_id %}
+                        <a href="/?edit_stock_in={{ tx.raw_id }}{% if request.args.get('code') %}&code={{ request.args.get('code') }}{% endif %}" class="no-print stock-card-row-edit" title="แก้ไขยอดหรือวันที่รับยาเข้า"><i class="fas fa-pen"></i></a>
+                        {% endif %}
+                    </td>
                     <td class="col-particulars">{{ tx.particulars_html | safe }}</td>
                     <td class="col-qty-in">{{ tx.qty_in if tx.qty_in is not none else '-' }}</td>
                     <td class="col-qty-out">{{ tx.qty_out if tx.qty_out is not none else '-' }}</td>
@@ -1106,6 +1195,7 @@
             }
 
             // 1. Update header fields
+            syncObStateFromCard(d);
             const genericEl = document.getElementById('metaGenericName');
             if (genericEl) genericEl.innerText = drug.generic_name || drug.name || '-';
 
@@ -1177,13 +1267,14 @@
                     <td colspan="4" class="col-opening-merged">
                         ยอดยกมา จากปีงบประมาณ <span id="textFiscalYear" contenteditable="true">${currentFiscalYear}</span>
                     </td>
-                    <td class="col-balance">${openingBalFormatted}</td>
+                    <td class="col-balance" id="cellOpeningBalance">${openingBalFormatted}</td>
                     <td class="col-price">${openingPriceFormatted}</td>
                     <td class="col-lot-exp" contenteditable="true" id="cellOpeningLotExp" title="คลิกเพื่อพิมพ์/แก้ไข Lot/Exp">${openingLotExp}</td>
                     <td class="col-sign" contenteditable="true" id="signOpeningBalance" title="คลิกเพื่อพิมพ์/แก้ไขชื่อผู้ลงชื่อ">${escapeHtml(currentSign)}</td>
                 </tr>
             `;
 
+            const urlCodeParam = new URLSearchParams(window.location.search).get('code');
             const transactions = d.transactions || [];
             transactions.forEach(tx => {
                 const dateShort = formatDateShort(tx.created_at);
@@ -1232,9 +1323,13 @@
                 const qtyInDisplay = (tx.qty_in != null) ? fmtQ(tx.qty_in) : '-';
                 const qtyOutDisplay = (tx.qty_out != null) ? fmtQ(tx.qty_out) : '-';
 
+                const editLinkHtml = (tx.type === 'RECEIVE' && tx.raw_id)
+                    ? ` <a href="/?edit_stock_in=${encodeURIComponent(tx.raw_id)}${urlCodeParam ? '&code=' + encodeURIComponent(urlCodeParam) : ''}" class="no-print stock-card-row-edit" title="แก้ไขยอดหรือวันที่รับยาเข้า"><i class="fas fa-pen"></i></a>`
+                    : '';
+
                 html += `
                     <tr>
-                        <td class="col-date">${dateShort}</td>
+                        <td class="col-date">${dateShort}${editLinkHtml}</td>
                         <td class="col-particulars">${particulars}</td>
                         <td class="col-qty-in">${qtyInDisplay}</td>
                         <td class="col-qty-out">${qtyOutDisplay}</td>
@@ -1428,9 +1523,176 @@
                     delete this.dataset.presetFy;
                 });
             }
+            const scParams = new URLSearchParams(window.location.search);
+            if (scParams.get('edit_opening') === '1') {
+                setTimeout(() => openOpeningBalanceModal(), 150);
+            }
         });
         // Initial call in case DOM already parsed
         setTimeout(updateSheetScaling, 100);
+
+        let obState = {
+            drugId: {{ selected_drug.id if selected_drug else 'null' }},
+            packSize: {{ pack_size | default(0) | tojson }},
+            packUnit: {{ (pack_unit or 'กล่อง') | tojson }},
+            baseUnit: {{ (base_unit or 'หน่วย') | tojson }},
+            openingBalance: {{ opening_balance | default(0) | tojson }},
+            fiscalYear: {{ (opening_fiscal_year or '2569') | string | tojson }}
+        };
+
+        function syncObStateFromCard(d) {
+            if (!d || !d.drug) return;
+            obState.drugId = d.drug.id;
+            obState.packSize = Number(d.pack_size || d.drug.pack_size || 0);
+            obState.packUnit = d.pack_unit || d.drug.pack_unit || 'กล่อง';
+            obState.baseUnit = d.base_unit || d.drug.unit || 'หน่วย';
+            obState.openingBalance = Number(d.opening_balance || 0);
+            obState.fiscalYear = (d.drug.opening_fiscal_year || document.getElementById('textFiscalYear')?.innerText || '2569').trim();
+        }
+
+        function openOpeningBalanceModal() {
+            const selDrugId = document.getElementById('selectDrug')?.value || obState.drugId;
+            if (!selDrugId) return;
+            obState.drugId = Number(selDrugId);
+
+            const fySel = document.getElementById('obFiscalYearSelect');
+            const fyCustom = document.getElementById('obFiscalYearCustom');
+            const curFy = (document.getElementById('textFiscalYear')?.innerText || obState.fiscalYear || '2569').trim();
+            const stdYears = ['2570', '2569', '2568', '2567'];
+            if (stdYears.includes(curFy)) {
+                fySel.value = curFy;
+                fyCustom.style.display = 'none';
+                fyCustom.value = '';
+            } else {
+                fySel.value = 'CUSTOM';
+                fyCustom.style.display = 'block';
+                fyCustom.value = curFy;
+            }
+
+            const unitSel = document.getElementById('obUnitSelect');
+            const qtyInp = document.getElementById('obQtyInput');
+            const modeSel = document.getElementById('selectUnitMode');
+            const isPackDisplay = obState.packSize > 1 && (!modeSel || modeSel.value !== 'unit');
+            if (obState.packSize > 1) {
+                unitSel.innerHTML = `<option value="pack">${escapeHtml(obState.packUnit)}</option><option value="unit">${escapeHtml(obState.baseUnit)}</option>`;
+                unitSel.value = isPackDisplay ? 'pack' : 'unit';
+                unitSel.style.display = '';
+            } else {
+                unitSel.innerHTML = `<option value="unit">${escapeHtml(obState.baseUnit)}</option>`;
+                unitSel.value = 'unit';
+                unitSel.style.display = 'none';
+            }
+
+            const shownBalText = (document.getElementById('cellOpeningBalance')?.innerText || String(obState.openingBalance || 0)).replace(/,/g, '').trim();
+            const shownNum = parseFloat(shownBalText);
+            qtyInp.value = isNaN(shownNum) ? 0 : shownNum;
+            document.getElementById('obErrorMsg').style.display = 'none';
+            document.getElementById('openingBalanceModal').classList.add('active');
+        }
+
+        function closeOpeningBalanceModal() {
+            document.getElementById('openingBalanceModal').classList.remove('active');
+        }
+
+        function onObFiscalYearSelectChange(val) {
+            const fyCustom = document.getElementById('obFiscalYearCustom');
+            fyCustom.style.display = (val === 'CUSTOM') ? 'block' : 'none';
+            if (val === 'CUSTOM') fyCustom.focus();
+        }
+
+        async function saveOpeningBalance(e) {
+            e.preventDefault();
+            const errEl = document.getElementById('obErrorMsg');
+            const btn = document.getElementById('btnSaveOb');
+            errEl.style.display = 'none';
+
+            const fySel = document.getElementById('obFiscalYearSelect').value;
+            const fy = (fySel === 'CUSTOM') ? document.getElementById('obFiscalYearCustom').value.trim() : fySel;
+            const qty = parseFloat(document.getElementById('obQtyInput').value);
+            const inputUnit = document.getElementById('obUnitSelect').value || 'unit';
+
+            if (isNaN(qty) || qty < 0) {
+                errEl.textContent = 'กรุณากรอกจำนวนยอดยกมาที่ถูกต้อง (ไม่ติดลบ)';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            btn.disabled = true;
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('code');
+                const qs = code ? `?code=${encodeURIComponent(code)}` : '';
+                const res = await fetch(`/api/drugs/${obState.drugId}/opening-balance${qs}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        opening_balance: qty,
+                        input_unit: inputUnit,
+                        fiscal_year: fy,
+                        start_date: document.getElementById('inputStartDate')?.value || '',
+                        end_date: document.getElementById('inputEndDate')?.value || ''
+                    })
+                });
+                const data = await res.json().catch(() => null);
+                if (res.ok && data?.ok) {
+                    const fySpan = document.getElementById('textFiscalYear');
+                    if (fySpan && fy) {
+                        fySpan.innerText = fy;
+                        fySpan.dataset.userEdited = '1';
+                    }
+                    closeOpeningBalanceModal();
+                    await refreshStockCardData();
+                } else {
+                    errEl.textContent = (data && data.error) || 'บันทึกไม่สำเร็จ';
+                    errEl.style.display = 'block';
+                }
+            } catch (err) {
+                errEl.textContent = 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+            }
+        }
     </script>
+
+    <!-- Modal: Edit Opening Balance -->
+    <div class="ob-modal-overlay" id="openingBalanceModal" onclick="if(event.target===this)closeOpeningBalanceModal()">
+        <div class="ob-modal-box">
+            <div class="ob-modal-header">
+                <h3 style="margin:0; font-size:1rem; font-weight:700; color:#0F172A;">แก้ไขยอดยกมา</h3>
+                <button type="button" class="btn-tool btn-outline-tool" onclick="closeOpeningBalanceModal()" style="padding:0.25rem 0.55rem;"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form onsubmit="saveOpeningBalance(event)">
+                <div class="ob-modal-body">
+                    <div class="ob-field">
+                        <label for="obFiscalYearSelect">ยกยอดมาจากปีงบประมาณ</label>
+                        <div style="display:flex; gap:0.5rem;">
+                            <select id="obFiscalYearSelect" onchange="onObFiscalYearSelectChange(this.value)" style="flex:1;">
+                                <option value="2569">ปีงบประมาณ 2569</option>
+                                <option value="2570">ปีงบประมาณ 2570</option>
+                                <option value="2568">ปีงบประมาณ 2568</option>
+                                <option value="2567">ปีงบประมาณ 2567</option>
+                                <option value="CUSTOM">ระบุปีอื่น...</option>
+                            </select>
+                            <input type="text" id="obFiscalYearCustom" placeholder="พ.ศ." maxlength="4" style="display:none; width:95px;">
+                        </div>
+                    </div>
+                    <div class="ob-field">
+                        <label for="obQtyInput">จำนวนยอดยกมา (คงเหลือต้นงวด)</label>
+                        <div style="display:flex; gap:0.5rem;">
+                            <input type="number" id="obQtyInput" min="0" step="any" required style="flex:1;">
+                            <select id="obUnitSelect" style="width:110px;"></select>
+                        </div>
+                        <small style="display:block; margin-top:4px; color:#64748B; font-size:0.75rem;">ระบบจะปรับยอดคงเหลือปัจจุบันและบัญชีคุมยาให้สัมพันธ์กันอัตโนมัติ</small>
+                    </div>
+                    <div id="obErrorMsg" style="display:none; color:#DC2626; font-size:0.8125rem; background:#FEF2F2; border:1px solid #FECACA; border-radius:6px; padding:0.5rem 0.7rem;"></div>
+                </div>
+                <div class="ob-modal-footer">
+                    <button type="button" class="btn-tool btn-outline-tool" onclick="closeOpeningBalanceModal()">ยกเลิก</button>
+                    <button type="submit" class="btn-tool btn-print" id="btnSaveOb"><i class="fas fa-save"></i> บันทึกยอดยกมา</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>

@@ -2851,6 +2851,7 @@ def get_stock_card_data(drug_id: int, start_date: str = None, end_date: str = No
     for r in stock_in_rows:
         items.append({
             "id": f"in-{r['id']}",
+            "raw_id": r["id"],
             "type": "RECEIVE",
             "created_at": r["created_at"],
             "qty_in": _clean_num(r["quantity"]),
@@ -3307,6 +3308,170 @@ def list_db_backups():
             "created_at": dt_str
         })
     return backups
+
+def set_opening_balance(drug_id: int, new_opening_qty: float, fiscal_year: str = None,
+                        start_date: str = None, end_date: str = None,
+                        adjusted_by: str = "ผู้ดูแลระบบคลังยา"):
+    """
+    Set the opening balance (ยอดยกมา) for a drug as of `start_date` and optionally update
+    its `opening_fiscal_year`. Adjusts current `stock_qty` and `drug_lots` atomically, and
+    records a `stock_adjustments` entry just before `start_date` so Stock Card math remains exact.
+    """
+    try:
+        target_opening = float(new_opening_qty)
+    except (TypeError, ValueError):
+        return False, "จำนวนยอดยกมาต้องเป็นตัวเลข"
+    if target_opening < 0:
+        return False, "ยอดยกมาต้องไม่ติดลบ"
+    target_opening = _clean_num(target_opening)
+
+    now_dt = datetime.now(BANGKOK_TZ)
+    start_date = normalize_ymd(start_date) or f"{now_dt.year}-{now_dt.month:02d}-01"
+    end_date = normalize_ymd(end_date) or now_dt.strftime("%Y-%m-%d")
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    start_ts = f"{start_date} 00:00:00"
+    end_ts = f"{end_date} 23:59:59"
+    adj_ts = (datetime.strptime(start_date, "%Y-%m-%d") - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    fy = str(fiscal_year).strip() if fiscal_year is not None else None
+
+    with _db_write_lock:
+        conn = get_db()
+        cursor = conn.cursor()
+        now_str = get_now_str()
+        try:
+            with conn:
+                cursor.execute("SELECT * FROM drugs WHERE id = ?", (drug_id,))
+                d_row = cursor.fetchone()
+                if not d_row:
+                    conn.rollback()
+                    return False, "ไม่พบข้อมูลยา"
+                drug = dict(d_row)
+
+                not_voided = "(is_voided IS NULL OR is_voided = 0)"
+
+                def _sum_range(table, col, extra="", ge_ts=None, le_ts=None, gt_ts=None):
+                    q = f"SELECT COALESCE(SUM({col}), 0) FROM {table} WHERE drug_id = ? {extra}"
+                    params = [drug_id]
+                    if ge_ts:
+                        q += " AND created_at >= ?"
+                        params.append(ge_ts)
+                    if le_ts:
+                        q += " AND created_at <= ?"
+                        params.append(le_ts)
+                    if gt_ts:
+                        q += " AND created_at > ?"
+                        params.append(gt_ts)
+                    cursor.execute(q, params)
+                    return float(cursor.fetchone()[0] or 0.0)
+
+                in_p = _sum_range("stock_in_logs", "quantity", f"AND {not_voided}", ge_ts=start_ts, le_ts=end_ts)
+                out_p = _sum_range("dispensing_logs", "quantity", f"AND {not_voided}", ge_ts=start_ts, le_ts=end_ts)
+                adj_p = _sum_range("stock_adjustments", "quantity_delta", ge_ts=start_ts, le_ts=end_ts)
+
+                in_a = _sum_range("stock_in_logs", "quantity", f"AND {not_voided}", gt_ts=end_ts)
+                out_a = _sum_range("dispensing_logs", "quantity", f"AND {not_voided}", gt_ts=end_ts)
+                adj_a = _sum_range("stock_adjustments", "quantity_delta", gt_ts=end_ts)
+
+                cur_stock = float(drug.get("stock_qty") or 0.0)
+                raw_old_opening = cur_stock - (in_p - out_p + adj_p) - (in_a - out_a + adj_a)
+                delta = round(target_opening - raw_old_opening, 6)
+
+                if cur_stock + delta < -1e-9:
+                    conn.rollback()
+                    min_allowed = _clean_num(max(0.0, raw_old_opening - cur_stock))
+                    return False, f"ไม่สามารถลดยอดยกมาเหลือ {_clean_num(target_opening)} ได้ เพราะมียอดจ่ายออกไปแล้ว (ตั้งต่ำสุดได้ {min_allowed})"
+
+                if fy:
+                    cursor.execute("UPDATE drugs SET opening_fiscal_year = ?, updated_at = ? WHERE id = ?", (fy, now_str, drug_id))
+
+                new_stock = _clean_num(max(0.0, cur_stock + delta))
+                if abs(delta) > 1e-9:
+                    cursor.execute("UPDATE drugs SET stock_qty = ?, updated_at = ? WHERE id = ?", (new_stock, now_str, drug_id))
+
+                    if delta > 0:
+                        cursor.execute("""
+                            SELECT id, stock_qty, initial_qty, lot_number FROM drug_lots
+                            WHERE drug_id = ? AND is_active = 1
+                            ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
+                                     expiry_date ASC, id ASC
+                            LIMIT 1
+                        """, (drug_id,))
+                        lot_row = cursor.fetchone()
+                        if lot_row:
+                            cursor.execute("""
+                                UPDATE drug_lots
+                                SET stock_qty = stock_qty + ?, initial_qty = initial_qty + ?, updated_at = ?
+                                WHERE id = ?
+                            """, (_clean_num(delta), _clean_num(delta), now_str, lot_row[0]))
+                            adj_lot = lot_row[3] or ""
+                        else:
+                            adj_lot = (drug.get("lot_number") or "").strip() or "LOT-OPENING"
+                            drug_code = drug.get("code") or ""
+                            cursor.execute("""
+                                INSERT INTO drug_lots (
+                                    drug_id, lot_number, stock_qty, initial_qty, cost_per_unit,
+                                    expiry_date, location, qr_payload, notes, created_at, updated_at, is_active
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            """, (
+                                drug_id, adj_lot, _clean_num(delta), _clean_num(delta),
+                                float(drug.get("cost") or 0.0), drug.get("expiry_date") or "",
+                                drug.get("location") or "", f"{drug_code}#{adj_lot}" if drug_code else adj_lot,
+                                "ยอดยกมา", now_str, now_str
+                            ))
+                    else:
+                        rem = abs(delta)
+                        cursor.execute("""
+                            SELECT id, stock_qty, lot_number FROM drug_lots
+                            WHERE drug_id = ? AND is_active = 1 AND stock_qty > 0
+                            ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
+                                     expiry_date ASC, id ASC
+                        """, (drug_id,))
+                        lots = cursor.fetchall()
+                        adj_lot = lots[0][2] if lots else (drug.get("lot_number") or "")
+                        for l_id, l_qty, _ in lots:
+                            if rem <= 1e-9:
+                                break
+                            take = min(float(l_qty), rem)
+                            cursor.execute("""
+                                UPDATE drug_lots
+                                SET stock_qty = MAX(0, stock_qty - ?), updated_at = ?
+                                WHERE id = ?
+                            """, (_clean_num(take), now_str, l_id))
+                            rem -= take
+
+                    fy_label = fy or (drug.get("opening_fiscal_year") or "-")
+                    cursor.execute("""
+                        INSERT INTO stock_adjustments (
+                            drug_id, lot_number, quantity_delta, reason, adjusted_by, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        drug_id, adj_lot or "", _clean_num(delta),
+                        f"แก้ไขยอดยกมา (ปีงบ {fy_label})", adjusted_by, adj_ts
+                    ))
+
+                    _recalc_drug_weighted_cost_in_tx(cursor, drug_id, fallback_cost=drug.get("cost"), now_str=now_str)
+                    sync_drug_master_fefo(drug_id, conn=conn)
+
+            return True, {
+                "drug_id": drug_id,
+                "drug_name": drug.get("name", ""),
+                "unit": drug.get("unit", "หน่วย"),
+                "old_opening": _clean_num(max(0.0, raw_old_opening)),
+                "new_opening": target_opening,
+                "delta": _clean_num(delta),
+                "new_stock_qty": new_stock,
+                "fiscal_year": fy or (drug.get("opening_fiscal_year") or ""),
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+        except Exception as e:
+            conn.rollback()
+            return False, f"เกิดข้อผิดพลาดในการบันทึกยอดยกมา: {e}"
+        finally:
+            conn.close()
+
 
 # Initialize on module import
 init_db()
